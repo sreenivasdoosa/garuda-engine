@@ -14,6 +14,13 @@ The flow, from Kite Connect v3:
 
 The checksum is why the API secret has to be stored rather than only used in a
 browser: step 3 happens server-side.
+
+**Login is not IP-restricted.** The OAuth flow works from a laptop on a home
+connection or from a cloud box, and the redirect URL may be localhost. The
+static IP recorded against a trading client is a separate concern: brokers
+whitelist a source address for the *trading* APIs — orders, positions, funds —
+so an operator can complete a login successfully and still have every order
+refused because the engine is not running on the whitelisted address.
 """
 
 from __future__ import annotations

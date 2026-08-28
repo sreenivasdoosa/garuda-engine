@@ -76,11 +76,17 @@ class TradingClientRow(Base):
     #: rest; see garuda.persistence.secrets.
     api_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
     api_secret_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
-    #: Where the broker sends the OAuth callback for this account.
+    #: Where the broker sends the OAuth callback for this account. Registered
+    #: with the broker, and may be localhost for a laptop install or a public
+    #: address for a cloud one — login is not IP-restricted.
     redirect_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
-    #: Some brokers bind API access to a fixed source address. Recorded so a
-    #: mismatch is diagnosable rather than an opaque authentication failure.
+    #: The source address the broker has whitelisted for this account's
+    #: **trading** APIs — orders, positions, funds. Not login: the OAuth flow
+    #: works from anywhere, so an operator can log in from a laptop and still
+    #: have order APIs refused because the engine is not running on the
+    #: whitelisted address. Recording it is what turns that into a
+    #: recognisable misconfiguration instead of an opaque rejection.
     static_ip: Mapped[str | None] = mapped_column(String(45), nullable=True)
 
     #: A "pro" account, which some venues price and rate-limit differently.
