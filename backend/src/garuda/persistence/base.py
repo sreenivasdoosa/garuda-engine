@@ -14,11 +14,15 @@ from typing import Annotated
 from sqlalchemy import MetaData, Numeric, String
 from sqlalchemy.orm import DeclarativeBase, mapped_column
 
+#: PostgreSQL truncates an identifier at 63 characters and SQLAlchemy refuses
+#: to generate one longer, so the foreign-key convention omits the referred
+#: table: "fk_<table>_<columns>" is already unique within a table, and
+#: including the target pushed a realistic name past the limit.
 NAMING_CONVENTION = {
     "ix": "ix_%(column_0_N_label)s",
     "uq": "uq_%(table_name)s_%(column_0_N_name)s",
     "ck": "ck_%(table_name)s_%(constraint_name)s",
-    "fk": "fk_%(table_name)s_%(column_0_N_name)s_%(referred_table_name)s",
+    "fk": "fk_%(table_name)s_%(column_0_N_name)s",
     "pk": "pk_%(table_name)s",
 }
 

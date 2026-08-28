@@ -53,11 +53,11 @@ async def clean_tables(engine: AsyncEngine) -> None:
     to genuinely commit.
     """
     async with engine.begin() as connection:
-        # CASCADE because trading_client_sessions references trading_clients;
+        # CASCADE because trading_client_login_status references trading_clients;
         # PostgreSQL refuses to truncate a table an FK points at without it.
         await connection.execute(
             text(
-                "TRUNCATE event_journal, trading_clients, trading_client_sessions, "
+                "TRUNCATE event_journal, trading_clients, trading_client_login_status, "
                 "system_config RESTART IDENTITY CASCADE"
             )
         )
