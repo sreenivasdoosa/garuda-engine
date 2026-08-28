@@ -4,8 +4,8 @@ The database URL comes from Garuda's own settings rather than from
 ``alembic.ini``, so migrations and the running engine can never disagree about
 which database they are talking to.
 
-``target_metadata`` is None until the persistence layer lands in Phase 1;
-autogenerate is not useful before then.
+Autogenerate is a starting point, not the migration: partitioning, indexes on
+a partitioned parent and data backfills all have to be written by hand.
 """
 
 from __future__ import annotations
@@ -19,6 +19,8 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from garuda.config import load_settings
+from garuda.persistence import models  # noqa: F401  — registers the tables
+from garuda.persistence.base import Base
 
 config = context.config
 
@@ -27,7 +29,7 @@ if config.config_file_name is not None:
 
 config.set_main_option("sqlalchemy.url", load_settings().database.async_url)
 
-target_metadata = None
+target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:

@@ -205,7 +205,8 @@ class TestPositions:
         state = fold(events, BASES)
         mine_position = state.position(PositionKey(CLIENT, INSTRUMENT))
         theirs_position = state.position(PositionKey(OTHER_CLIENT, INSTRUMENT))
-        assert mine_position is not None and theirs_position is not None
+        assert mine_position is not None
+        assert theirs_position is not None
         assert mine_position.quantity == -75
         assert theirs_position.quantity == 75
 
