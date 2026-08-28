@@ -58,6 +58,6 @@ async def clean_tables(engine: AsyncEngine) -> None:
         await connection.execute(
             text(
                 "TRUNCATE event_journal, trading_clients, trading_client_login_status, "
-                "system_config RESTART IDENTITY CASCADE"
+                "app_config RESTART IDENTITY CASCADE"
             )
         )

@@ -148,18 +148,13 @@ class TestAtomicity:
         async with UnitOfWork(session_factory) as uow:
             await uow.journal.append([order_placed(request(), occurred_at=T0, trading_day=DAY)])
             await uow.session.execute(
-                text(
-                    "INSERT INTO system_config (key, value, value_type, updated_at) "
-                    "VALUES ('probe', 'written', 'STRING', now())"
-                )
+                text("INSERT INTO app_config (key, value) VALUES ('probe', 'written')")
             )
 
         async with UnitOfWork(session_factory) as uow:
             journalled = [e async for e in uow.journal.replay(DAY)]
             probe = (
-                await uow.session.execute(
-                    text("SELECT value FROM system_config WHERE key = 'probe'")
-                )
+                await uow.session.execute(text("SELECT value FROM app_config WHERE key = 'probe'"))
             ).scalar_one_or_none()
         assert len(journalled) == 1
         assert probe == "written"
@@ -169,10 +164,7 @@ class TestAtomicity:
             async with UnitOfWork(session_factory) as uow:
                 await uow.journal.append([order_placed(request(), occurred_at=T0, trading_day=DAY)])
                 await uow.session.execute(
-                    text(
-                        "INSERT INTO system_config (key, value, value_type, updated_at) "
-                        "VALUES ('probe', 'written', 'STRING', now())"
-                    )
+                    text("INSERT INTO app_config (key, value) VALUES ('probe', 'written')")
                 )
                 raise RuntimeError("boom")
 
@@ -182,9 +174,7 @@ class TestAtomicity:
         async with UnitOfWork(session_factory) as uow:
             journalled = [e async for e in uow.journal.replay(DAY)]
             probe = (
-                await uow.session.execute(
-                    text("SELECT value FROM system_config WHERE key = 'probe'")
-                )
+                await uow.session.execute(text("SELECT value FROM app_config WHERE key = 'probe'"))
             ).scalar_one_or_none()
         assert journalled == []
         assert probe is None, "the state change must not outlive its journal entry"
