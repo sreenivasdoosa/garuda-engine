@@ -6,6 +6,7 @@ problem at the first order, so the loading itself has to be right.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -16,6 +17,15 @@ from garuda.config import DatabaseSettings, Settings
 
 @pytest.fixture
 def env_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """A .env in an otherwise clean environment.
+
+    Any real GARUDA_* variable is removed first. A genuine environment
+    variable beats .env by design (see below), so without this the test
+    asserts one thing on a clean laptop and another on a CI runner that
+    exports GARUDA_DB_HOST for its service container.
+    """
+    for name in [k for k in os.environ if k.startswith("GARUDA_")]:
+        monkeypatch.delenv(name, raising=False)
     path = tmp_path / ".env"
     path.write_text(
         "GARUDA_PORT=9999\n"
