@@ -28,6 +28,8 @@ dependencies = [
     # zoneinfo has no system tz database on Windows; this ships one.
     "tzdata>=2024.2",
     "cryptography>=50.0.1",
+    "pyyaml>=6.0.3",
+    "types-pyyaml>=6.0.12.20260815",
 ]
 
 [project.scripts]

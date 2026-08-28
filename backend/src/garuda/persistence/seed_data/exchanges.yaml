@@ -1,0 +1,60 @@
+- exchange_code: BSE
+  exchange_name: Bombay Stock Exchange
+  timezone: Asia/Kolkata
+  pre_market_start: 09:00:00
+  pre_market_end: 09:08:00
+  market_open: 09:15:00
+  market_close: '15:40:00'
+  intraday_squareoff_minutes_before_close: 20
+  intraday_squareoff_block_minutes_before_close: 10
+  post_market_window_minutes: 60
+  positional_squareoff_minutes_before_close: 15
+  report_minutes_after_close: 15
+  billing_minutes_after_close: 30
+  history_cache_enabled: 0
+  weekend_days: SATURDAY,SUNDAY
+  is_active: 1
+  created_at: '2026-02-06 07:51:50'
+  updated_at: '2026-08-07 03:32:11'
+  login_minutes_before_market_open: 60
+  algo_start_minutes_before_market_open: 90
+- exchange_code: MCX
+  exchange_name: Multi Commodity Exchange
+  timezone: Asia/Kolkata
+  pre_market_start: 08:45:00
+  pre_market_end: 08:59:00
+  market_open: 09:00:00
+  market_close: '23:30:00'
+  intraday_squareoff_minutes_before_close: 20
+  intraday_squareoff_block_minutes_before_close: 10
+  post_market_window_minutes: 60
+  positional_squareoff_minutes_before_close: 15
+  report_minutes_after_close: 15
+  billing_minutes_after_close: 30
+  history_cache_enabled: 0
+  weekend_days: SATURDAY,SUNDAY
+  is_active: 1
+  created_at: '2026-02-06 07:51:50'
+  updated_at: '2026-05-31 18:42:25'
+  login_minutes_before_market_open: 60
+  algo_start_minutes_before_market_open: 90
+- exchange_code: NSE
+  exchange_name: National Stock Exchange
+  timezone: Asia/Kolkata
+  pre_market_start: 09:00:00
+  pre_market_end: 09:08:00
+  market_open: 09:15:00
+  market_close: '15:40:00'
+  intraday_squareoff_minutes_before_close: 20
+  intraday_squareoff_block_minutes_before_close: 10
+  post_market_window_minutes: 60
+  positional_squareoff_minutes_before_close: 15
+  report_minutes_after_close: 15
+  billing_minutes_after_close: 30
+  history_cache_enabled: 0
+  weekend_days: SATURDAY,SUNDAY
+  is_active: 1
+  created_at: '2026-02-06 07:51:50'
+  updated_at: '2026-08-07 03:32:17'
+  login_minutes_before_market_open: 60
+  algo_start_minutes_before_market_open: 90

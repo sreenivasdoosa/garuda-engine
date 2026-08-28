@@ -1,0 +1,182 @@
+- exchange: BSE
+  segment: EQUITY
+  product: DELIVERY
+  stt_buy_pct: 0.1
+  stt_sell_pct: 0.1
+  exchange_txn_pct: 0.00325
+  sebi_charges_pct: 0.00015
+  stamp_duty_buy_pct: 0.003
+  stamp_duty_sell_pct: 0.003
+  gst_pct: 18
+  depository_charges: 15
+  created_at: '2026-02-20 16:07:58'
+  updated_at: '2026-02-20 16:07:58'
+- exchange: BSE
+  segment: EQUITY
+  product: INTRADAY
+  stt_buy_pct: 0
+  stt_sell_pct: 0.025
+  exchange_txn_pct: 0.00345
+  sebi_charges_pct: 0.0001
+  stamp_duty_buy_pct: 0.003
+  stamp_duty_sell_pct: 0
+  gst_pct: 18
+  depository_charges: 0
+  created_at: '2026-02-20 16:07:58'
+  updated_at: '2026-02-20 16:07:58'
+- exchange: BSE
+  segment: EQUITY
+  product: POSITIONAL
+  stt_buy_pct: 0
+  stt_sell_pct: 0.025
+  exchange_txn_pct: 0.00345
+  sebi_charges_pct: 0.0001
+  stamp_duty_buy_pct: 0.003
+  stamp_duty_sell_pct: 0
+  gst_pct: 18
+  depository_charges: 0
+  created_at: '2026-02-20 16:07:58'
+  updated_at: '2026-02-20 16:07:58'
+- exchange: BSE
+  segment: FUTURES
+  product: INTRADAY
+  stt_buy_pct: 0
+  stt_sell_pct: 0.02
+  exchange_txn_pct: 0
+  sebi_charges_pct: 0.0001
+  stamp_duty_buy_pct: 0.002
+  stamp_duty_sell_pct: 0
+  gst_pct: 18
+  depository_charges: 0
+  created_at: '2026-02-20 16:07:58'
+  updated_at: '2026-02-20 16:07:58'
+- exchange: BSE
+  segment: FUTURES
+  product: POSITIONAL
+  stt_buy_pct: 0
+  stt_sell_pct: 0.02
+  exchange_txn_pct: 0
+  sebi_charges_pct: 0.0001
+  stamp_duty_buy_pct: 0.002
+  stamp_duty_sell_pct: 0
+  gst_pct: 18
+  depository_charges: 0
+  created_at: '2026-02-20 16:07:58'
+  updated_at: '2026-02-20 16:07:58'
+- exchange: BSE
+  segment: OPTIONS
+  product: INTRADAY
+  stt_buy_pct: 0
+  stt_sell_pct: 0.1
+  exchange_txn_pct: 0.0325
+  sebi_charges_pct: 0.0001
+  stamp_duty_buy_pct: 0.003
+  stamp_duty_sell_pct: 0
+  gst_pct: 18
+  depository_charges: 0
+  created_at: '2026-02-20 16:07:58'
+  updated_at: '2026-02-20 16:07:58'
+- exchange: BSE
+  segment: OPTIONS
+  product: POSITIONAL
+  stt_buy_pct: 0
+  stt_sell_pct: 0.1
+  exchange_txn_pct: 0.0325
+  sebi_charges_pct: 0.0001
+  stamp_duty_buy_pct: 0.003
+  stamp_duty_sell_pct: 0
+  gst_pct: 18
+  depository_charges: 0
+  created_at: '2026-02-20 16:07:58'
+  updated_at: '2026-02-20 16:07:58'
+- exchange: NSE
+  segment: EQUITY
+  product: DELIVERY
+  stt_buy_pct: 0.1
+  stt_sell_pct: 0.1
+  exchange_txn_pct: 0.00325
+  sebi_charges_pct: 0.00015
+  stamp_duty_buy_pct: 0.003
+  stamp_duty_sell_pct: 0.003
+  gst_pct: 18
+  depository_charges: 15
+  created_at: '2026-02-20 16:07:58'
+  updated_at: '2026-02-20 16:07:58'
+- exchange: NSE
+  segment: EQUITY
+  product: INTRADAY
+  stt_buy_pct: 0
+  stt_sell_pct: 0.025
+  exchange_txn_pct: 0.00345
+  sebi_charges_pct: 0.0001
+  stamp_duty_buy_pct: 0.003
+  stamp_duty_sell_pct: 0
+  gst_pct: 18
+  depository_charges: 0
+  created_at: '2026-02-20 16:07:58'
+  updated_at: '2026-02-20 16:07:58'
+- exchange: NSE
+  segment: EQUITY
+  product: POSITIONAL
+  stt_buy_pct: 0
+  stt_sell_pct: 0.025
+  exchange_txn_pct: 0.00345
+  sebi_charges_pct: 0.0001
+  stamp_duty_buy_pct: 0.003
+  stamp_duty_sell_pct: 0
+  gst_pct: 18
+  depository_charges: 0
+  created_at: '2026-02-20 16:07:58'
+  updated_at: '2026-02-20 16:07:58'
+- exchange: NSE
+  segment: FUTURES
+  product: INTRADAY
+  stt_buy_pct: 0
+  stt_sell_pct: 0.02
+  exchange_txn_pct: 0.00173
+  sebi_charges_pct: 0.0001
+  stamp_duty_buy_pct: 0.002
+  stamp_duty_sell_pct: 0
+  gst_pct: 18
+  depository_charges: 0
+  created_at: '2026-02-20 16:07:58'
+  updated_at: '2026-02-20 16:07:58'
+- exchange: NSE
+  segment: FUTURES
+  product: POSITIONAL
+  stt_buy_pct: 0
+  stt_sell_pct: 0.02
+  exchange_txn_pct: 0.00173
+  sebi_charges_pct: 0.0001
+  stamp_duty_buy_pct: 0.002
+  stamp_duty_sell_pct: 0
+  gst_pct: 18
+  depository_charges: 0
+  created_at: '2026-02-20 16:07:58'
+  updated_at: '2026-02-20 16:07:58'
+- exchange: NSE
+  segment: OPTIONS
+  product: INTRADAY
+  stt_buy_pct: 0
+  stt_sell_pct: 0.1
+  exchange_txn_pct: 0.03503
+  sebi_charges_pct: 0.0001
+  stamp_duty_buy_pct: 0.003
+  stamp_duty_sell_pct: 0
+  gst_pct: 18
+  depository_charges: 0
+  created_at: '2026-02-20 16:07:58'
+  updated_at: '2026-02-20 16:07:58'
+- exchange: NSE
+  segment: OPTIONS
+  product: POSITIONAL
+  stt_buy_pct: 0
+  stt_sell_pct: 0.1
+  exchange_txn_pct: 0.03503
+  sebi_charges_pct: 0.0001
+  stamp_duty_buy_pct: 0.003
+  stamp_duty_sell_pct: 0
+  gst_pct: 18
+  depository_charges: 0
+  created_at: '2026-02-20 16:07:58'
+  updated_at: '2026-02-20 16:07:58'

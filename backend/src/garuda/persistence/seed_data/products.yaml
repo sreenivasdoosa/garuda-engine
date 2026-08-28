@@ -1,0 +1,9 @@
+- product: CASHBUY
+  description: Short term trading in equity cash (CNC)
+- product: INTRADAY
+  description: Intraday trading in equity cash, futures and options
+- product: MTF
+  description: Margin Trade Funding — equity delivery on broker funding (carry-forward,
+    long-only)
+- product: POSITIONAL
+  description: Positional trading in futures and options

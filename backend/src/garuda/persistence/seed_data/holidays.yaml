@@ -1,0 +1,246 @@
+- date: '2025-02-26'
+  exchange: BSE
+  description: null
+- date: '2025-02-26'
+  exchange: MCX
+  description: null
+- date: '2025-02-26'
+  exchange: NSE
+  description: null
+- date: '2025-03-14'
+  exchange: BSE
+  description: null
+- date: '2025-03-14'
+  exchange: MCX
+  description: null
+- date: '2025-03-14'
+  exchange: NSE
+  description: null
+- date: '2025-03-31'
+  exchange: BSE
+  description: null
+- date: '2025-03-31'
+  exchange: MCX
+  description: null
+- date: '2025-03-31'
+  exchange: NSE
+  description: null
+- date: '2025-04-10'
+  exchange: BSE
+  description: null
+- date: '2025-04-10'
+  exchange: MCX
+  description: null
+- date: '2025-04-10'
+  exchange: NSE
+  description: null
+- date: '2025-04-14'
+  exchange: BSE
+  description: null
+- date: '2025-04-14'
+  exchange: MCX
+  description: null
+- date: '2025-04-14'
+  exchange: NSE
+  description: null
+- date: '2025-04-18'
+  exchange: BSE
+  description: null
+- date: '2025-04-18'
+  exchange: MCX
+  description: null
+- date: '2025-04-18'
+  exchange: NSE
+  description: null
+- date: '2025-05-01'
+  exchange: BSE
+  description: null
+- date: '2025-05-01'
+  exchange: MCX
+  description: null
+- date: '2025-05-01'
+  exchange: NSE
+  description: null
+- date: '2025-08-15'
+  exchange: BSE
+  description: null
+- date: '2025-08-15'
+  exchange: MCX
+  description: null
+- date: '2025-08-15'
+  exchange: NSE
+  description: null
+- date: '2025-08-27'
+  exchange: BSE
+  description: null
+- date: '2025-08-27'
+  exchange: MCX
+  description: null
+- date: '2025-08-27'
+  exchange: NSE
+  description: null
+- date: '2025-10-02'
+  exchange: BSE
+  description: null
+- date: '2025-10-02'
+  exchange: MCX
+  description: null
+- date: '2025-10-02'
+  exchange: NSE
+  description: null
+- date: '2025-10-21'
+  exchange: BSE
+  description: null
+- date: '2025-10-21'
+  exchange: MCX
+  description: null
+- date: '2025-10-21'
+  exchange: NSE
+  description: null
+- date: '2025-10-22'
+  exchange: BSE
+  description: null
+- date: '2025-10-22'
+  exchange: MCX
+  description: null
+- date: '2025-10-22'
+  exchange: NSE
+  description: null
+- date: '2025-11-05'
+  exchange: BSE
+  description: null
+- date: '2025-11-05'
+  exchange: MCX
+  description: null
+- date: '2025-11-05'
+  exchange: NSE
+  description: null
+- date: '2025-12-25'
+  exchange: BSE
+  description: null
+- date: '2025-12-25'
+  exchange: MCX
+  description: null
+- date: '2025-12-25'
+  exchange: NCDEX
+  description: null
+- date: '2025-12-25'
+  exchange: NSE
+  description: null
+- date: '2026-01-15'
+  exchange: BSE
+  description: Newly Announced Holiday
+- date: '2026-01-15'
+  exchange: NSE
+  description: Newly Announced Holiday
+- date: '2026-01-26'
+  exchange: BSE
+  description: Republic Day
+- date: '2026-01-26'
+  exchange: MCX
+  description: Republic Day
+- date: '2026-01-26'
+  exchange: NCDEX
+  description: Republic Day
+- date: '2026-01-26'
+  exchange: NSE
+  description: Republic Day
+- date: '2026-03-03'
+  exchange: BSE
+  description: Holi
+- date: '2026-03-03'
+  exchange: NSE
+  description: Holi
+- date: '2026-03-26'
+  exchange: BSE
+  description: Shri Ram Navami
+- date: '2026-03-26'
+  exchange: NSE
+  description: Shri Ram Navami
+- date: '2026-03-31'
+  exchange: BSE
+  description: Shri Mahavir Jayanti
+- date: '2026-03-31'
+  exchange: NSE
+  description: Shri Mahavir Jayanti
+- date: '2026-04-03'
+  exchange: BSE
+  description: Good Friday
+- date: '2026-04-03'
+  exchange: MCX
+  description: Good Friday
+- date: '2026-04-03'
+  exchange: NSE
+  description: Good Friday
+- date: '2026-04-14'
+  exchange: BSE
+  description: Dr. Baba Saheb Ambedkar Jayanti
+- date: '2026-04-14'
+  exchange: NSE
+  description: Dr. Baba Saheb Ambedkar Jayanti
+- date: '2026-05-01'
+  exchange: BSE
+  description: Labour Day
+- date: '2026-05-01'
+  exchange: MCX
+  description: Labour Day
+- date: '2026-05-01'
+  exchange: NCDEX
+  description: Labour Day
+- date: '2026-05-01'
+  exchange: NSE
+  description: Labour Day
+- date: '2026-05-28'
+  exchange: BSE
+  description: Bakri Eid
+- date: '2026-05-28'
+  exchange: NSE
+  description: Bakri Eid
+- date: '2026-06-26'
+  exchange: BSE
+  description: Moharram
+- date: '2026-06-26'
+  exchange: NSE
+  description: Moharram
+- date: '2026-09-14'
+  exchange: BSE
+  description: Ganesh Chaturthi
+- date: '2026-09-14'
+  exchange: NSE
+  description: Ganesh Chaturthi
+- date: '2026-10-02'
+  exchange: BSE
+  description: Mahatma Gandhi Jayanti
+- date: '2026-10-02'
+  exchange: MCX
+  description: Mahatma Gandhi Jayanti
+- date: '2026-10-02'
+  exchange: NSE
+  description: Mahatma Gandhi Jayanti
+- date: '2026-10-20'
+  exchange: BSE
+  description: Dussehra
+- date: '2026-10-20'
+  exchange: NSE
+  description: Dussehra
+- date: '2026-11-10'
+  exchange: BSE
+  description: Diwali-Balipratipada
+- date: '2026-11-10'
+  exchange: NSE
+  description: Diwali-Balipratipada
+- date: '2026-11-24'
+  exchange: BSE
+  description: Prakash Gurpurb Sri Guru Nanak Dev
+- date: '2026-11-24'
+  exchange: NSE
+  description: Prakash Gurpurb Sri Guru Nanak Dev
+- date: '2026-12-25'
+  exchange: BSE
+  description: Christmas
+- date: '2026-12-25'
+  exchange: MCX
+  description: Christmas
+- date: '2026-12-25'
+  exchange: NSE
+  description: Christmas

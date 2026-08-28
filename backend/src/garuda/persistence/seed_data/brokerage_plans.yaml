@@ -1,0 +1,40 @@
+- plan_name: 10_PER_ORDER
+  unit_type: order
+  brokerage_per_unit: 10
+  description: Special discount brokerage plan
+  broker_name: default
+  plan_type: PER_TRADE
+  fixed_fee: 0
+  billing_period: MONTHLY
+- plan_name: 2_PER_LOT
+  unit_type: lot
+  brokerage_per_unit: 2
+  description: 2 Rs per lot per one side
+  broker_name: iifl
+  plan_type: PER_TRADE
+  fixed_fee: 0
+  billing_period: MONTHLY
+- plan_name: DISCOUNT_BROKERAGE_PLAN
+  unit_type: order
+  brokerage_per_unit: 20
+  description: Default discount brokerage plan
+  broker_name: default
+  plan_type: PER_TRADE
+  fixed_fee: 0
+  billing_period: MONTHLY
+- plan_name: FIXED_BROKERAGE_5K
+  unit_type: order
+  brokerage_per_unit: 0
+  description: 'Fixed brokerage of 5000 per month. '
+  broker_name: shareindia
+  plan_type: FIXED_PERIOD
+  fixed_fee: 5000
+  billing_period: MONTHLY
+- plan_name: NO_BROKERAGE
+  unit_type: order
+  brokerage_per_unit: 0
+  description: No brokerage for pro accounts
+  broker_name: default
+  plan_type: PER_TRADE
+  fixed_fee: 0
+  billing_period: MONTHLY

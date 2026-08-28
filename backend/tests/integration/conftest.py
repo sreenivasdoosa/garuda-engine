@@ -13,7 +13,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from garuda.config import Settings
-from garuda.persistence import create_engine, create_session_factory
+from garuda.persistence import Base, create_engine, create_session_factory
 
 pytestmark = pytest.mark.integration
 
@@ -46,18 +46,16 @@ def session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
 
 @pytest.fixture(autouse=True)
 async def clean_tables(engine: AsyncEngine) -> None:
-    """Each test starts from an empty journal.
+    """Each test starts from an empty database.
+
+    Every table, derived from the metadata rather than listed: a hand-written
+    list goes stale the moment a table is added, and the symptom is rows
+    leaking between tests, which reads as a bug in whatever ran second.
 
     Truncating rather than wrapping the test in a transaction that rolls back:
     the unit of work owns its own transaction, and the atomicity tests need it
     to genuinely commit.
     """
+    tables = ", ".join(sorted(Base.metadata.tables))
     async with engine.begin() as connection:
-        # CASCADE because trading_client_login_status references trading_clients;
-        # PostgreSQL refuses to truncate a table an FK points at without it.
-        await connection.execute(
-            text(
-                "TRUNCATE event_journal, trading_clients, trading_client_login_status, "
-                "app_config RESTART IDENTITY CASCADE"
-            )
-        )
+        await connection.execute(text(f"TRUNCATE {tables} RESTART IDENTITY CASCADE"))
