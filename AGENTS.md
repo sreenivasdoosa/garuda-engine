@@ -37,6 +37,28 @@ Read the relevant one before proposing anything. They win over your priors.
 `docs/JAVA_FEATURE_INVENTORY.md` maps the reference engine's internals. It is
 gitignored on purpose — never commit it, never quote it into a tracked file.
 
+## Read the reference engine before designing a table or a broker flow
+
+Garuda is a rewrite, not a fresh idea. The reference engine has been in
+production for years, and its schema encodes requirements that are invisible
+from the design documents: credentials a broker actually needs, columns added
+by a later migration because something broke without them, flags that exist
+because one venue behaves differently.
+
+**Before writing a model, a migration, or a broker integration, read the
+equivalent in the reference engine** — the table and every `ALTER TABLE` that
+touched it, not just the original `CREATE TABLE`. Then decide, per column,
+whether it is ported or deliberately dropped, and say which in the commit.
+
+Designing from first principles here does not produce a cleaner engine. It
+produces one that rediscovers the same requirements a year later, in
+production. This rule exists because a `trading_clients` table was written
+without the OAuth API key and secret it obviously needs — the design documents
+did not mention them, and the reference engine's schema did.
+
+Dropping something is fine and often right; the drops are listed in
+`docs/SCOPE_DECISIONS.md`. Not knowing it existed is not.
+
 ## Rules that do not bend
 
 1. **`Decimal` only** in any money or price path. A `float` there is a defect,

@@ -74,6 +74,10 @@ class Settings(BaseSettings):
     #: Signs session tokens. The installer generates one; there is no default
     #: worth shipping.
     jwt_secret: SecretStr = SecretStr("")
+    #: Encrypts broker credentials at rest. Separate from the JWT secret so
+    #: rotating one does not lock the operator out of the other -- rotating
+    #: this key makes every stored credential unreadable until re-entered.
+    secret_key: SecretStr = SecretStr("")
     database: DatabaseSettings = Field(default_factory=DatabaseSettings)
 
 
