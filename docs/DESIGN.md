@@ -116,8 +116,12 @@ garuda-engine/
 ┌────────────────────────────────────────────────────────────────┐
 │  api/          REST · WebSocket · auth                          │
 ├────────────────────────────────────────────────────────────────┤
-│  engine/ trademgmt/ ordermgmt/ rms/ capital/ reports/           │
-│  application services — venue-neutral, no broker imports        │
+│  engine/       orchestration — composes the services below into │
+│                the one path an intent can take                  │
+├────────────────────────────────────────────────────────────────┤
+│  trademgmt/ ordermgmt/ rms/ capital/ reports/                   │
+│  application services — venue-neutral, siblings, no broker      │
+│  imports and no imports of each other                           │
 ├────────────────────────────────────────────────────────────────┤
 │  core/ journal/          engine loop · clock · bus · unit of work│
 ├────────────────────────────────────────────────────────────────┤

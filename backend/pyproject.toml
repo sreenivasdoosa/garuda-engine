@@ -134,7 +134,11 @@ name = "Layers point downward only"
 type = "layers"
 layers = [
     "garuda.api",
-    "garuda.engine | garuda.trademgmt | garuda.ordermgmt | garuda.rms | garuda.capital | garuda.reports",
+    # The engine orchestrates the services below it: it composes the sizer, the
+    # risk gate and the order manager into one path an intent can take. They do
+    # not drive it, which is why it is a layer of its own.
+    "garuda.engine",
+    "garuda.trademgmt | garuda.ordermgmt | garuda.rms | garuda.capital | garuda.reports",
     "garuda.core | garuda.journal",
     "garuda.protocols",
     "garuda.domain",
