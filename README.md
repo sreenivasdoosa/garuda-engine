@@ -140,29 +140,57 @@ any live deployment.
 
 ---
 
-## Quick start
+## Installing
+
+Garuda is a **server application**, not a library. You install it, it runs, and
+you drive it from the Console in your browser. Three ways to get it:
+
+**Installer script — recommended.** Sets up PostgreSQL, the service, migrations
+and seed data in one go.
+
+```bash
+# Linux
+sudo ./scripts/linux/install.sh
+
+# Windows (elevated PowerShell)
+.\scripts\windows\install.ps1
+```
+
+**Docker.**
+
+```bash
+docker compose -f scripts/docker/compose.yaml up -d
+```
+
+**pip**, if you already live in Python. This installs the `garuda` command, not
+an importable API:
 
 ```bash
 pip install garuda-engine
+garuda init      # config, migrations, seed data, admin password
+garuda serve     # engine + Console on http://localhost:8080
 ```
 
-```python
-from garuda import Engine, Strategy, Context
-from garuda.brokers.paper import PaperBroker
+---
 
+## First run
 
-class MyStrategy(Strategy):
-    def on_bar(self, bar, ctx: Context):
-        if bar.close > ctx.params["threshold"]:
-            yield self.buy(bar.instrument, qty=1)
+1. Open the Console and sign in as `admin`. Change the password.
+2. **Add a trading client** — a display name, a broker, and your client id.
+   One row per broker account; add as many as you run.
+3. **Log in to the broker.** Click *Login* on the client and complete the
+   broker's OAuth flow. Nothing is automated: Garuda never stores credentials
+   for unattended login, and an expired session halts trading rather than
+   quietly renewing itself.
+4. **Create a strategy definition** — pick a template, an underlying, a trigger,
+   and its configuration. Strategies are configured here, not written in Python.
+5. **Subscribe the strategy to a client**, choosing **paper** or **live** and the
+   capital to allocate. The same strategy can be paper on one account and live
+   on another at the same time, driven by the same signals.
+6. **Watch the Terminal.** Positions, P&L, fills and risk breaches arrive live.
 
-
-Engine(broker=PaperBroker(), strategies=[MyStrategy()]).run()
-```
-
-Callbacks return **intents**, not orders. The engine sizes, prices, risk-gates
-and routes them — which is what makes a strategy portable across venues and
-testable without a broker.
+Start in paper. Run at least one full expiry cycle before you allocate real
+capital to anything.
 
 Full walkthrough: [docs/getting-started.md](docs/getting-started.md)
 
@@ -172,30 +200,35 @@ Full walkthrough: [docs/getting-started.md](docs/getting-started.md)
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│  Strategy layer          user code, plugin packages       │
+│  Console + Terminal      configure, operate, watch        │
+├──────────────────────────────────────────────────────────┤
+│  Strategy layer          evaluators · templates · config  │
 ├──────────────────────────────────────────────────────────┤
 │  Engine core             venue-neutral, no I/O            │
-│    Router · RiskGate · OrderManager · PositionBook        │
+│    Dispatcher · Sizer · RiskGate · OrderManager · Journal │
 ├──────────────────────────────────────────────────────────┤
 │  Domain model            Money · Instrument · Exchange    │
 ├──────────────────────────────────────────────────────────┤
-│  Adapter layer           all venue-specific code          │
+│  Adapter layer           brokers · feeds · persistence    │
 └──────────────────────────────────────────────────────────┘
 ```
 
 Dependencies point downward only. The core imports no adapter.
 
-Four protocols form the public contract; changing them is a breaking release:
+These protocols form the public contract; changing them is a breaking release:
 
 | Interface | Purpose | Implement it when |
 |---|---|---|
 | `BrokerAdapter` | Auth, orders, positions, market data, instrument master | Adding a new broker |
-| `Strategy` | Receives market events and position state, emits intents | Writing your own logic |
+| `StrategyEvaluator` | Receives market events and position state, emits intents | Adding entry logic no template covers |
+| `MarketDataFeed` | Ticks, quotes, instruments, history | Adding a data provider |
 | `EventBus` / `Store` | Transport and persistence | Changing deployment shape |
 | `Clock` | Time, abstracted for deterministic replay | Almost never — it is test infrastructure |
 
-Strategies never talk to the broker directly. Adapters never contain strategy
-logic. Keeping that boundary is what makes upgrades painless.
+Evaluators never talk to a broker. They emit intents; the engine sizes them,
+risk-gates them and routes them — to a real broker or the paper broker, per
+subscription. Adapters never contain strategy logic. Keeping that boundary is
+what makes upgrades painless and lets one strategy run paper and live at once.
 
 Deeper detail: [ARCHITECTURE.md](ARCHITECTURE.md)
 
@@ -203,20 +236,36 @@ Deeper detail: [ARCHITECTURE.md](ARCHITECTURE.md)
 
 ## Extending without forking
 
-Custom brokers and strategies ship as separate packages and are discovered via
-entry points. You never need to modify this repository to use your own:
+Extensions ship as separate pip packages and are discovered at runtime via entry
+points. You never modify this repository to add your own:
 
 ```toml
 [project.entry-points."garuda.brokers"]
-mybroker = "my_package.broker:MyBroker"
+mybroker = "my_package.broker:MyBrokerAdapter"
 
-[project.entry-points."garuda.strategies"]
-my_straddle = "my_package.straddle:ShortStraddle"
+[project.entry-points."garuda.evaluators"]
+my_logic = "my_package.evaluator:MyEvaluator"
 ```
+
+Five extension points, all registries:
+
+| Entry point | What you add |
+|---|---|
+| `garuda.brokers` | A broker adapter — auth, orders, positions, market data |
+| `garuda.feeds` | A market data provider |
+| `garuda.evaluators` | Custom entry logic, which then appears as a template in the Console |
+| `garuda.indicators` | An indicator the rule engine can reference |
+| `garuda.resolvers` | A direction provider or instrument resolver |
+
+Strategies themselves are **configuration, not code** — a template, an
+underlying, a trigger and its parameters, created in the Console and stored in
+the database. Writing Python is for the case where no existing template can
+express your logic.
 
 Core carries the paper broker and a reference adapter only. Every other adapter
 lives in its own repo with its own tests, so a broker API change breaks one
-package rather than the release.
+package rather than the release. A new adapter is correct when it passes the
+contract test suite — no broker access needed to review one.
 
 If something can't be expressed through the existing interfaces, open an issue —
 the fix is usually to widen the interface upstream, which helps everyone.
