@@ -39,6 +39,9 @@ def upgrade() -> None:
         "trading_clients",
         sa.Column("is_pro", sa.Boolean(), server_default="false", nullable=False),
     )
+    # Nullable on purpose: NULL means inherit the broker's setting rather than
+    # assert an answer for this account.
+    op.add_column("trading_clients", sa.Column("use_dealer_apis", sa.Boolean(), nullable=True))
     op.add_column(
         "trading_clients",
         sa.Column("websocket_enabled", sa.Boolean(), server_default="true", nullable=False),
@@ -70,6 +73,7 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.drop_table("trading_client_login_status")
     op.drop_column("trading_clients", "websocket_enabled")
+    op.drop_column("trading_clients", "use_dealer_apis")
     op.drop_column("trading_clients", "is_pro")
     op.drop_column("trading_clients", "static_ip")
     op.drop_column("trading_clients", "redirect_url")

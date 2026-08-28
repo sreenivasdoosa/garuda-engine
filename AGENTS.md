@@ -46,9 +46,15 @@ by a later migration because something broke without them, flags that exist
 because one venue behaves differently.
 
 **Before writing a model, a migration, or a broker integration, read the
-equivalent in the reference engine** — the table and every `ALTER TABLE` that
-touched it, not just the original `CREATE TABLE`. Then decide, per column,
-whether it is ported or deliberately dropped, and say which in the commit.
+equivalent in the reference engine's current schema dump.** Its path is in the
+agent's project memory; it is not recorded here, and neither the dump nor its
+contents ever enter this repository. Read the whole table, then decide per
+column whether it is ported or deliberately dropped, and say which in the
+commit.
+
+Read the dump, not the reference engine's migration files. A column there can
+be added, altered and dropped across several of three hundred migrations, so
+reconstructing the final shape from them is easy to get wrong — and was.
 
 Designing from first principles here does not produce a cleaner engine. It
 produces one that rediscovers the same requirements a year later, in

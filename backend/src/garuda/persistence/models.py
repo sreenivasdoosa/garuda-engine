@@ -88,6 +88,11 @@ class TradingClientRow(Base):
     #: recomputing history.
     is_pro: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
 
+    #: Dealer-terminal APIs, which some brokers expose instead of the retail
+    #: ones and which take a different order shape. NULL means inherit the
+    #: broker's own setting rather than assert an answer for this account.
+    use_dealer_apis: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+
     #: Whether to take order and position updates over the broker's socket.
     #: Off means polling, which some accounts need.
     websocket_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
