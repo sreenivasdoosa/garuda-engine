@@ -7,7 +7,7 @@ Usage::
 
     async with UnitOfWork(session_factory) as uow:
         await uow.journal.append(events)
-        ...                      # state changes on uow.session
+        await uow.repositories.trading_clients.upsert(row)
 
 Leaving the block commits. Raising inside it rolls back, and the journal row
 goes with the change it described.
@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from garuda.domain.errors import DomainError
 from garuda.persistence.journal_store import PostgresJournalStore
+from garuda.persistence.repositories import Repositories
 
 
 class UnitOfWorkError(DomainError):
@@ -32,6 +33,7 @@ class UnitOfWork:
         self._session_factory = session_factory
         self._session: AsyncSession | None = None
         self._journal: PostgresJournalStore | None = None
+        self._repositories: Repositories | None = None
 
     @property
     def session(self) -> AsyncSession:
@@ -45,9 +47,17 @@ class UnitOfWork:
             raise UnitOfWorkError("the unit of work is not open")
         return self._journal
 
+    @property
+    def repositories(self) -> Repositories:
+        """Every table, bound to this transaction."""
+        if self._repositories is None:
+            raise UnitOfWorkError("the unit of work is not open")
+        return self._repositories
+
     async def __aenter__(self) -> UnitOfWork:
         self._session = self._session_factory()
         self._journal = PostgresJournalStore(self._session)
+        self._repositories = Repositories(self._session)
         return self
 
     async def __aexit__(
@@ -66,3 +76,4 @@ class UnitOfWork:
             await session.close()
             self._session = None
             self._journal = None
+            self._repositories = None
