@@ -74,6 +74,18 @@ Consequences:
 - **The two custom-logic templates are dropped entirely** — not ported, not reimplemented. Core
   ships no bespoke evaluator. A third party can register one through the `garuda.evaluators`
   entry point if a spec genuinely cannot express their logic.
+- **Asset class lives on the leg**, as one of three instrument selectors — option, future,
+  equity. **MTF is a product on an equity leg, not a fourth selector**: it is funded delivery,
+  which belongs alongside CNC and MIS rather than on the same axis as an asset class.
+- **Indicators are never a template.** `INDICATOR` is a value that the trigger, the direction
+  and the exits can each take independently, so it applies to every strategy regardless of what
+  its legs are.
+- **Legs are capped at 8 by default**, configurable to a hard ceiling of 16. A hedged iron
+  condor is exactly eight, which is why this is a setting and not a constant. The cap counts
+  legs in the spec, never the orders that freeze-quantity slicing produces from them.
+- **Per-leg and combined exits are both live at once** — non-directional option selling runs a
+  stop on total premium alongside per-leg stops. Whichever triggers first wins, and what
+  happens to the other legs is a declared linkage rather than a rule the engine assumes.
 
 ## 6. Paper trading (virtual broker)
 

@@ -594,6 +594,81 @@ capabilities, so a new preset needs no UI change.
 through the `garuda.evaluators` entry point when no spec can express their
 logic, but nothing in core is a bespoke subclass.
 
+**One evaluator, and no abstract base above it.** A single-leg strategy is a
+combo with one leg, so "combo" is not a special case to inherit from -- it is
+the general case, and `N = 1` is not special. An ABC with exactly one concrete
+subclass is ceremony rather than structure.
+
+The evaluator stays an orchestrator: resolve direction, resolve each leg's
+instrument, size, order the legs, emit intents. Every piece of real logic lives
+in a selector, a direction provider, a sizer or an exit policy, each testable
+on its own. An `if leg.kind is OPTION` branch appearing in the evaluator is the
+signal that something belongs in a selector instead.
+
+**Asset class lives on the leg, not the strategy.** Three selectors, in a
+registry:
+
+| Selector | Chooses by |
+|---|---|
+| `OptionSelector` | strike and expiry rules -- offset, delta, premium, OI rank, straddle |
+| `FutureSelector` | expiry rules and rollover |
+| `EquitySelector` | symbol |
+
+**MTF is not a fourth.** It is a *product* on an equity leg -- funded delivery,
+alongside CNC and MIS -- so it is `ProductType.MTF` on a `LegSpec`, not a
+sibling of equity. Putting a funding mode on the same axis as an asset class is
+one of the naming confusions this rewrite exists to remove.
+
+**Indicators are never a template.** `INDICATOR` is a value that `trigger`,
+`direction` and `exits` can each take, independently of one another and of what
+the legs are. A scheduled entry with an indicator exit, an indicator-triggered
+equity strategy, an indicator-directed option straddle -- all field
+combinations, no inheritance. This is what removes the "indicator" and
+"advanced" axes from the template list entirely.
+
+#### Leg count
+
+Capped at **8 by default, configurable up to a hard ceiling of 16**, held in
+`system_config` and validated when a strategy is saved.
+
+Eight covers every structure this engine is built for: an iron condor is four
+legs, and a *hedged* iron condor is exactly eight -- which is the reason the
+cap is a setting rather than a constant. A futures overlay on top of that is
+nine. Elsewhere in the world the ceiling is far higher: CME accepts
+user-defined spreads of up to forty legs.
+
+The cap counts **legs in the spec, not resulting orders**. Freeze-quantity
+slicing turns one leg into several broker orders, so a four-leg strategy at
+size may legitimately place twenty. Capping orders would break sizing.
+
+#### Exits: per-leg and combined, both live at once
+
+Both apply simultaneously, and neither is restricted to a particular structure:
+
+- **Combined** -- one `ExitSpec` on the strategy, evaluated against the
+  position as a whole. Non-directional option selling uses this for a stop on
+  total premium.
+- **Per-leg** -- an optional `ExitSpec` on any `LegSpec`, evaluated against
+  that leg alone.
+
+Whichever triggers first wins; there is no precedence rule between them,
+because in practice both are real stops and the earlier one is the one that
+matters.
+
+What happens to the *other* legs when one exits is a declared **linkage**, not
+a hardcoded rule:
+
+| Linkage | Meaning |
+|---|---|
+| `EXIT_SELF` | only this leg exits |
+| `EXIT_GROUP` | every leg in the combo exits |
+| `EXIT_LINKED` | legs correlated to this one exit -- a main leg pulls its hedge |
+
+Defaults follow leg role: a `MAIN` leg exiting pulls its `HEDGE`; a `HEDGE`
+exiting leaves the main unprotected, which is a decision the operator must
+make rather than one the engine should assume. Every combination is
+configurable; the engine does not privilege any particular structure.
+
 *The cost, stated honestly:* a data-driven spec is harder to read in a debugger
 than a class, and a nonsensical spec must be rejected when it is saved rather
 than at 09:20 on expiry day. So `StrategySpec` validation is strict and total —
