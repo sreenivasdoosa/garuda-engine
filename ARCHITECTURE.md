@@ -1,6 +1,6 @@
 # Garuda Engine — Architecture
 
-**Status:** Draft v0.2 — backtesting removed by design (§1.1)
+**Status:** Draft v0.3 — backtesting is opt-in and unbundled (§1.1)
 **Scope:** Design reference for the open-source Python trading engine.
 **Audience:** Maintainer and prospective contributors.
 
@@ -18,17 +18,21 @@ broker.
 
 ### Non-goals
 
-- **No backtester.** See §1.1 — this is a deliberate decision, not a missing
-  feature.
+- **No bundled historical data.** Backtesting is supported but off by default and
+  runs against a source the operator supplies. See §1.1.
 - Not an HFT or latency-arbitrage system. Target is retail-to-HNI systematic
   trading at seconds-to-minutes granularity, not microseconds.
 - Not a broker. No custody, no order matching.
 - No strategy recommendations shipped in core.
 
-### 1.1 Why there is no backtester
+### 1.1 Backtesting is opt-in and unbundled
 
-The engine ships no historical data loader, no backtest runner, and no
-performance or equity-curve reporting. The reason is data quality, not
+The engine ships **no historical data and no data loader of its own**, and
+backtesting is disabled by default. An operator who has a history source they
+trust configures it, enables backtesting, and their data is replayed through the
+same evaluator, sizer and risk gate that run live, routed to the paper broker.
+
+The reason it is unbundled rather than built in is data quality, not
 implementation difficulty:
 
 - **Options history is largely unavailable.** Complete strike-and-expiry chains
@@ -42,15 +46,19 @@ implementation difficulty:
   pipeline that is itself a source of silent error.
 
 A backtester built on this data does not fail loudly. It produces confident,
-specific, wrong numbers — and those get traded with real capital. Shipping one
-would be the single most dangerous thing this project could do.
+specific, wrong numbers — and those get traded with real capital. Shipping data
+and implying it is sound would be the single most dangerous thing this project
+could do. Supplying the machinery and letting the operator bring data they have
+reason to trust is not the same act, and the reporting says plainly what is
+being trusted.
 
-**The supported validation path is shadow mode against a live feed** (§10.1).
+**The recommended validation path remains paper mode against a live feed**
+(§10.1). It is the only one that exposes a strategy to real spreads, real
+liquidity and real feed interruptions.
 
-Deterministic replay of the engine's own journal is retained, but as test
-infrastructure (§5.4, §10.2), not as a strategy research tool. Anyone who wants
-a backtester with their own trusted data can build one as a plugin package
-against the existing protocols; it will not live in core.
+Deterministic replay of the engine's own journal is retained as **test
+infrastructure** (§5.4, §10.2) — it proves the engine behaves identically across
+changes. It is not a strategy research tool and is not exposed as one.
 
 ---
 
@@ -59,7 +67,7 @@ against the existing protocols; it will not live in core.
 1. **The venue is data, not code.** Currency, timezone, calendar, tick size, lot
    size, settlement type and exercise style are attributes of an `Exchange` or
    `Instrument` object. No `if exchange == "NSE"` anywhere in the core.
-2. **One engine, two modes.** Shadow and live run identical engine code; only
+2. **One engine, two modes.** Paper and live run identical engine code; only
    the routing target differs. Any divergence is a bug. The clock stays
    abstracted so the journal can be replayed deterministically in tests.
 3. **Exact arithmetic everywhere.** `Decimal` only. A `float` in a money or
@@ -373,7 +381,7 @@ package rather than the release.
 
 ## 10. Validation and testing
 
-### 10.1 Shadow mode
+### 10.1 Paper mode
 
 The supported way to validate a strategy before committing capital.
 
@@ -395,9 +403,9 @@ Rules:
 
 - Simulated fills model spread, slippage and rejection explicitly, with the
   assumptions logged. A fill at mid is a lie and is not the default.
-- Shadow runs journal exactly as live runs do, so a shadow session can be
+- Paper runs journal exactly as live runs do, so a paper session can be
   replayed and audited identically.
-- Documentation recommends a minimum shadow period covering at least one
+- Documentation recommends a minimum paper period covering at least one
   expiry cycle before any live deployment.
 
 Reported output is deliberately behavioural — intents, fills, rejections,
@@ -412,7 +420,7 @@ have earned".
 | Money and price arithmetic | Property-based (Hypothesis): no precision loss, no currency mixing |
 | Order state machine | Exhaustive transition tests, including illegal transitions |
 | Adapters | Recorded broker responses replayed; contract test suite every adapter must pass |
-| Strategies | Shadow mode against live feed; paper broker with simulated fills, slippage and rejections |
+| Strategies | Paper mode against live feed, with simulated fills, slippage and rejections |
 | Engine | Deterministic journal replay — same journal in, same state out, byte-identical |
 | Recovery | Kill the process mid-fill; assert reconciled state |
 
@@ -448,7 +456,7 @@ nothing else until this is clean; the seams must be proven before volume is
 added.
 
 **Phase 2 — one live broker.** Full order lifecycle, reconciliation, risk gate,
-shadow mode. NSE equities and F&O.
+paper mode. NSE equities and F&O.
 
 **Phase 3 — MCX.** Forces the session and trading-day abstraction to be correct,
 and validates that the venue model actually holds.

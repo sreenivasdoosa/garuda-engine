@@ -27,12 +27,12 @@ money faster than manual ones.
   recommendation about what, when, or whether to trade.
 - The author is not a registered investment adviser or research analyst.
 - Any strategies, parameters, or examples included are illustrative only.
-- Shadow-mode results do not predict live performance. Slippage, latency,
+- Paper-mode and backtest results do not predict live performance. Slippage, latency,
   partial fills, and broker outages are real and will differ from simulation.
 - **You are solely responsible for every order this software places on your
   behalf**, including orders resulting from bugs, misconfiguration, or
   unexpected market conditions.
-- Run in shadow mode until you fully understand the behaviour. Start small.
+- Run in paper mode until you fully understand the behaviour. Start small.
 
 Provided **as is**, without warranty of any kind. See [LICENSE](LICENSE).
 
@@ -67,8 +67,8 @@ See [Roadmap](#roadmap) for what lands when.
 
 ### Not included
 
-- **No backtester.** This is a deliberate design decision — see
-  [Why there is no backtester](#why-there-is-no-backtester).
+- **No bundled historical data**, and backtesting is off by default — see
+  [Backtesting](#backtesting).
 - Not an HFT or latency-arbitrage system. The target is systematic trading at
   seconds-to-minutes granularity, not microseconds.
 - No custody and no order matching — this is not a broker.
@@ -77,14 +77,18 @@ See [Roadmap](#roadmap) for what lands when.
 
 ---
 
-## Why there is no backtester
+## Backtesting
 
-The engine ships no historical data loader, no backtest runner, and no
-equity-curve reporting. The reason is data quality, not implementation
-difficulty:
+Supported, but **opt-in and unbundled**. The engine ships no historical data and
+no data loader of its own. Point Garuda at a history source you trust, enable
+backtesting, and your data replays through the *same* evaluator, sizer and risk
+gate that run live, routed to the paper broker.
+
+It is off by default, and that is deliberate. Historical market data for Indian
+markets is worse than it looks:
 
 - **Options history is largely unavailable.** Complete strike-and-expiry chains
-  for Indian markets barely exist for earlier years, and what exists is partial.
+  barely exist for earlier years, and what exists is partial.
 - **Intraday OHLC is unreliable.** Broker candle APIs reconstruct bars from
   periodic snapshots rather than true tick aggregation, so intraday highs and
   lows are frequently wrong — precisely the values a stop-loss or breakout
@@ -93,18 +97,26 @@ difficulty:
   requiring a repair pipeline that is itself a source of silent error.
 
 A backtester built on this data does not fail loudly. It produces confident,
-specific, wrong numbers — and those get traded with real capital.
+specific, wrong numbers — and those get traded with real capital. So Garuda will
+not hand you data and imply it is sound. Bring your own, and the results carry
+the caveats where you can see them.
 
-**The supported validation path is shadow mode** (below). Deterministic replay
-of the engine's own journal exists, but as test infrastructure, not as a
-strategy research tool. If you have data you trust, a backtester can be built as
-a plugin package against the existing protocols; it will not live in core.
+**Paper mode against a live feed** (below) remains the recommended way to
+validate a strategy, because it is the only one that shows you real spreads,
+real liquidity and real feed interruptions.
+
+Deterministic replay of the engine's own journal also exists, but that is test
+infrastructure for proving the engine behaves identically across changes — not a
+strategy research tool.
 
 ---
 
-## Shadow mode
+## Paper mode
 
-The supported way to validate a strategy before committing capital:
+The supported way to validate a strategy before committing capital. Paper is a
+property of a *subscription*, not of the system — the same strategy can run
+paper on one account and live on another, at the same time, off the same
+signals:
 
 ```
 live market data feed
@@ -123,7 +135,7 @@ conditions historical bar data cannot reproduce.
 Simulated fills model spread, slippage and rejection explicitly, with the
 assumptions logged; a fill at mid is a lie and is not the default. Output is
 deliberately behavioural — intents, fills, rejections, position states — not a
-headline return figure. Run at least one full expiry cycle in shadow mode before
+headline return figure. Run at least one full expiry cycle in paper mode before
 any live deployment.
 
 ---
@@ -231,13 +243,20 @@ project is not affiliated with, endorsed by, or supported by any broker.
 
 | Phase | Scope |
 |---|---|
-| 1 | Skeleton — domain model, protocols, paper broker, one trivial strategy end to end, journal replay proving determinism |
-| 2 | One live broker — full order lifecycle, reconciliation, risk gate, shadow mode; NSE equities and F&O |
-| 3 | MCX — forces the session and trading-day abstraction to be correct |
-| 4 | Second broker — the real test of the adapter interface; expect revisions here |
-| 5 | Open the door — adapter contract suite, contributor docs, CLA |
+| 0 | Foundations — layout, lint and type guardrails, domain model, property tests |
+| 1 | Vertical slice — one broker, paper mode, one strategy, end to end with the UI, journal replay proving determinism |
+| 2 | Market data — remaining feeds, provider failover, history, option chain, synthetic instruments |
+| 3 | Strategy engine — template hierarchy, config resolution, indicators, tranches, breakout, hedging |
+| 4 | Live execution — full order lifecycle, reconciliation, exits, trailing stops, complete risk gate |
+| 5 | Remaining brokers, each written against the adapter contract suite |
+| 6 | Equity and MTF — universes, sizing, funding, corporate actions |
+| 7 | Multi-leg and combo strategies |
+| 8 | Capital, charges, reports and analytics |
+| 9 | Packaging — Linux and Windows installers, Docker, backups, operations |
+| 10 | Opt-in backtesting against a history source you supply |
 
-Nothing ships beyond Phase 1 until the seams are proven clean.
+Phase 1 is thin but touches every seam; nothing after it ships until those seams are
+proven clean. Full detail in [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md).
 
 ---
 
