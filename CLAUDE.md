@@ -88,6 +88,20 @@ The frontend is copied from the reference engine's React app and stripped in
 passes, per phase — Console and Terminal only, no user portal. Keep API response
 shapes close to what it already expects; that is what keeps the strip cheap.
 
+## Commits
+
+Disclose AI assistance with an `Assisted-by:` trailer, never `Co-authored-by:` —
+a model cannot sign the CLA, hold copyright, or bear responsibility, and naming
+one as co-author muddies the chain of title the dual licence depends on:
+
+```
+Assisted-by: Claude Opus 5 [Claude Code]
+```
+
+`.claude/settings.json` sets this trailer automatically for this repo. **Never
+add `Signed-off-by:`** — that certifies the Developer Certificate of Origin, and
+only a human can certify it. Full policy in `CONTRIBUTING.md`.
+
 ## Working style
 
 - Small blocks first, connected one at a time. Every phase ends with a system
