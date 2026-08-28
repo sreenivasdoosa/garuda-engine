@@ -83,6 +83,43 @@ class OrderManager:
         self._orders: dict[ClientOrderId, Order] = {}
         self._by_broker_id: dict[str, ClientOrderId] = {}
 
+    # -- recovery -----------------------------------------------------------
+
+    def restore(self, orders: Mapping[ClientOrderId, Order]) -> None:
+        """Rebuild the book from a folded journal, after a restart.
+
+        The journal is written before anything is sent, so it holds every
+        order the engine ever intended -- including ones whose fate is unknown
+        because the process died between journalling and sending. Those come
+        back as PENDING_NEW and are exactly what reconciliation must resolve
+        against broker truth before trading resumes.
+
+        Nothing is journalled here. Recovery reads history; it does not add to
+        it.
+        """
+        if self._orders:
+            raise OrderManagerError("the order book is not empty; restore runs once, at startup")
+        self._orders = dict(orders)
+        self._by_broker_id = {
+            order.broker_order_id.value: order_id
+            for order_id, order in orders.items()
+            if order.broker_order_id is not None
+        }
+
+    @property
+    def unconfirmed_orders(self) -> Mapping[ClientOrderId, Order]:
+        """Orders journalled but never acknowledged.
+
+        After a restart these are the dangerous ones: the engine recorded the
+        intent, and whether the broker has it is unknown. Reconciliation
+        answers that; until it does, trading does not resume.
+        """
+        return {
+            order_id: order
+            for order_id, order in self._orders.items()
+            if order.status is OrderStatus.PENDING_NEW
+        }
+
     # -- the book -----------------------------------------------------------
 
     @property
