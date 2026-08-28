@@ -13,7 +13,7 @@ set -euo pipefail
 ENGINE="${CONTAINER_ENGINE:-podman}"
 NAME=garuda-dev-postgres
 VOLUME=garuda-dev-pgdata
-IMAGE=docker.io/library/postgres:16-alpine
+IMAGE=docker.io/library/postgres:18-alpine
 # 5433 by default: a system PostgreSQL usually already holds 5432, and a dev
 # database that fights the machine's own is a bad first-run experience.
 PORT="${GARUDA_DB_PORT:-5433}"
