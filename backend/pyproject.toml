@@ -1,0 +1,167 @@
+[project]
+name = "garuda-engine"
+version = "0.1.0"
+description = "A self-hosted, event-driven algorithmic trading engine"
+requires-python = ">=3.12"
+license = "AGPL-3.0-only"
+authors = [{ name = "Sreenivas Doosa", email = "doosasreenivas@gmail.com" }]
+keywords = ["algorithmic-trading", "trading-engine", "options", "futures", "equity"]
+
+dependencies = [
+    # Web
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "python-multipart>=0.0.17",
+    # Validation and settings
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    # Persistence
+    "sqlalchemy[asyncio]>=2.0.36",
+    "asyncpg>=0.30",
+    "alembic>=1.14",
+    # Auth
+    "argon2-cffi>=23.1",
+    "pyjwt>=2.10",
+    # Infrastructure
+    "structlog>=24.4",
+    "httpx>=0.28",
+    # zoneinfo has no system tz database on Windows; this ships one.
+    "tzdata>=2024.2",
+]
+
+[project.scripts]
+garuda = "garuda.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/sreenivasdoosa/garuda-engine"
+Source = "https://github.com/sreenivasdoosa/garuda-engine"
+Issues = "https://github.com/sreenivasdoosa/garuda-engine/issues"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "pytest-cov>=6.0",
+    "hypothesis>=6.119",
+    "ruff>=0.8",
+    "mypy>=1.13",
+    "import-linter>=2.1",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/garuda"]
+
+# ---------------------------------------------------------------------------
+# Ruff
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",      # pycodestyle
+    "F",           # pyflakes
+    "I",           # isort
+    "N",           # pep8-naming
+    "UP",          # pyupgrade
+    "B",           # bugbear
+    "C4",          # comprehensions
+    "DTZ",         # flake8-datetimez — naive datetimes are a defect here
+    "T20",         # no print()
+    "SIM",         # simplify
+    "RUF",
+    "ANN",         # missing annotations
+    "PT",          # pytest style
+    "ARG",         # unused arguments
+    "PTH",         # pathlib over os.path
+]
+ignore = [
+    "ANN401",      # Any is occasionally the honest annotation
+    "B008",        # FastAPI's Depends() in defaults is idiomatic
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["ANN", "ARG"]
+"tools/**" = ["T20"]          # the check scripts are meant to print
+
+[tool.ruff.lint.isort]
+known-first-party = ["garuda"]
+
+# ---------------------------------------------------------------------------
+# mypy
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true
+disallow_any_explicit = false
+files = ["src", "tests", "tools"]
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+
+# ---------------------------------------------------------------------------
+# pytest
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "-q --strict-markers --strict-config"
+markers = [
+    "integration: needs a live PostgreSQL",
+    "contract: broker adapter contract suite",
+]
+
+[tool.coverage.run]
+source = ["src/garuda"]
+branch = true
+
+# ---------------------------------------------------------------------------
+# import-linter — the layer rules from docs/DESIGN.md §4
+# ---------------------------------------------------------------------------
+[tool.importlinter]
+root_package = "garuda"
+
+[[tool.importlinter.contracts]]
+name = "Layers point downward only"
+type = "layers"
+layers = [
+    "garuda.api",
+    "garuda.engine | garuda.trademgmt | garuda.ordermgmt | garuda.rms | garuda.capital | garuda.reports",
+    "garuda.core | garuda.journal",
+    "garuda.domain",
+    "garuda.protocols",
+]
+exhaustive = false
+
+[[tool.importlinter.contracts]]
+name = "The domain model imports nothing else from garuda"
+type = "forbidden"
+source_modules = ["garuda.domain"]
+forbidden_modules = [
+    "garuda.api", "garuda.core", "garuda.journal", "garuda.engine",
+    "garuda.trademgmt", "garuda.ordermgmt", "garuda.rms", "garuda.capital",
+    "garuda.reports", "garuda.brokers", "garuda.marketdata", "garuda.persistence",
+]
+
+[[tool.importlinter.contracts]]
+name = "The core never imports a concrete broker, feed or store"
+type = "forbidden"
+source_modules = [
+    "garuda.core", "garuda.engine", "garuda.trademgmt",
+    "garuda.ordermgmt", "garuda.rms", "garuda.capital",
+]
+forbidden_modules = ["garuda.brokers", "garuda.marketdata", "garuda.persistence"]
+
+[[tool.importlinter.contracts]]
+name = "Adapters never import the engine"
+type = "forbidden"
+source_modules = ["garuda.brokers", "garuda.marketdata"]
+forbidden_modules = ["garuda.engine", "garuda.trademgmt", "garuda.api"]

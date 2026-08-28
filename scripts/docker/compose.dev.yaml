@@ -1,0 +1,39 @@
+# Development PostgreSQL. Not the production deployment -- see scripts/linux
+# and scripts/windows for that.
+#
+#   podman compose -f scripts/docker/compose.dev.yaml up -d
+#   podman compose -f scripts/docker/compose.dev.yaml down          # keeps data
+#   podman compose -f scripts/docker/compose.dev.yaml down -v       # discards it
+
+name: garuda-dev
+
+services:
+  postgres:
+    image: docker.io/library/postgres:16-alpine
+    container_name: garuda-dev-postgres
+    environment:
+      POSTGRES_DB: garuda
+      POSTGRES_USER: garuda
+      POSTGRES_PASSWORD: garuda
+      # Deterministic ordering and byte-exact comparisons in tests.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    ports:
+      - "5433:5432"
+    volumes:
+      - garuda-dev-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U garuda -d garuda"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    command:
+      - postgres
+      # Log anything slower than a second: at this size, a slow query is a
+      # design mistake rather than a scaling problem.
+      - -c
+      - log_min_duration_statement=1000
+      - -c
+      - timezone=UTC
+
+volumes:
+  garuda-dev-pgdata:

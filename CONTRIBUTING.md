@@ -69,6 +69,38 @@ there cost real money. That is deliberate.
 
 ---
 
+## Commands
+
+All backend commands run from `backend/`.
+
+```bash
+uv sync --python 3.12          # create the venv and install everything
+
+uv run pytest                  # tests
+uv run pytest tests/unit -q    # just the fast ones
+uv run ruff check . --fix      # lint
+uv run ruff format .           # format
+uv run mypy                    # types, strict
+uv run lint-imports            # layer dependency rules
+
+uv run python tools/check_no_float_in_money.py    # the float ban
+uv run python tools/check_clock_discipline.py     # the clock ban
+```
+
+Development database (from the repo root):
+
+```bash
+scripts/dev-db.sh up           # PostgreSQL on 5433, so it never fights a
+scripts/dev-db.sh psql         # system PostgreSQL already holding 5432
+scripts/dev-db.sh reset        # discard the data and start clean
+```
+
+Copy `backend/.env.example` to `backend/.env` on first run. Migrations are
+`uv run alembic upgrade head`; there are none yet.
+
+CI runs every check above, plus the tests on Python 3.12 and 3.13 against a
+real PostgreSQL, plus the unit tests on Windows.
+
 ## Standards
 
 The rules below are enforced in CI, not by reviewer patience. All of them exist
@@ -104,6 +136,8 @@ what lets a reviewer accept an adapter for a broker they have no account with.
 
 ## Reporting a security issue
 
-Do not open a public issue for a security vulnerability. Email
-**doosasreenivas@gmail.com** with the details and allow reasonable time for a
-fix before disclosing.
+Do not open a public issue for a security vulnerability. Use the repository's
+**Security → Report a vulnerability** button, which opens a private advisory —
+that keeps the detail out of public view and gives us a private fork to develop
+the fix in. Failing that, email **doosasreenivas@gmail.com**. Please allow
+reasonable time for a fix before disclosing.

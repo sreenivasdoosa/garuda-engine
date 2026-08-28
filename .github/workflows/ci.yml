@@ -1,0 +1,110 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_FROZEN: "1"
+
+jobs:
+  check:
+    name: lint, types, layers
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - run: uv sync --python 3.12
+
+      - name: ruff (lint)
+        run: uv run ruff check .
+
+      - name: ruff (format)
+        run: uv run ruff format --check .
+
+      - name: mypy --strict
+        run: uv run mypy
+
+      - name: layer dependencies
+        run: uv run lint-imports
+
+      - name: no float in money paths
+        run: uv run python tools/check_no_float_in_money.py
+
+      - name: clock discipline
+        run: uv run python tools/check_clock_discipline.py
+
+  test:
+    name: tests (python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.12", "3.13"]
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: garuda
+          POSTGRES_USER: garuda
+          POSTGRES_PASSWORD: garuda
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U garuda -d garuda"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      GARUDA_DB_HOST: localhost
+      GARUDA_DB_PORT: "5432"
+      GARUDA_DB_NAME: garuda
+      GARUDA_DB_USER: garuda
+      GARUDA_DB_PASSWORD: garuda
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - run: uv sync --python ${{ matrix.python }}
+
+      - name: pytest
+        run: uv run pytest --cov --cov-report=term-missing
+
+  windows:
+    # Windows is a first-class deployment target, so it is a first-class test
+    # target. zoneinfo has no system tz database there, which is why tzdata is
+    # a runtime dependency rather than a convenience.
+    name: tests (windows)
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - run: uv sync --python 3.12
+
+      - name: pytest (no database)
+        run: uv run pytest -m "not integration" -q

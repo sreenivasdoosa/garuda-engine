@@ -3,8 +3,8 @@
 Read this first, every session. It is the durable context; the design documents
 below are the detail.
 
-`CLAUDE.md` is a symlink to this file, so Claude Code and Codex read the same
-instructions. Edit this file, never the symlink.
+`CLAUDE.md` is a symlink to this file. Claude Code, Codex, Cursor and Grok all
+read the same instructions from it. Edit this file, never the symlink.
 
 ## What this is
 
@@ -90,6 +90,38 @@ Monorepo: `backend/` · `frontend/` · `scripts/` · `docs/`. Default branch is
 The frontend is copied from the reference engine's React app and stripped in
 passes, per phase — Console and Terminal only, no user portal. Keep API response
 shapes close to what it already expects; that is what keeps the strip cheap.
+
+## Commands
+
+All backend commands run from `backend/`.
+
+```bash
+uv sync --python 3.12          # create the venv and install everything
+
+uv run pytest                  # tests
+uv run pytest tests/unit -q    # just the fast ones
+uv run ruff check . --fix      # lint
+uv run ruff format .           # format
+uv run mypy                    # types, strict
+uv run lint-imports            # layer dependency rules
+
+uv run python tools/check_no_float_in_money.py    # the float ban
+uv run python tools/check_clock_discipline.py     # the clock ban
+```
+
+Development database (from the repo root):
+
+```bash
+scripts/dev-db.sh up           # PostgreSQL on 5433, so it never fights a
+scripts/dev-db.sh psql         # system PostgreSQL already holding 5432
+scripts/dev-db.sh reset        # discard the data and start clean
+```
+
+Copy `backend/.env.example` to `backend/.env` on first run. Migrations are
+`uv run alembic upgrade head`; there are none yet.
+
+CI runs every check above, plus the tests on Python 3.12 and 3.13 against a
+real PostgreSQL, plus the unit tests on Windows.
 
 ## Commits
 
