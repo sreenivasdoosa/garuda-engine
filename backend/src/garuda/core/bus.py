@@ -16,8 +16,8 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from types import TracebackType
 
-from garuda.protocols.topics import TOPIC_POLICIES, Overflow, Topic, TopicPolicy
 from garuda.domain.errors import DomainError
+from garuda.protocols.topics import TOPIC_POLICIES, Overflow, Topic, TopicPolicy
 
 
 class UnknownTopicError(DomainError):
