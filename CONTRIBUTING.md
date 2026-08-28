@@ -23,6 +23,11 @@ is what funds continued maintenance. Without it, contributions cannot be merged.
 **AI assistance is allowed and does not need special permission.** It does need
 disclosure, and it does not change who is responsible for the result.
 
+The repository carries an [AGENTS.md](AGENTS.md) with the project's hard rules
+and pointers to the design documents. Claude Code reads it via the `CLAUDE.md`
+symlink; Codex and other agents read it by name. **Point your agent at it before
+it touches anything** — the rules below are the ones it will otherwise break.
+
 ### Disclose it with a trailer
 
 Add an `Assisted-by:` trailer to any commit where an AI agent wrote or
@@ -67,7 +72,7 @@ there cost real money. That is deliberate.
 ## Standards
 
 The rules below are enforced in CI, not by reviewer patience. All of them exist
-because of a specific failure mode; see [CLAUDE.md](CLAUDE.md) for the reasoning.
+because of a specific failure mode; see [AGENTS.md](AGENTS.md) for the reasoning.
 
 1. **`Decimal` only** in money and price paths. `float` there fails the build.
    Database columns are `NUMERIC`, never `double precision`.
