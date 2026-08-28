@@ -263,7 +263,7 @@ subsystems removed.
 | Journal | `event_journal` (partitioned by `trading_day`) · `journal_snapshots` |
 | RMS | `rms_config` · `rms_params` · `rms_breach_log` · `kill_switches` · `rms_daily_stats` |
 | Charges | `brokerage_plans` · `brokerage_plan_rates` · `statutory_charges` · `statutory_charges_broker_overrides` |
-| Reports | `eod_pnl_reports` · `eod_pnl_reports_positional` · `positional_daily_mtm` · `unaccounted_pnl` · `pnl_snapshots` |
+| Reports | `eod_pnl_reports` · `eod_pnl_reports_positional` · `positional_daily_mtm` · `pnl_snapshots` |
 | System | `system_config` · `app_config` · `audit_log` · `alerts` · `broker_api_stats` · `corporate_actions` |
 
 Dropped entirely: everything billing, licence, email, permission, mock, external-P&L, signal-export,
@@ -511,33 +511,95 @@ Evaluators are **stateless**: all state arrives in `EvaluationContext` and all d
 leave as intents or explicit state deltas. This is what makes them testable without a broker and
 replayable.
 
-### 10.2 Template hierarchy
+### 10.2 Strategies are composed, not subclassed
 
-Java's flat template list becomes a proper class hierarchy, with capability flags replacing the ~29
-hardcoded template-name checks that Java's own TODO calls out as debt.
+The reference engine models a strategy template as a **class**: its
+`strategy_templates` table has an `evaluator_class` column, and each template
+is a subclass of a base evaluator. Garuda does not copy that, because the
+evidence that it does not hold up is in the reference engine's own history.
+
+Five things vary independently between strategies:
+
+| Axis | Values |
+|---|---|
+| **What is traded, and which way** | sell options · buy options · futures · equity · any combination |
+| **Entry trigger** | scheduled · tick · tranche · breakout · external signal · periodic |
+| **Direction** | fixed · candle · indicator · IV skew · PCR · N-bars breakout |
+| **Leg composition** | how many legs, their roles, how each instrument is chosen |
+| **Exit** | SL · target · trailing · time · indicator · decay · combined |
+
+Single inheritance can express exactly one axis. The reference engine spent it
+on "template", and then had to thread the others through by hand: adding an
+option-*buying* mode to an engine written for option-*selling* meant six new
+helper methods and seventeen hardcoded `Direction.SHORT` replacements inside a
+single evaluator. Multi-leg combos ended up as a *sibling* of advanced options
+rather than a configuration of it, and the Console form accumulated ~29
+hardcoded template-name checks.
+
+**Garuda puts the variation in data.**
 
 ```
-StrategyEvaluator (protocol)
-└── BaseEvaluator
-    ├── FnOEvaluator
-    │   ├── DirectionalOptionsEvaluator          options.directional
-    │   ├── AdvancedOptionsEvaluator             options.advanced
-    │   │   ├── AdaptiveOptionsEvaluator         options.adaptive
-    │   │   ├── IndicatorOptionsEvaluator        options.indicator
-    │   │   │   └── IndicatorAdvancedEvaluator   options.indicator_advanced
-    │   │   └── MultiLegComboEvaluator           options.combo
-    │   ├── SixthSenseEvaluator                  options.sixth_sense   (custom logic)
-    │   └── ZeroDteEvaluator                     options.zero_dte      (custom logic)
-    └── EquityEvaluator                          equity.base
-        └── MtfEvaluator                         equity.mtf
+StrategyEvaluator (Protocol)
+    evaluate(ctx: EvaluationContext) -> EvaluationResult
+
+BaseEvaluator (ABC)        shared machinery: resolved config, leg emission,
+│                          correlation ids, journal notes, exit bookkeeping
+└── LegBasedEvaluator      the single concrete evaluator in core
 ```
 
-`MultiLegComboEvaluator` extends advanced options by inheritance rather than sitting beside it —
-combos *are* advanced-options entries with leg roles, ordering and a shared `combo_id`.
+Everything a template used to encode becomes a validated `StrategySpec`:
 
-Each template declares capabilities (`supports_hedge`, `supports_tranches`, `supports_breakout`,
-`supports_indicator_exit`, `supports_multi_leg`, `asset_class`, …). The Console form renders from
-capabilities; a new template needs no UI change.
+```python
+@dataclass(frozen=True)
+class LegSpec:
+    role: LegRole                  # MAIN · HEDGE · PROTECTIVE
+    selector: InstrumentSelector   # option strike · underlying future · equity · fixed
+    side: SideRule                 # SAME_AS_SIGNAL · OPPOSITE · ALWAYS_LONG · ALWAYS_SHORT
+    ratio: Fraction                # size relative to the main leg
+    product: ProductType
+    sequence: int                  # entry order; exits reverse it by default
+
+
+@dataclass(frozen=True)
+class StrategySpec:
+    trigger: TriggerSpec
+    direction: DirectionSpec
+    legs: tuple[LegSpec, ...]
+    sizing: SizingSpec
+    exits: ExitSpec
+```
+
+The combinations then cost nothing to add:
+
+| Strategy | Spec |
+|---|---|
+| Directional option | one option leg, side from the direction provider |
+| Short straddle | two option legs, CE and PE, both `ALWAYS_SHORT` |
+| Hedged short straddle | the above plus two `HEDGE` legs at an offset |
+| Iron condor | four option legs |
+| Covered call | one **equity** leg + one short **option** leg |
+| Cash-future arbitrage | one **equity** leg + one **future** leg |
+| Futures + options | one future leg + one option leg |
+
+The reference engine's `TradeMode` enum disappears as a concept. Selling
+options is `side=ALWAYS_SHORT` on an option leg; buying them is `ALWAYS_LONG`;
+futures and equity are different selectors. What needed a new enum value and
+seventeen edits becomes a row of data.
+
+**Templates become named presets** — a `StrategySpec` skeleton plus capability
+flags, stored as data with no `evaluator_class`. The Console form renders from
+capabilities, so a new preset needs no UI change.
+
+**Core ships no custom-logic evaluators.** Third parties can register one
+through the `garuda.evaluators` entry point when no spec can express their
+logic, but nothing in core is a bespoke subclass.
+
+*The cost, stated honestly:* a data-driven spec is harder to read in a debugger
+than a class, and a nonsensical spec must be rejected when it is saved rather
+than at 09:20 on expiry day. So `StrategySpec` validation is strict and total —
+a hedge leg with no main leg, a ratio that cannot be expressed in lots, an
+equity leg on a venue that does not trade equity — and the preset library
+constrains what the Console can produce in the first place.
 
 ### 10.3 Configuration resolution
 

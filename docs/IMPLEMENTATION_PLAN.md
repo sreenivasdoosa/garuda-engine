@@ -105,7 +105,9 @@ active provider fails over without dropping an order event.
 
 **Deliverables**
 
-- Template class hierarchy (`DESIGN.md` §10.2) with capability flags; Console form renders from
+- `StrategySpec` and the single `LegBasedEvaluator` (`DESIGN.md` §10.2): legs, selectors, side
+  rules and triggers as validated data rather than a subclass per template. Strict spec
+  validation at save time. Preset library with capability flags; the Console form renders from
   capabilities, not from template-name checks.
 - Config resolution: `strategy_config` + `strategy_day_overrides` (weekday / expiry / DTE-n) +
   dated `event_days` capital scaling. Pure, unit-tested, journalled with each intent.
@@ -184,7 +186,7 @@ unwinds cleanly rather than leaving a naked leg.
 
 Allocation models and compounding; capital change history; brokerage plans and rates; statutory
 charges with broker overrides; charge recompute; EOD P&L job (intraday, positional); positional
-daily MTM + recompute; unaccounted P&L; aggregated P&L snapshots; the six analytics dashboards;
+daily MTM + recompute; aggregated P&L snapshots; the six analytics dashboards;
 Excel export/import for strategy definitions and RMS config.
 
 ---

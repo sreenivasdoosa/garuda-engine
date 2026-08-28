@@ -53,11 +53,27 @@ licence in `README.md`, standalone (market data in-process), single-operator.
 - Strategy definitions, templates and per-trading-client subscriptions stay.
 - **Hedging enable/disable moves from tranch level to strategy level.**
 
-## 5a. Strategy templates
+## 5a. Strategy templates — composed, not subclassed
 
-All Java templates are ported, but **renamed and restructured as a proper Python class hierarchy**
-rather than the flat Java template list. `COMBO_STRATEGY` in particular should extend the advanced
-options behaviour by inheritance instead of standing alongside it as a peer.
+The reference engine's template hierarchy is not ported. Its inheritance tree spends single
+inheritance on "template" and then threads every other axis through by hand, which is why adding
+an option-buying mode meant seventeen edits inside one evaluator and why combos ended up a sibling
+of advanced options rather than a configuration of it.
+
+Garuda has **one concrete evaluator** driven by a validated `StrategySpec` — legs, instrument
+selectors, side rules, triggers and exits as data. Templates become named presets of that spec.
+See `DESIGN.md` §10.2.
+
+Consequences:
+
+- **All combinations are first-class**: equity + options, equity + futures, futures + options,
+  covered calls, cash-future arbitrage, multi-leg combos. Each is a different set of legs, not a
+  different class.
+- The reference engine's `TradeMode` enum disappears. Selling options is a side rule on an option
+  leg; buying them is the opposite side rule; futures and equity are different selectors.
+- **The two custom-logic templates are dropped entirely** — not ported, not reimplemented. Core
+  ships no bespoke evaluator. A third party can register one through the `garuda.evaluators`
+  entry point if a spec genuinely cannot express their logic.
 
 ## 6. Paper trading (virtual broker)
 
@@ -99,6 +115,8 @@ and multi-leg / combo strategies.
 | Partial profit booking | designed but never built in Java; stays unbuilt |
 | Telegram alerts | in-app alerts panel is the only channel |
 | External P&L / external capital | no external-P&L tracking, no external capital fields |
+| Unaccounted P&L | the table existed to reconcile billing; with billing gone it has no purpose |
+| Custom-logic strategy templates | the two bespoke evaluators are dropped, not ported (§5a) |
 | 1000-user optimizations | scaling package, sharding, load shedding, fan-out tuning, pool sizing |
 | User portal | admin Console + Terminal only |
 
