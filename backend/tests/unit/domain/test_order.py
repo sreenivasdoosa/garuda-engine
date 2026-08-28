@@ -111,6 +111,12 @@ class TestStateMachine:
                 continue
             assert OrderStatus.UNKNOWN in targets, origin
 
+    def test_a_fill_can_arrive_before_the_acknowledgement(self):
+        """Brokers deliver fills out of order. A fill proves acceptance."""
+        order = Order(request=request()).apply_fill(fill(150, "120"))
+        assert order.status is OrderStatus.FILLED
+        assert order.filled_quantity == 150
+
     def test_unknown_is_left_only_towards_a_real_state(self):
         """Reconciliation establishes the truth; nothing infers its way out."""
         assert OrderStatus.PENDING_NEW not in ORDER_TRANSITIONS[OrderStatus.UNKNOWN]

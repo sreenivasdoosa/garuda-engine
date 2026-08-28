@@ -136,8 +136,8 @@ layers = [
     "garuda.api",
     "garuda.engine | garuda.trademgmt | garuda.ordermgmt | garuda.rms | garuda.capital | garuda.reports",
     "garuda.core | garuda.journal",
-    "garuda.domain",
     "garuda.protocols",
+    "garuda.domain",
 ]
 exhaustive = false
 
@@ -149,6 +149,7 @@ forbidden_modules = [
     "garuda.api", "garuda.core", "garuda.journal", "garuda.engine",
     "garuda.trademgmt", "garuda.ordermgmt", "garuda.rms", "garuda.capital",
     "garuda.reports", "garuda.brokers", "garuda.marketdata", "garuda.persistence",
+    "garuda.protocols",
 ]
 
 [[tool.importlinter.contracts]]

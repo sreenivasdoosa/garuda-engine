@@ -143,8 +143,20 @@ class Fill:
 #: stopped telling us" can happen at any moment. It is left only by
 #: reconciliation against broker truth, never by inference.
 ORDER_TRANSITIONS: Final[dict[OrderStatus, frozenset[OrderStatus]]] = {
+    # A fill is reachable straight from PENDING_NEW on purpose. Brokers do
+    # deliver a fill before the acknowledgement — a fast fill, or socket frames
+    # arriving out of order — and a fill is *proof* of acceptance rather than a
+    # guess about it. Refusing the transition would discard a real execution
+    # and leave the engine carrying a position it does not know about, which is
+    # far worse than the missing ack it was protecting against.
     OrderStatus.PENDING_NEW: frozenset(
-        {OrderStatus.NEW, OrderStatus.REJECTED, OrderStatus.UNKNOWN}
+        {
+            OrderStatus.NEW,
+            OrderStatus.PARTIALLY_FILLED,
+            OrderStatus.FILLED,
+            OrderStatus.REJECTED,
+            OrderStatus.UNKNOWN,
+        }
     ),
     OrderStatus.NEW: frozenset(
         {

@@ -121,9 +121,9 @@ garuda-engine/
 ├────────────────────────────────────────────────────────────────┤
 │  core/ journal/          engine loop · clock · bus · unit of work│
 ├────────────────────────────────────────────────────────────────┤
-│  domain/                 pure data + invariants, no I/O          │
+│  protocols/              the contracts, in terms of domain types │
 ├────────────────────────────────────────────────────────────────┤
-│  protocols/              the four contracts                      │
+│  domain/                 pure data + invariants, no I/O          │
 ├────────────────────────────────────────────────────────────────┤
 │  brokers/ marketdata/ persistence/   all venue- and vendor-      │
 │                                      specific code lives here    │
@@ -132,7 +132,9 @@ garuda-engine/
 
 **Rules, enforced by an import-linter check in CI:**
 
-1. `domain/` imports nothing from Garuda except `domain/`.
+1. `domain/` imports nothing from Garuda except `domain/` — it is the most
+   primitive layer, below the protocols, because a contract is expressed *in
+   terms of* domain values (`BrokerAdapter.place(req: OrderRequest)`).
 2. `core/`, `engine/`, `rms/` etc. never import `brokers/` or `marketdata/` concretely — only
    `protocols/`.
 3. `brokers/` and `marketdata/` never import `engine/` or `trademgmt/`.
