@@ -429,6 +429,19 @@ class BrokerAdapter(Protocol):
 `OrderCancelled` · `Fill` · `Assignment` · `MarginCall` · `AccountUpdate` · `Disconnected` ·
 `Resynced`. `Assignment` is present from day one though European NSE options will never fire it.
 
+**Talk to broker REST APIs directly. Do not use a vendor SDK.**
+
+A vendor SDK owns its own URLs and its own HTTP client, which costs two things
+that matter here. Its traffic cannot be routed through a proxy, so an account
+whose trading APIs are IP-whitelisted cannot be served from a machine that is
+not that address. And its errors arrive in the vendor's own shapes rather than
+the taxonomy below, so every adapter normalises differently.
+
+The reference engine hit exactly this: one broker's SDK hardcodes its endpoints
+with no hook to reroute them, so that broker's traffic had to stay direct while
+every other broker's could be routed — splitting one deployment across two
+source addresses. Speaking HTTP directly removes the constraint.
+
 **Adapter obligations** — all checked by the contract suite (§12.2):
 
 - Idempotency via client-generated order ids; a retry never double-sends.

@@ -84,6 +84,10 @@ Dropping something is fine and often right; the drops are listed in
    a concrete broker or feed.
 6. **The journal and the row mutation share one transaction.** They cannot be
    allowed to diverge.
+7. **Broker REST APIs directly, never a vendor SDK.** An SDK owns its URLs, so
+   its traffic cannot be routed through the proxy an IP-whitelisted account
+   needs, and its errors arrive in the vendor's shapes rather than the engine's
+   taxonomy.
 
 ## Shape of the system
 
