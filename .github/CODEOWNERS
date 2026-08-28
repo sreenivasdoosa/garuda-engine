@@ -1,0 +1,22 @@
+# Every change needs review from the owner.
+#
+# Inert on its own — it takes effect once "Require review from Code Owners"
+# is enabled in the ruleset protecting master.
+*                       @sreenivasdoosa
+
+# Money paths. Called out separately so the intent survives any future
+# loosening of the catch-all above: bugs here cost real capital, and
+# CONTRIBUTING.md commits to reviewing them strictly.
+/backend/src/garuda/ordermgmt/    @sreenivasdoosa
+/backend/src/garuda/trademgmt/    @sreenivasdoosa
+/backend/src/garuda/rms/          @sreenivasdoosa
+/backend/src/garuda/capital/      @sreenivasdoosa
+/backend/src/garuda/journal/      @sreenivasdoosa
+
+# Project contract: scope, design, and the rules agents work under.
+/docs/SCOPE_DECISIONS.md    @sreenivasdoosa
+/docs/DESIGN.md             @sreenivasdoosa
+/AGENTS.md                  @sreenivasdoosa
+/CLAUDE.md                  @sreenivasdoosa
+/LICENSE                    @sreenivasdoosa
+/CLA.md                     @sreenivasdoosa
