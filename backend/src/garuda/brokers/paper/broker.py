@@ -34,6 +34,7 @@ from garuda.protocols.broker import (
     BrokerOrder,
     BrokerPosition,
     Funds,
+    LoginStyle,
     OrderAccepted,
     OrderCancelled,
     OrderChanges,
@@ -102,6 +103,11 @@ class PaperBroker:
     @property
     def trading_client(self) -> TradingClientId:
         return self._trading_client
+
+    @property
+    def login_style(self) -> LoginStyle:
+        """Nothing leaves the process, so nothing is routed anywhere."""
+        return LoginStyle.BROWSER_OAUTH
 
     # -- market data --------------------------------------------------------
 

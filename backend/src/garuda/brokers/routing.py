@@ -9,8 +9,15 @@ So a trading client may name a proxy. When it does, trading calls are routed
 through it and originate from the whitelisted address; when it does not, they
 go directly from this machine, which then has to *be* that address.
 
-Login never goes through the proxy. It is not IP-restricted, and sending it
-through a proxy that is down would break a login that would otherwise work.
+Whether *login* is routed depends on where it happens, which is a property of
+the broker rather than a policy the engine chooses.
+
+A browser-OAuth broker has the operator's browser complete the login and
+redirects back with a token this process exchanges; that exchange is not gated
+on source address, and the browser step could not be routed anyway. A
+credentials broker posts a key and secret from this process and gets a session
+back — that is a server-side call like any other, so it is whitelisted like any
+other and must originate from the same address.
 
 The reference engine could not do this for one broker because its vendor SDK
 owned its own URLs with no hook to reroute them. Talking to broker HTTP APIs
@@ -25,6 +32,7 @@ from urllib.parse import urlparse
 import httpx
 
 from garuda.domain.errors import DomainError
+from garuda.protocols.broker import LoginStyle
 
 #: Port assumed when a proxy is given as a bare address. Squid's default, and
 #: what the operator gets if they do not say otherwise.
@@ -76,11 +84,21 @@ def trading_client_factory(static_ip: str | None, *, timeout: float = 10.0) -> h
     return httpx.AsyncClient(proxy=proxy_url(static_ip), timeout=timeout)
 
 
-def login_client_factory(*, timeout: float = 30.0) -> httpx.AsyncClient:
-    """An HTTP client for OAuth login. Never proxied.
+def login_client_factory(
+    static_ip: str | None,
+    style: LoginStyle,
+    *,
+    timeout: float = 30.0,
+) -> httpx.AsyncClient:
+    """An HTTP client for a broker login, routed only when the login is ours.
 
-    Login is not IP-restricted, so routing it through a proxy adds a way for it
-    to fail without adding anything. The longer timeout is because a login sits
-    behind a human completing a browser flow.
+    A browser-OAuth login is not proxied: routing it would add a way to fail
+    without adding anything, since it is not gated on source address. A
+    credentials login is proxied exactly like a trading call, because that is
+    what it is.
+
+    The longer default timeout is because a login can sit behind a human
+    completing a browser flow.
     """
-    return httpx.AsyncClient(timeout=timeout)
+    proxy = proxy_url(static_ip) if style.is_proxied else None
+    return httpx.AsyncClient(proxy=proxy, timeout=timeout)

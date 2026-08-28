@@ -23,6 +23,7 @@ from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
+from enum import StrEnum
 from typing import Protocol, runtime_checkable
 
 from garuda.domain.client import TradingClientId
@@ -31,6 +32,30 @@ from garuda.domain.errors import DomainError
 from garuda.domain.instrument import Instrument, InstrumentId
 from garuda.domain.money import Money
 from garuda.domain.order import BrokerOrderId, ClientOrderId, Fill, OrderRequest, Side
+
+
+class LoginStyle(StrEnum):
+    """Where a broker's login actually happens.
+
+    This decides whether login traffic is routed through the account's
+    whitelisted address, and it is a property of the broker rather than a
+    policy the engine can choose.
+    """
+
+    #: The operator's browser completes the login and the broker redirects back
+    #: with a token this process exchanges. The exchange is not gated on source
+    #: address, and the browser step could not be routed anyway.
+    BROWSER_OAUTH = "BROWSER_OAUTH"
+
+    #: This process posts an API key and secret and gets a session back. It is
+    #: a server-side call like any other, so it is whitelisted like any other
+    #: and must originate from the same address the trading APIs do.
+    SERVER_CREDENTIALS = "SERVER_CREDENTIALS"
+
+    @property
+    def is_proxied(self) -> bool:
+        return self is LoginStyle.SERVER_CREDENTIALS
+
 
 # ---------------------------------------------------------------------------
 # Errors — the closed taxonomy every adapter normalises into
@@ -202,6 +227,11 @@ class BrokerAdapter(Protocol):
 
     @property
     def trading_client(self) -> TradingClientId: ...
+
+    @property
+    def login_style(self) -> LoginStyle:
+        """Whether this broker's login is a server-side call. See LoginStyle."""
+        ...
 
     async def place(self, request: OrderRequest) -> BrokerOrderId: ...
 

@@ -11,6 +11,7 @@ from garuda.brokers.routing import (
     trading_client_factory,
 )
 from garuda.domain.errors import DomainError
+from garuda.protocols.broker import LoginStyle
 
 
 class TestDirect:
@@ -67,17 +68,39 @@ class TestRejections:
             proxy_url("203.0.113.7/some/path")
 
 
-class TestLoginIsNeverProxied:
-    async def test_the_login_client_takes_no_proxy(self):
-        """Login is not IP-restricted, so a proxy adds only a way to fail."""
-        async with login_client_factory() as client:
-            assert client._mounts == {} or all(
+class TestLoginRouting:
+    """Whether a login is routed depends on where it happens."""
+
+    def test_a_browser_oauth_login_is_not_routed(self):
+        assert not LoginStyle.BROWSER_OAUTH.is_proxied
+
+    def test_a_credentials_login_is_routed(self):
+        """It is a server-side call, so it is whitelisted like any other."""
+        assert LoginStyle.SERVER_CREDENTIALS.is_proxied
+
+    async def test_browser_oauth_ignores_a_configured_address(self):
+        """Routing it would add a way to fail without adding anything."""
+        async with login_client_factory("203.0.113.7", LoginStyle.BROWSER_OAUTH) as client:
+            assert not client._mounts or all(
+                transport is None for transport in client._mounts.values()
+            )
+
+    async def test_a_credentials_login_uses_the_configured_address(self):
+        async with login_client_factory("203.0.113.7", LoginStyle.SERVER_CREDENTIALS) as client:
+            assert any(transport is not None for transport in client._mounts.values())
+
+    async def test_a_credentials_login_with_no_address_goes_direct(self):
+        async with login_client_factory(None, LoginStyle.SERVER_CREDENTIALS) as client:
+            assert not client._mounts or all(
                 transport is None for transport in client._mounts.values()
             )
 
     async def test_login_waits_longer_than_a_trading_call(self):
-        """A login sits behind a human completing a browser flow."""
-        async with login_client_factory() as login, trading_client_factory(None) as trading:
+        """A login can sit behind a human completing a browser flow."""
+        async with (
+            login_client_factory(None, LoginStyle.BROWSER_OAUTH) as login,
+            trading_client_factory(None) as trading,
+        ):
             assert login.timeout.read is not None
             assert trading.timeout.read is not None
             assert login.timeout.read > trading.timeout.read
