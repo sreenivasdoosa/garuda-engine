@@ -1,0 +1,36 @@
+# --- Local-only design notes -------------------------------------------------
+# Maps the internals of the private reference engine. Keep it out of the public
+# repo; it is working material, not part of the product.
+docs/JAVA_FEATURE_INVENTORY.md
+
+# --- Python ------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+
+# --- Node / frontend ---------------------------------------------------------
+node_modules/
+frontend/dist/
+*.tsbuildinfo
+
+# --- Runtime -----------------------------------------------------------------
+.env
+config/.env
+*.log
+logs/
+data/
+backup/
+
+# --- Editors / OS ------------------------------------------------------------
+.idea/
+.vscode/
+.DS_Store
