@@ -41,6 +41,7 @@ from garuda.domain.enums import (
 from garuda.domain.errors import DomainError
 from garuda.domain.exchange import Exchange
 from garuda.domain.instrument import Instrument, InstrumentId
+from garuda.domain.symbol import SymbolInfo
 
 #: The hour a broker's new instrument master appears, with that day's new
 #: weekly strikes. A file downloaded before it is stale once it passes.
@@ -128,6 +129,7 @@ def is_stale(
 def parse_instruments(
     csv_text: str,
     exchanges: dict[str, Exchange],
+    symbols: dict[str, SymbolInfo] | None = None,
     *,
     exercise_style: ExerciseStyle = ExerciseStyle.EUROPEAN,
     settlement_type: SettlementType = SettlementType.CASH,
@@ -138,6 +140,12 @@ def parse_instruments(
     it does not model are skipped rather than invented, because an instrument
     whose calendar and currency are guessed produces a plausible, wrong trading
     day.
+
+    ``symbols`` supplies per-underlying knowledge the master does not carry:
+    the contract multiplier and the exchange freeze limit. Both are keyed by
+    the underlying, so every option and future on CRUDEOIL inherits its
+    hundred-barrel multiplier. Without it a commodity P&L is wrong by two
+    orders of magnitude and still looks plausible.
     """
     if not csv_text.startswith("instrument_token,"):
         raise DomainError(
@@ -148,10 +156,11 @@ def parse_instruments(
     tokens: dict[InstrumentId, int] = {}
     skipped: list[tuple[str, str]] = []
 
+    known_symbols = symbols or {}
     for row in csv.DictReader(io.StringIO(csv_text)):
         symbol = (row.get("tradingsymbol") or "").strip()
         try:
-            parsed = _parse_row(row, exchanges, exercise_style, settlement_type)
+            parsed = _parse_row(row, exchanges, known_symbols, exercise_style, settlement_type)
         except DomainError as error:
             skipped.append((symbol, str(error)))
             continue
@@ -169,6 +178,7 @@ def parse_instruments(
 def _parse_row(
     row: dict[str, str],
     exchanges: dict[str, Exchange],
+    symbols: dict[str, SymbolInfo],
     exercise_style: ExerciseStyle,
     settlement_type: SettlementType,
 ) -> tuple[Instrument, int] | None:
@@ -211,11 +221,18 @@ def _parse_row(
     lot_size = _integer(row, "lot_size", default=1) or 1
 
     underlying: InstrumentId | None = None
+    underlying_name = (row.get("name") or "").strip()
     if kind in (InstrumentKind.FUTURE, InstrumentKind.OPTION):
-        name = (row.get("name") or "").strip()
-        if not name:
+        if not underlying_name:
             raise DomainError("a derivative row carries no underlying name")
-        underlying = InstrumentId(f"{exchange_code}:{canonical_symbol(name)}")
+        underlying = InstrumentId(f"{exchange_code}:{canonical_symbol(underlying_name)}")
+
+    # Per-underlying knowledge the master does not carry. Keyed by the
+    # underlying so every option and future on it inherits the same contract
+    # multiplier and freeze limit.
+    info = symbols.get(underlying_name or symbol)
+    multiplier = info.contract_multiplier if info else Decimal(1)
+    freeze_quantity = info.freeze_limit_quantity if info else None
 
     instrument = Instrument(
         id=InstrumentId(f"{exchange_code}:{canonical_symbol(symbol)}"),
@@ -225,6 +242,8 @@ def _parse_row(
         trading_symbol=symbol,
         lot_size=lot_size,
         tick_size=tick_size,
+        multiplier=multiplier,
+        freeze_quantity=freeze_quantity,
         underlying=underlying,
         expiry=expiry,
         strike=strike if kind is InstrumentKind.OPTION else None,

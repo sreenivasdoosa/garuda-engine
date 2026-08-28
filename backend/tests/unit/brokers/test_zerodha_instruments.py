@@ -14,8 +14,16 @@ from garuda.brokers.zerodha.instruments import (
     next_refresh_after,
     parse_instruments,
 )
-from garuda.domain import DomainError, InstrumentKind, OptionType, Segment
+from garuda.domain import (
+    Currency,
+    DomainError,
+    InstrumentKind,
+    Money,
+    OptionType,
+    Segment,
+)
 from garuda.domain.instrument import InstrumentId
+from garuda.domain.symbol import SymbolInfo
 
 IST = ZoneInfo("Asia/Kolkata")
 
@@ -246,3 +254,52 @@ class TestRefreshSchedule:
     def test_after_publication_the_next_refresh_is_tomorrow(self):
         now = datetime(2026, 8, 27, 10, 0, tzinfo=IST)
         assert next_refresh_after(now, timezone=IST) == datetime(2026, 8, 28, 8, 0, tzinfo=IST)
+
+
+class TestSymbolInfoFillsTheGaps:
+    """The master carries neither the contract multiplier nor the freeze limit."""
+
+    @pytest.fixture
+    def symbols(self) -> dict[str, SymbolInfo]:
+        return {
+            "NIFTY": SymbolInfo(
+                symbol="NIFTY",
+                exchange_code="NSE",
+                is_index=True,
+                index_symbol="NIFTY 50",
+                strike_gap=Decimal(50),
+                freeze_limit_quantity=1755,
+            ),
+            "GOLD": SymbolInfo(
+                symbol="GOLD",
+                exchange_code="MCX",
+                is_index=True,
+                freeze_limit_quantity=1000,
+                contract_multiplier=Decimal(100),
+            ),
+        }
+
+    def test_the_freeze_limit_comes_from_symbol_info(self, venues, symbols):
+        (instrument,) = parse_instruments(csv_of("call"), venues, symbols).instruments
+        assert instrument.freeze_quantity == 1755
+        assert instrument.exceeds_freeze_limit(1756)
+
+    def test_every_derivative_on_an_underlying_inherits_it(self, venues, symbols):
+        catalogue = parse_instruments(csv_of("future", "call", "put"), venues, symbols)
+        assert {i.freeze_quantity for i in catalogue.instruments} == {1755}
+
+    def test_a_commodity_lot_is_many_units(self, venues, symbols):
+        """Defaulting to one makes MCX P&L wrong by two orders of magnitude."""
+        (instrument,) = parse_instruments(csv_of("commodity"), venues, symbols).instruments
+        assert instrument.multiplier == Decimal(100)
+
+    def test_an_underlying_with_no_symbol_info_gets_no_freeze_limit(self, venues):
+        """Absent, not guessed: a wrong limit either blocks or oversends."""
+        (instrument,) = parse_instruments(csv_of("call"), venues).instruments
+        assert instrument.freeze_quantity is None
+        assert instrument.multiplier == Decimal(1)
+
+    def test_notional_uses_the_contract_multiplier(self, venues, symbols):
+        (instrument,) = parse_instruments(csv_of("commodity"), venues, symbols).instruments
+        value = instrument.notional(Money.of("6000", Currency.INR), 1)
+        assert value == Money.of("600000", Currency.INR)
