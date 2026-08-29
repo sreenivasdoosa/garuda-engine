@@ -164,15 +164,17 @@ each concern has its own field group and its own entry point.
 
 Each step ends with something that runs and tests that prove it.
 
-1. **The model.** `Trade`, `TradeSignal`, `TradeState`, `TradeExitReason`, and
+**Done: 1-5.** Next: 6 (trailing).
+
+1. ✅ **The model.** `Trade`, `TradeSignal`, `TradeState`, `TradeExitReason`, and
    the state machine. Pure domain, no I/O.
-2. **The book.** One account's trades and signals in memory, with the strategy
+2. ✅ **The book.** One account's trades and signals in memory, with the strategy
    and group indexes, duplicate rejection, and restart load.
-3. **Entry.** Signal trigger evaluation against a tick, entry order placement,
+3. ✅ **Entry.** Signal trigger evaluation against a tick, entry order placement,
    fill tracking, and the entry-failure funnel.
-4. **Protection.** SL and target placement, the combined-order variant, and the
+4. ✅ **Protection.** SL and target placement, the combined-order variant, and the
    attempt caps.
-5. **Tracking.** The per-trade advance: order updates in, state transitions out,
+5. ✅ **Tracking.** The per-trade advance: order updates in, state transitions out,
    plus the broker order-book poll that backs it.
 6. **Trailing.** Tick-based trailing SL, trail-to-cost, and the trailing modes.
 7. **Exit.** Square-off queue, the worker, retry policy, attempt caps, and the
@@ -209,3 +211,22 @@ adding the tracking back later is additive.
 The three optional ones each attach to a stage of the build order rather than
 forming a stage: re-entry and escalation to entry, hedge replace to
 relationships, corporate actions to the book.
+
+
+## 8. Carried forward
+
+Deferred deliberately, not forgotten. Each is named where it would otherwise
+be discovered as a gap.
+
+- **`PriceBand` has no source.** The protective-order service takes a lookup
+  for the day's circuit limits and nothing supplies one; it needs the quotes
+  API on the market-data side. Until then every limit target defers as
+  `NO_QUOTE`.
+- **Dynamic SL and target.** The reference computes both from a live quote
+  shortly after entry when the strategy asks for it. Belongs with tracking,
+  since the first fill is what triggers it.
+- **Strategy subscriptions.** `EntryService` takes an `is_subscribed` check
+  and nothing feeds it, so subscription state is not enforced at entry.
+- **Market data account and per-client streams are not wired at startup.**
+  The resolver, the feed and the stream manager all exist; nothing composes
+  them into a running engine yet.
