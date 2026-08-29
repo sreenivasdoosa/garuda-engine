@@ -28,8 +28,9 @@ from __future__ import annotations
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 
+from garuda.core.backoff import ReconnectPolicy
 from garuda.marketdata.hub import TickHub
 from garuda.protocols.clock import Clock
 from garuda.protocols.feed import MarketDataFeed
@@ -39,28 +40,6 @@ logger = logging.getLogger(__name__)
 #: Builds a fresh connection. A factory rather than a feed, because recovery
 #: means a new connection and not a reset of the old one.
 type FeedFactory = Callable[[], Awaitable[MarketDataFeed]]
-
-
-@dataclass(frozen=True, slots=True)
-class ReconnectPolicy:
-    """How hard to try, and how quickly to give up trying quickly."""
-
-    initial: timedelta = timedelta(seconds=1)
-    maximum: timedelta = timedelta(seconds=30)
-    factor: int = 2
-    #: Silence longer than this counts as a failure even with the socket open.
-    silence_before_reconnect: timedelta = timedelta(seconds=60)
-
-    def __post_init__(self) -> None:
-        if self.initial <= timedelta(0) or self.maximum < self.initial:
-            raise ValueError("a reconnect delay must be positive and below the maximum")
-        if self.factor < 1:
-            raise ValueError("a backoff factor below one shortens the wait each time")
-
-    def delay_after(self, failures: int) -> timedelta:
-        """The wait before attempt ``failures + 1``."""
-        delay: timedelta = self.initial * (self.factor ** max(failures - 1, 0))
-        return min(delay, self.maximum)
 
 
 @dataclass

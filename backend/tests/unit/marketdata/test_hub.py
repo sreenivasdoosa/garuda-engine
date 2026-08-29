@@ -11,13 +11,15 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from garuda.core.backoff import ReconnectPolicy
 from garuda.core.bus import InProcessEventBus
 from garuda.core.clock import ReplayClock
 from garuda.domain import Currency, Money
+from garuda.domain.errors import DomainError
 from garuda.domain.instrument import InstrumentId
 from garuda.domain.market import Tick
 from garuda.marketdata.hub import TickHub
-from garuda.marketdata.supervisor import FeedSupervisor, ReconnectPolicy
+from garuda.marketdata.supervisor import FeedSupervisor
 from garuda.protocols.feed import (
     FeedConnected,
     FeedDisconnected,
@@ -333,5 +335,5 @@ class TestTheSupervisor:
         assert delays == [1, 2, 4, 8, 16, 30, 30]
 
     async def test_a_backoff_that_shortens_each_time_is_refused(self) -> None:
-        with pytest.raises(ValueError, match="shortens the wait"):
+        with pytest.raises(DomainError, match="shortens the wait"):
             ReconnectPolicy(factor=0)
