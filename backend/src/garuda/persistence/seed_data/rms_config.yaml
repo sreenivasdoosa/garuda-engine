@@ -1,8 +1,5 @@
-- id: 1
-  config_level: GLOBAL
+- config_level: GLOBAL
   exchange: null
-  username: null
-  broker: null
   symbol: null
   segment_type: EQUITY
   min_volume_today: 10000
@@ -47,11 +44,8 @@
   min_volume_early_period_seconds: null
   min_open_interest: null
   max_total_combos: null
-- id: 2
-  config_level: GLOBAL
+- config_level: GLOBAL
   exchange: null
-  username: null
-  broker: null
   symbol: null
   segment_type: FUTURES
   min_volume_today: 50000
@@ -96,11 +90,8 @@
   min_volume_early_period_seconds: null
   min_open_interest: null
   max_total_combos: null
-- id: 6
-  config_level: SYMBOL
+- config_level: SYMBOL
   exchange: NSE
-  username: null
-  broker: null
   symbol: null
   segment_type: OPTIONS
   min_volume_today: 30000
@@ -145,11 +136,8 @@
   min_volume_early_period_seconds: null
   min_open_interest: null
   max_total_combos: null
-- id: 7
-  config_level: GLOBAL
+- config_level: GLOBAL
   exchange: MCX
-  username: null
-  broker: null
   symbol: null
   segment_type: OPTIONS
   min_volume_today: 25000
@@ -194,11 +182,8 @@
   min_volume_early_period_seconds: null
   min_open_interest: null
   max_total_combos: null
-- id: 8
-  config_level: SYMBOL
+- config_level: SYMBOL
   exchange: MCX
-  username: null
-  broker: null
   symbol: CRUDEOIL
   segment_type: OPTIONS
   min_volume_today: 5000
@@ -243,11 +228,8 @@
   min_volume_early_period_seconds: 300
   min_open_interest: null
   max_total_combos: null
-- id: 10
-  config_level: SYMBOL
+- config_level: SYMBOL
   exchange: MCX
-  username: null
-  broker: null
   symbol: NATURALGAS
   segment_type: OPTIONS
   min_volume_today: 5000
@@ -292,11 +274,8 @@
   min_volume_early_period_seconds: 300
   min_open_interest: null
   max_total_combos: null
-- id: 11
-  config_level: SYMBOL
+- config_level: SYMBOL
   exchange: MCX
-  username: null
-  broker: null
   symbol: GOLDM
   segment_type: OPTIONS
   min_volume_today: 2000
@@ -341,11 +320,8 @@
   min_volume_early_period_seconds: 300
   min_open_interest: null
   max_total_combos: null
-- id: 12
-  config_level: EXCHANGE
+- config_level: EXCHANGE
   exchange: TEST
-  username: null
-  broker: null
   symbol: null
   segment_type: OPTIONS
   min_volume_today: 10000

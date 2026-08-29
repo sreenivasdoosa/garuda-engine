@@ -8,7 +8,6 @@
   intraday_squareoff_minutes_before_close: 20
   intraday_squareoff_block_minutes_before_close: 10
   post_market_window_minutes: 60
-  positional_squareoff_minutes_before_close: 15
   report_minutes_after_close: 15
   history_cache_enabled: 0
   weekend_days: SATURDAY,SUNDAY
@@ -27,7 +26,6 @@
   intraday_squareoff_minutes_before_close: 20
   intraday_squareoff_block_minutes_before_close: 10
   post_market_window_minutes: 60
-  positional_squareoff_minutes_before_close: 15
   report_minutes_after_close: 15
   history_cache_enabled: 0
   weekend_days: SATURDAY,SUNDAY
@@ -46,7 +44,6 @@
   intraday_squareoff_minutes_before_close: 20
   intraday_squareoff_block_minutes_before_close: 10
   post_market_window_minutes: 60
-  positional_squareoff_minutes_before_close: 15
   report_minutes_after_close: 15
   history_cache_enabled: 0
   weekend_days: SATURDAY,SUNDAY

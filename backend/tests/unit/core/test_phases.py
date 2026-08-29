@@ -168,7 +168,6 @@ class TestOffsetsComeFromTheVenuesRow:
         day_init_minutes_before_market_open = 240
         algo_start_minutes_before_market_open = 120
         intraday_squareoff_minutes_before_close = 30
-        positional_squareoff_minutes_before_close = 10
         report_minutes_after_close = 5
         post_market_window_minutes = 90
 
@@ -189,13 +188,10 @@ class TestOffsetsComeFromTheVenuesRow:
         offsets = offsets_from_exchange_row(Partial())
         assert offsets.day_init_lead == DayOffsets().day_init_lead
 
-    def test_positional_positions_close_nearer_the_bell_than_intraday(self, nse):
-        """There is less to unwind, so they wait longer."""
-        schedule = schedule_for(nse, MONDAY)
-        assert at(schedule, DayPhase.INTRADAY_SQUARE_OFF) < at(
-            schedule, DayPhase.POSITIONAL_SQUARE_OFF
-        )
-        assert at(schedule, DayPhase.POSITIONAL_SQUARE_OFF) < at(schedule, DayPhase.SESSION_CLOSE)
+    def test_there_is_no_positional_square_off_phase(self):
+        """The venue enforces the intraday close; a carry-forward exit is the
+        strategy's decision and no venue has an opinion about it."""
+        assert not any("POSITIONAL" in phase.value for phase in DayPhase)
 
 
 class TestOffsets:

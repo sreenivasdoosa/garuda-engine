@@ -29,6 +29,7 @@ from decimal import Decimal
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    Computed,
     Date,
     DateTime,
     ForeignKey,
@@ -206,9 +207,10 @@ class ExchangesRow(Base):
         Integer, nullable=True
     )
     post_market_window_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    positional_squareoff_minutes_before_close: Mapped[int | None] = mapped_column(
-        Integer, nullable=True
-    )
+    # positional_squareoff_minutes_before_close is deliberately absent. The
+    # venue force-closes intraday positions, so that offset is its business;
+    # when a carry-forward position exits is the strategy's, and lives in its
+    # exit configuration.
     report_minutes_after_close: Mapped[int | None] = mapped_column(Integer, nullable=True)
     history_cache_enabled: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     weekend_days: Mapped[str | None] = mapped_column(String(50), nullable=True)
@@ -335,9 +337,10 @@ class BrokerExchangeConfigRow(Base):
     intraday_squareoff_block_minutes_before_close: Mapped[int | None] = mapped_column(
         Integer, nullable=True
     )
-    positional_squareoff_minutes_before_close: Mapped[int | None] = mapped_column(
-        Integer, nullable=True
-    )
+    # positional_squareoff_minutes_before_close is deliberately absent. The
+    # venue force-closes intraday positions, so that offset is its business;
+    # when a carry-forward position exits is the strategy's, and lives in its
+    # exit configuration.
     market_orders_allowed: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     naic_code: Mapped[str | None] = mapped_column(String(8), nullable=True)
     algo_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
@@ -524,17 +527,50 @@ class StrategyDefinitionsRow(Base):
 
 
 class StrategyConfigRow(Base):
-    """STRATEGY_CONFIG_TREE in the reference engine."""
+    """STRATEGY_CONFIG_TREE in the reference engine.
+
+    A strategy's configuration at three scopes, most specific winning:
+
+    ===================  ==================================  ========
+    scope                keyed by                            priority
+    ===================  ==================================  ========
+    base                 strategy                                   0
+    day                  strategy + day condition                   1
+    tranch               strategy + tranch                          2
+    tranch and day       strategy + tranch + day condition          3
+    ===================  ==================================  ========
+
+    The reference engine has two further scopes, per user and per broker, and
+    weights its priority to leave room for them. Garuda drops both: one
+    operator, and a strategy that behaves differently on one account than
+    another is a strategy that cannot be reasoned about. Everything else about
+    the shape is unchanged.
+
+    ``priority`` is computed by the database rather than by the caller, so two
+    readers cannot disagree about which row is more specific.
+    """
 
     __tablename__ = "strategy_config"
-
-    trading_client_id: Mapped[str] = mapped_column(
-        String(64),
-        ForeignKey("trading_clients.id", ondelete="CASCADE"),
-        primary_key=False,
-        index=True,
+    __table_args__ = (
+        UniqueConstraint(
+            "strategy_name",
+            "tranch_number",
+            "day_condition",
+            name="uq_strategy_config_scope",
+        ),
     )
+
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    #: How specific this row is. Higher wins. Computed by the database so a
+    #: caller cannot compute it differently.
+    priority: Mapped[int] = mapped_column(
+        Integer,
+        Computed(
+            "(CASE WHEN tranch_number IS NOT NULL THEN 2 ELSE 0 END)"
+            " + (CASE WHEN day_condition IS NOT NULL THEN 1 ELSE 0 END)",
+            persisted=True,
+        ),
+    )
     strategy_name: Mapped[str] = mapped_column(String(100))
     tranch_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
     day_condition: Mapped[str | None] = mapped_column(String(20), nullable=True)
@@ -1193,15 +1229,43 @@ class TradeCorporateActionsRow(Base):
 
 
 class RmsConfigRow(Base):
-    """RMS_CONFIG in the reference engine."""
+    """RMS_CONFIG in the reference engine.
+
+    Limits at four scopes — global, exchange, trading client, symbol — with
+    ``segment_type`` narrowing any of them. Most specific wins.
+
+    The reference engine scopes by user *and* broker. Garuda replaces both with
+    the trading client, because that is the thing a limit actually belongs to:
+    an account funded with two lakh and one funded with fifty do not share a
+    maximum order value, and they may sit at the same broker.
+
+    Every scope column is nullable; a row with all of them null is the global
+    default.
+    """
 
     __tablename__ = "rms_config"
+    __table_args__ = (
+        UniqueConstraint(
+            "config_level",
+            "exchange",
+            "trading_client_id",
+            "symbol",
+            "segment_type",
+            name="uq_rms_config_scope",
+        ),
+    )
+
+    #: Null unless this row applies to one account. See the class docstring.
+    trading_client_id: Mapped[str | None] = mapped_column(
+        String(64),
+        ForeignKey("trading_clients.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     config_level: Mapped[str] = mapped_column(String(20))
     exchange: Mapped[str | None] = mapped_column(String(10), nullable=True)
-    username: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    broker: Mapped[str | None] = mapped_column(String(50), nullable=True)
     symbol: Mapped[str | None] = mapped_column(String(50), nullable=True)
     segment_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
     min_volume_today: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -1259,8 +1323,6 @@ class RmsBreachLogRow(Base):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     breach_time: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    username: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    broker: Mapped[str | None] = mapped_column(String(50), nullable=True)
     strategy_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     trading_symbol: Mapped[str | None] = mapped_column(String(100), nullable=True)
     exchange: Mapped[str | None] = mapped_column(String(10), nullable=True)
@@ -1324,14 +1386,25 @@ class RmsDailyStatsRow(Base):
 
 
 class KillSwitchesRow(Base):
-    """KILL_SWITCHES in the reference engine."""
+    """KILL_SWITCHES in the reference engine.
+
+    A switch is scoped, and every scope column is nullable because a switch
+    can be global. ``level`` says which scope was intended; the columns say
+    what it was.
+
+    There is no broker scope. Stopping every account at one broker is what
+    ``brokers.stopped`` does, and two places deciding the same thing means the
+    wrong one wins on the day they disagree.
+    """
 
     __tablename__ = "kill_switches"
 
-    trading_client_id: Mapped[str] = mapped_column(
+    #: Null for a switch that is not account-specific — a global stop, or one
+    #: scoped to an exchange or a symbol.
+    trading_client_id: Mapped[str | None] = mapped_column(
         String(64),
         ForeignKey("trading_clients.id", ondelete="CASCADE"),
-        primary_key=False,
+        nullable=True,
         index=True,
     )
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)

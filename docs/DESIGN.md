@@ -393,6 +393,13 @@ offsets, in the venue's own timezone, on the venue's own trading day:
 | `REPORTS` | last session close + `report_lag` |
 | `EOD` | last session close + `post_market_window` |
 
+There is deliberately no positional square-off phase either. The venue
+force-closes intraday positions, so that offset is the venue's business. When a
+carry-forward position exits is the strategy's — its exit mode, exit days and
+exit time — and no venue has an opinion about it. Putting it on the venue would
+mean two places decide the same thing, and the wrong one would win on the day
+they disagreed.
+
 There is deliberately no login phase. The reference engine schedules one
 because it logs in automatically; here the operator clicks Login whenever they
 choose, so a phase named for it would imply a gate that does not exist — and

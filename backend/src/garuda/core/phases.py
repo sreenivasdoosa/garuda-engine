@@ -43,11 +43,11 @@ class DayPhase(StrEnum):
     PRE_OPEN = "PRE_OPEN"
     SESSION_OPEN = "SESSION_OPEN"
     #: Intraday positions must be flat by the close, so they are closed before
-    #: the exchange does it at a price nobody chose.
+    #: the exchange does it at a price nobody chose. This is a venue phase
+    #: because the venue enforces it. Exiting a carry-forward position is not:
+    #: when that happens is a strategy's decision, expressed in its exit
+    #: configuration, and no venue has an opinion about it.
     INTRADAY_SQUARE_OFF = "INTRADAY_SQUARE_OFF"
-    #: Carry-forward positions being exited today, closed nearer the bell than
-    #: intraday ones because there is less to unwind.
-    POSITIONAL_SQUARE_OFF = "POSITIONAL_SQUARE_OFF"
     SESSION_CLOSE = "SESSION_CLOSE"
     REPORTS = "REPORTS"
     #: Archive, prune, and put the day away.
@@ -65,7 +65,6 @@ class DayOffsets:
     day_init_lead: timedelta = timedelta(minutes=180)
     algo_start_lead: timedelta = timedelta(minutes=90)
     intraday_square_off_lead: timedelta = timedelta(minutes=20)
-    positional_square_off_lead: timedelta = timedelta(minutes=15)
     report_lag: timedelta = timedelta(minutes=15)
     post_market_window: timedelta = timedelta(minutes=60)
 
@@ -74,7 +73,6 @@ class DayOffsets:
             "day_init_lead",
             "algo_start_lead",
             "intraday_square_off_lead",
-            "positional_square_off_lead",
             "report_lag",
             "post_market_window",
         ):
@@ -109,9 +107,6 @@ def offsets_from_exchange_row(row: object) -> DayOffsets:
         algo_start_lead=minutes("algo_start_minutes_before_market_open", defaults.algo_start_lead),
         intraday_square_off_lead=minutes(
             "intraday_squareoff_minutes_before_close", defaults.intraday_square_off_lead
-        ),
-        positional_square_off_lead=minutes(
-            "positional_squareoff_minutes_before_close", defaults.positional_square_off_lead
         ),
         report_lag=minutes("report_minutes_after_close", defaults.report_lag),
         post_market_window=minutes("post_market_window_minutes", defaults.post_market_window),
@@ -165,14 +160,6 @@ def schedule_for(
             trading_day,
             DayPhase.INTRADAY_SQUARE_OFF,
             last_close - offsets.intraday_square_off_lead,
-        )
-    )
-    instants.append(
-        _at(
-            exchange,
-            trading_day,
-            DayPhase.POSITIONAL_SQUARE_OFF,
-            last_close - offsets.positional_square_off_lead,
         )
     )
     for window in windows:

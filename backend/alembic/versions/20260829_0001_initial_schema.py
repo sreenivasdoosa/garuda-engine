@@ -1,8 +1,8 @@
 """initial schema
 
-Revision ID: 65c995e32fba
+Revision ID: 4559d5b0a1b2
 Revises:
-Create Date: 2026-08-29 08:14:16.090509
+Create Date: 2026-08-29 08:22:39.657883
 
 """
 
@@ -103,7 +103,6 @@ def upgrade() -> None:
         sa.Column("login_minutes_before_market_open", sa.Integer(), nullable=True),
         sa.Column("intraday_squareoff_minutes_before_close", sa.Integer(), nullable=True),
         sa.Column("intraday_squareoff_block_minutes_before_close", sa.Integer(), nullable=True),
-        sa.Column("positional_squareoff_minutes_before_close", sa.Integer(), nullable=True),
         sa.Column("market_orders_allowed", sa.Boolean(), nullable=True),
         sa.Column("naic_code", sa.String(length=8), nullable=True),
         sa.Column("algo_id", sa.String(length=32), nullable=True),
@@ -292,7 +291,6 @@ def upgrade() -> None:
         sa.Column("intraday_squareoff_minutes_before_close", sa.Integer(), nullable=True),
         sa.Column("intraday_squareoff_block_minutes_before_close", sa.Integer(), nullable=True),
         sa.Column("post_market_window_minutes", sa.Integer(), nullable=True),
-        sa.Column("positional_squareoff_minutes_before_close", sa.Integer(), nullable=True),
         sa.Column("report_minutes_after_close", sa.Integer(), nullable=True),
         sa.Column("history_cache_enabled", sa.Boolean(), nullable=True),
         sa.Column("weekend_days", sa.String(length=50), nullable=True),
@@ -394,8 +392,6 @@ def upgrade() -> None:
         "rms_breach_log",
         sa.Column("id", sa.BigInteger(), nullable=False),
         sa.Column("breach_time", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("username", sa.String(length=50), nullable=True),
-        sa.Column("broker", sa.String(length=50), nullable=True),
         sa.Column("strategy_name", sa.String(length=100), nullable=True),
         sa.Column("trading_symbol", sa.String(length=100), nullable=True),
         sa.Column("exchange", sa.String(length=10), nullable=True),
@@ -434,61 +430,6 @@ def upgrade() -> None:
         sa.Column("kill_time", sa.DateTime(timezone=True), nullable=True),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_rms_client_state")),
-    )
-    op.create_table(
-        "rms_config",
-        sa.Column("id", sa.BigInteger(), nullable=False),
-        sa.Column("config_level", sa.String(length=20), nullable=False),
-        sa.Column("exchange", sa.String(length=10), nullable=True),
-        sa.Column("username", sa.String(length=50), nullable=True),
-        sa.Column("broker", sa.String(length=50), nullable=True),
-        sa.Column("symbol", sa.String(length=50), nullable=True),
-        sa.Column("segment_type", sa.String(length=20), nullable=True),
-        sa.Column("min_volume_today", sa.Integer(), nullable=True),
-        sa.Column("min_volume_early_market", sa.Integer(), nullable=True),
-        sa.Column("max_bid_ask_spread_pct", sa.Numeric(precision=5, scale=2), nullable=True),
-        sa.Column("max_bid_ask_spread_absolute", sa.Numeric(precision=10, scale=2), nullable=True),
-        sa.Column(
-            "bid_ask_absolute_threshold_price", sa.Numeric(precision=10, scale=2), nullable=True
-        ),
-        sa.Column("min_depth_quantity", sa.Integer(), nullable=True),
-        sa.Column("min_depth_levels", sa.Integer(), nullable=True),
-        sa.Column("enable_freak_price_check", sa.Boolean(), nullable=True),
-        sa.Column("freak_check_min_price", sa.Numeric(precision=10, scale=2), nullable=True),
-        sa.Column("max_order_qty", sa.Integer(), nullable=True),
-        sa.Column("max_order_qty_lots", sa.Integer(), nullable=True),
-        sa.Column("max_order_value", sa.Numeric(precision=15, scale=2), nullable=True),
-        sa.Column("max_price_deviation_pct", sa.Numeric(precision=5, scale=2), nullable=True),
-        sa.Column("max_price_deviation_abs", sa.Numeric(precision=10, scale=2), nullable=True),
-        sa.Column("max_orders_per_second", sa.Integer(), nullable=True),
-        sa.Column("max_order_operations_per_second", sa.Integer(), nullable=True),
-        sa.Column("max_orders_per_minute", sa.Integer(), nullable=True),
-        sa.Column("max_orders_per_day", sa.Integer(), nullable=True),
-        sa.Column("enable_freeze_qty_check", sa.Boolean(), nullable=True),
-        sa.Column("skip_price_validation_for_exit", sa.Boolean(), nullable=True),
-        sa.Column("max_orders_per_symbol_per_day", sa.Integer(), nullable=True),
-        sa.Column("max_total_positions", sa.Integer(), nullable=True),
-        sa.Column("max_buy_qty_per_symbol_per_day", sa.Integer(), nullable=True),
-        sa.Column("max_sell_qty_per_symbol_per_day", sa.Integer(), nullable=True),
-        sa.Column("max_buy_orders_per_day", sa.Integer(), nullable=True),
-        sa.Column("max_sell_orders_per_day", sa.Integer(), nullable=True),
-        sa.Column("max_position_qty_per_symbol", sa.Integer(), nullable=True),
-        sa.Column("max_daily_loss_amount", sa.Numeric(precision=15, scale=2), nullable=True),
-        sa.Column("max_daily_loss_pct", sa.Numeric(precision=5, scale=2), nullable=True),
-        sa.Column("auto_square_off_on_breach", sa.Boolean(), nullable=True),
-        sa.Column("enable_auto_kill_on_loss", sa.Boolean(), nullable=True),
-        sa.Column("max_rejection_rate_pct", sa.Numeric(precision=5, scale=2), nullable=True),
-        sa.Column("max_vix_level", sa.Numeric(precision=5, scale=2), nullable=True),
-        sa.Column("volatility_pause_minutes", sa.Integer(), nullable=True),
-        sa.Column("is_active", sa.Boolean(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("stale_price_seconds", sa.Integer(), nullable=True),
-        sa.Column("early_market_grace_seconds", sa.Integer(), nullable=True),
-        sa.Column("min_volume_early_period_seconds", sa.Integer(), nullable=True),
-        sa.Column("min_open_interest", sa.Integer(), nullable=True),
-        sa.Column("max_total_combos", sa.Integer(), nullable=True),
-        sa.PrimaryKeyConstraint("id", name=op.f("pk_rms_config")),
     )
     op.create_table(
         "rules",
@@ -641,6 +582,86 @@ def upgrade() -> None:
         sa.Column("risk_used_estimate", sa.Numeric(precision=20, scale=6), nullable=False),
         sa.Column("is_paper_trading", sa.Boolean(), nullable=False),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_strategy_breakout_watches")),
+    )
+    op.create_table(
+        "strategy_config",
+        sa.Column("id", sa.BigInteger(), nullable=False),
+        sa.Column(
+            "priority",
+            sa.Integer(),
+            sa.Computed(
+                "(CASE WHEN tranch_number IS NOT NULL THEN 2 ELSE 0 END) + (CASE WHEN day_condition IS NOT NULL THEN 1 ELSE 0 END)",
+                persisted=True,
+            ),
+            nullable=False,
+        ),
+        sa.Column("strategy_name", sa.String(length=100), nullable=False),
+        sa.Column("tranch_number", sa.Integer(), nullable=True),
+        sa.Column("day_condition", sa.String(length=20), nullable=True),
+        sa.Column("strike_type", sa.String(length=30), nullable=True),
+        sa.Column("strike_value", sa.String(length=20), nullable=True),
+        sa.Column("option_premium", sa.Integer(), nullable=True),
+        sa.Column("option_premium_upper", sa.Integer(), nullable=True),
+        sa.Column("use_atm_if_itm", sa.Boolean(), nullable=True),
+        sa.Column("volume_filter", sa.BigInteger(), nullable=True),
+        sa.Column("oi_filter", sa.BigInteger(), nullable=True),
+        sa.Column("apply_volume_filter_to_hedge", sa.Boolean(), nullable=True),
+        sa.Column("apply_oi_filter_to_hedge", sa.Boolean(), nullable=True),
+        sa.Column("lots_per_tranch", sa.Integer(), nullable=True),
+        sa.Column("hedging_enabled", sa.Boolean(), nullable=True),
+        sa.Column("sl_percentage", sa.Numeric(precision=20, scale=6), nullable=True),
+        sa.Column("target_percentage", sa.Numeric(precision=20, scale=6), nullable=True),
+        sa.Column("combined_sl_percentage", sa.Numeric(precision=20, scale=6), nullable=True),
+        sa.Column("combined_target_percentage", sa.Numeric(precision=20, scale=6), nullable=True),
+        sa.Column("risk_calculation_mode", sa.String(length=30), nullable=True),
+        sa.Column("trail_sl", sa.Boolean(), nullable=True),
+        sa.Column("trail_sl_type", sa.String(length=20), nullable=True),
+        sa.Column("trail_config", sa.Text(), nullable=True),
+        sa.Column("sl_buffer_percentage", sa.Numeric(precision=20, scale=6), nullable=True),
+        sa.Column("trail_sl_to_cost", sa.Boolean(), nullable=True),
+        sa.Column("combined_trail_sl", sa.Boolean(), nullable=True),
+        sa.Column(
+            "sl_trigger_to_limit_gap_percentage", sa.Numeric(precision=20, scale=6), nullable=True
+        ),
+        sa.Column("tranch_timing", sa.String(length=10), nullable=True),
+        sa.Column("tranch_cutoff_time", sa.String(length=10), nullable=True),
+        sa.Column("min_tranch_gap", sa.Integer(), nullable=True),
+        sa.Column("tranch_gap", sa.Integer(), nullable=True),
+        sa.Column("exit_mode", sa.String(length=50), nullable=True),
+        sa.Column("exit_days", sa.Integer(), nullable=True),
+        sa.Column("exit_time", sa.String(length=20), nullable=True),
+        sa.Column("order_fill_escalation_mode", sa.String(length=20), nullable=True),
+        sa.Column("order_fill_escalation_seconds", sa.Integer(), nullable=True),
+        sa.Column("order_fill_escalation_steps", sa.Text(), nullable=True),
+        sa.Column("max_tranches", sa.Integer(), nullable=True),
+        sa.Column("lot_allocation_mode", sa.String(length=20), nullable=True),
+        sa.Column("global_allocation_tranches", sa.Integer(), nullable=True),
+        sa.Column("allocation_start_tranch", sa.Integer(), nullable=True),
+        sa.Column("re_entry", sa.Boolean(), nullable=True),
+        sa.Column("max_reentries", sa.Integer(), nullable=True),
+        sa.Column("min_reentry_loss_percentage", sa.Numeric(precision=5, scale=2), nullable=True),
+        sa.Column("directional", sa.Boolean(), nullable=True),
+        sa.Column("breakout_enabled", sa.Boolean(), nullable=True),
+        sa.Column("breakout_watch_type", sa.String(length=20), nullable=True),
+        sa.Column("breakout_direction", sa.String(length=10), nullable=True),
+        sa.Column("breakout_trigger_mode", sa.String(length=15), nullable=True),
+        sa.Column("breakout_trigger_value", sa.Numeric(precision=10, scale=4), nullable=True),
+        sa.Column("breakout_select_fresh_strikes", sa.Boolean(), nullable=True),
+        sa.Column("description", sa.String(length=255), nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column(
+            "hedge_strike_rounding_min_distance", sa.Numeric(precision=20, scale=6), nullable=True
+        ),
+        sa.Column("oi_rank", sa.Integer(), nullable=True),
+        sa.Column("ignore_itm_strikes", sa.Boolean(), nullable=True),
+        sa.Column("lookback_minutes", sa.Integer(), nullable=True),
+        sa.Column("otm_levels", sa.Integer(), nullable=True),
+        sa.Column("no_stop_loss", sa.Boolean(), nullable=True),
+        sa.PrimaryKeyConstraint("id", name=op.f("pk_strategy_config")),
+        sa.UniqueConstraint(
+            "strategy_name", "tranch_number", "day_condition", name="uq_strategy_config_scope"
+        ),
     )
     op.create_table(
         "strategy_definitions",
@@ -1000,7 +1021,7 @@ def upgrade() -> None:
     )
     op.create_table(
         "kill_switches",
-        sa.Column("trading_client_id", sa.String(length=64), nullable=False),
+        sa.Column("trading_client_id", sa.String(length=64), nullable=True),
         sa.Column("id", sa.BigInteger(), nullable=False),
         sa.Column("created_date", sa.Date(), nullable=False),
         sa.Column("key_name", sa.String(length=255), nullable=False),
@@ -1167,6 +1188,77 @@ def upgrade() -> None:
         unique=False,
     )
     op.create_table(
+        "rms_config",
+        sa.Column("trading_client_id", sa.String(length=64), nullable=True),
+        sa.Column("id", sa.BigInteger(), nullable=False),
+        sa.Column("config_level", sa.String(length=20), nullable=False),
+        sa.Column("exchange", sa.String(length=10), nullable=True),
+        sa.Column("symbol", sa.String(length=50), nullable=True),
+        sa.Column("segment_type", sa.String(length=20), nullable=True),
+        sa.Column("min_volume_today", sa.Integer(), nullable=True),
+        sa.Column("min_volume_early_market", sa.Integer(), nullable=True),
+        sa.Column("max_bid_ask_spread_pct", sa.Numeric(precision=5, scale=2), nullable=True),
+        sa.Column("max_bid_ask_spread_absolute", sa.Numeric(precision=10, scale=2), nullable=True),
+        sa.Column(
+            "bid_ask_absolute_threshold_price", sa.Numeric(precision=10, scale=2), nullable=True
+        ),
+        sa.Column("min_depth_quantity", sa.Integer(), nullable=True),
+        sa.Column("min_depth_levels", sa.Integer(), nullable=True),
+        sa.Column("enable_freak_price_check", sa.Boolean(), nullable=True),
+        sa.Column("freak_check_min_price", sa.Numeric(precision=10, scale=2), nullable=True),
+        sa.Column("max_order_qty", sa.Integer(), nullable=True),
+        sa.Column("max_order_qty_lots", sa.Integer(), nullable=True),
+        sa.Column("max_order_value", sa.Numeric(precision=15, scale=2), nullable=True),
+        sa.Column("max_price_deviation_pct", sa.Numeric(precision=5, scale=2), nullable=True),
+        sa.Column("max_price_deviation_abs", sa.Numeric(precision=10, scale=2), nullable=True),
+        sa.Column("max_orders_per_second", sa.Integer(), nullable=True),
+        sa.Column("max_order_operations_per_second", sa.Integer(), nullable=True),
+        sa.Column("max_orders_per_minute", sa.Integer(), nullable=True),
+        sa.Column("max_orders_per_day", sa.Integer(), nullable=True),
+        sa.Column("enable_freeze_qty_check", sa.Boolean(), nullable=True),
+        sa.Column("skip_price_validation_for_exit", sa.Boolean(), nullable=True),
+        sa.Column("max_orders_per_symbol_per_day", sa.Integer(), nullable=True),
+        sa.Column("max_total_positions", sa.Integer(), nullable=True),
+        sa.Column("max_buy_qty_per_symbol_per_day", sa.Integer(), nullable=True),
+        sa.Column("max_sell_qty_per_symbol_per_day", sa.Integer(), nullable=True),
+        sa.Column("max_buy_orders_per_day", sa.Integer(), nullable=True),
+        sa.Column("max_sell_orders_per_day", sa.Integer(), nullable=True),
+        sa.Column("max_position_qty_per_symbol", sa.Integer(), nullable=True),
+        sa.Column("max_daily_loss_amount", sa.Numeric(precision=15, scale=2), nullable=True),
+        sa.Column("max_daily_loss_pct", sa.Numeric(precision=5, scale=2), nullable=True),
+        sa.Column("auto_square_off_on_breach", sa.Boolean(), nullable=True),
+        sa.Column("enable_auto_kill_on_loss", sa.Boolean(), nullable=True),
+        sa.Column("max_rejection_rate_pct", sa.Numeric(precision=5, scale=2), nullable=True),
+        sa.Column("max_vix_level", sa.Numeric(precision=5, scale=2), nullable=True),
+        sa.Column("volatility_pause_minutes", sa.Integer(), nullable=True),
+        sa.Column("is_active", sa.Boolean(), nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("stale_price_seconds", sa.Integer(), nullable=True),
+        sa.Column("early_market_grace_seconds", sa.Integer(), nullable=True),
+        sa.Column("min_volume_early_period_seconds", sa.Integer(), nullable=True),
+        sa.Column("min_open_interest", sa.Integer(), nullable=True),
+        sa.Column("max_total_combos", sa.Integer(), nullable=True),
+        sa.ForeignKeyConstraint(
+            ["trading_client_id"],
+            ["trading_clients.id"],
+            name=op.f("fk_rms_config_trading_client_id"),
+            ondelete="CASCADE",
+        ),
+        sa.PrimaryKeyConstraint("id", name=op.f("pk_rms_config")),
+        sa.UniqueConstraint(
+            "config_level",
+            "exchange",
+            "trading_client_id",
+            "symbol",
+            "segment_type",
+            name="uq_rms_config_scope",
+        ),
+    )
+    op.create_index(
+        op.f("ix_rms_config_trading_client_id"), "rms_config", ["trading_client_id"], unique=False
+    )
+    op.create_table(
         "rms_daily_stats",
         sa.Column("trading_client_id", sa.String(length=64), nullable=False),
         sa.Column("trading_symbol", sa.String(length=100), nullable=False),
@@ -1189,87 +1281,6 @@ def upgrade() -> None:
     op.create_index(
         op.f("ix_rms_daily_stats_trading_client_id"),
         "rms_daily_stats",
-        ["trading_client_id"],
-        unique=False,
-    )
-    op.create_table(
-        "strategy_config",
-        sa.Column("trading_client_id", sa.String(length=64), nullable=False),
-        sa.Column("id", sa.BigInteger(), nullable=False),
-        sa.Column("strategy_name", sa.String(length=100), nullable=False),
-        sa.Column("tranch_number", sa.Integer(), nullable=True),
-        sa.Column("day_condition", sa.String(length=20), nullable=True),
-        sa.Column("strike_type", sa.String(length=30), nullable=True),
-        sa.Column("strike_value", sa.String(length=20), nullable=True),
-        sa.Column("option_premium", sa.Integer(), nullable=True),
-        sa.Column("option_premium_upper", sa.Integer(), nullable=True),
-        sa.Column("use_atm_if_itm", sa.Boolean(), nullable=True),
-        sa.Column("volume_filter", sa.BigInteger(), nullable=True),
-        sa.Column("oi_filter", sa.BigInteger(), nullable=True),
-        sa.Column("apply_volume_filter_to_hedge", sa.Boolean(), nullable=True),
-        sa.Column("apply_oi_filter_to_hedge", sa.Boolean(), nullable=True),
-        sa.Column("lots_per_tranch", sa.Integer(), nullable=True),
-        sa.Column("hedging_enabled", sa.Boolean(), nullable=True),
-        sa.Column("sl_percentage", sa.Numeric(precision=20, scale=6), nullable=True),
-        sa.Column("target_percentage", sa.Numeric(precision=20, scale=6), nullable=True),
-        sa.Column("combined_sl_percentage", sa.Numeric(precision=20, scale=6), nullable=True),
-        sa.Column("combined_target_percentage", sa.Numeric(precision=20, scale=6), nullable=True),
-        sa.Column("risk_calculation_mode", sa.String(length=30), nullable=True),
-        sa.Column("trail_sl", sa.Boolean(), nullable=True),
-        sa.Column("trail_sl_type", sa.String(length=20), nullable=True),
-        sa.Column("trail_config", sa.Text(), nullable=True),
-        sa.Column("sl_buffer_percentage", sa.Numeric(precision=20, scale=6), nullable=True),
-        sa.Column("trail_sl_to_cost", sa.Boolean(), nullable=True),
-        sa.Column("combined_trail_sl", sa.Boolean(), nullable=True),
-        sa.Column(
-            "sl_trigger_to_limit_gap_percentage", sa.Numeric(precision=20, scale=6), nullable=True
-        ),
-        sa.Column("tranch_timing", sa.String(length=10), nullable=True),
-        sa.Column("tranch_cutoff_time", sa.String(length=10), nullable=True),
-        sa.Column("min_tranch_gap", sa.Integer(), nullable=True),
-        sa.Column("tranch_gap", sa.Integer(), nullable=True),
-        sa.Column("exit_mode", sa.String(length=50), nullable=True),
-        sa.Column("exit_days", sa.Integer(), nullable=True),
-        sa.Column("exit_time", sa.String(length=20), nullable=True),
-        sa.Column("order_fill_escalation_mode", sa.String(length=20), nullable=True),
-        sa.Column("order_fill_escalation_seconds", sa.Integer(), nullable=True),
-        sa.Column("order_fill_escalation_steps", sa.Text(), nullable=True),
-        sa.Column("max_tranches", sa.Integer(), nullable=True),
-        sa.Column("lot_allocation_mode", sa.String(length=20), nullable=True),
-        sa.Column("global_allocation_tranches", sa.Integer(), nullable=True),
-        sa.Column("allocation_start_tranch", sa.Integer(), nullable=True),
-        sa.Column("re_entry", sa.Boolean(), nullable=True),
-        sa.Column("max_reentries", sa.Integer(), nullable=True),
-        sa.Column("min_reentry_loss_percentage", sa.Numeric(precision=5, scale=2), nullable=True),
-        sa.Column("directional", sa.Boolean(), nullable=True),
-        sa.Column("breakout_enabled", sa.Boolean(), nullable=True),
-        sa.Column("breakout_watch_type", sa.String(length=20), nullable=True),
-        sa.Column("breakout_direction", sa.String(length=10), nullable=True),
-        sa.Column("breakout_trigger_mode", sa.String(length=15), nullable=True),
-        sa.Column("breakout_trigger_value", sa.Numeric(precision=10, scale=4), nullable=True),
-        sa.Column("breakout_select_fresh_strikes", sa.Boolean(), nullable=True),
-        sa.Column("description", sa.String(length=255), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column(
-            "hedge_strike_rounding_min_distance", sa.Numeric(precision=20, scale=6), nullable=True
-        ),
-        sa.Column("oi_rank", sa.Integer(), nullable=True),
-        sa.Column("ignore_itm_strikes", sa.Boolean(), nullable=True),
-        sa.Column("lookback_minutes", sa.Integer(), nullable=True),
-        sa.Column("otm_levels", sa.Integer(), nullable=True),
-        sa.Column("no_stop_loss", sa.Boolean(), nullable=True),
-        sa.ForeignKeyConstraint(
-            ["trading_client_id"],
-            ["trading_clients.id"],
-            name=op.f("fk_strategy_config_trading_client_id"),
-            ondelete="CASCADE",
-        ),
-        sa.PrimaryKeyConstraint("id", name=op.f("pk_strategy_config")),
-    )
-    op.create_index(
-        op.f("ix_strategy_config_trading_client_id"),
-        "strategy_config",
         ["trading_client_id"],
         unique=False,
     )
@@ -1492,10 +1503,10 @@ def downgrade() -> None:
         op.f("ix_strategy_evaluation_log_trading_client_id"), table_name="strategy_evaluation_log"
     )
     op.drop_table("strategy_evaluation_log")
-    op.drop_index(op.f("ix_strategy_config_trading_client_id"), table_name="strategy_config")
-    op.drop_table("strategy_config")
     op.drop_index(op.f("ix_rms_daily_stats_trading_client_id"), table_name="rms_daily_stats")
     op.drop_table("rms_daily_stats")
+    op.drop_index(op.f("ix_rms_config_trading_client_id"), table_name="rms_config")
+    op.drop_table("rms_config")
     op.drop_index(
         op.f("ix_live_trades_archive_trading_client_id"), table_name="live_trades_archive"
     )
@@ -1534,6 +1545,7 @@ def downgrade() -> None:
     op.drop_table("strategy_rules_map")
     op.drop_table("strategy_indicator_rules")
     op.drop_table("strategy_definitions")
+    op.drop_table("strategy_config")
     op.drop_table("strategy_breakout_watches")
     op.drop_table("straddle_candles")
     op.drop_table("stock_universes")
@@ -1542,7 +1554,6 @@ def downgrade() -> None:
     op.drop_table("statutory_charges")
     op.drop_table("sl_target_policy")
     op.drop_table("rules")
-    op.drop_table("rms_config")
     op.drop_table("rms_client_state")
     op.drop_table("rms_breach_log")
     op.drop_table("products")
