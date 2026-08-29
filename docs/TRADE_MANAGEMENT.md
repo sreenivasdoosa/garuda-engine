@@ -164,7 +164,7 @@ each concern has its own field group and its own entry point.
 
 Each step ends with something that runs and tests that prove it.
 
-**Done: 1-5.** Next: 6 (trailing).
+**Done: 1-6.** Next: 7 (exit).
 
 1. ✅ **The model.** `Trade`, `TradeSignal`, `TradeState`, `TradeExitReason`, and
    the state machine. Pure domain, no I/O.
@@ -176,7 +176,7 @@ Each step ends with something that runs and tests that prove it.
    attempt caps.
 5. ✅ **Tracking.** The per-trade advance: order updates in, state transitions out,
    plus the broker order-book poll that backs it.
-6. **Trailing.** Tick-based trailing SL, trail-to-cost, and the trailing modes.
+6. ✅ **Trailing.** Tick-based trailing SL, trail-to-cost, and the trailing modes.
 7. **Exit.** Square-off queue, the worker, retry policy, attempt caps, and the
    exit reasons.
 8. **Relationships.** Hedge, pair and combo resolution, and the consequences one
@@ -227,6 +227,10 @@ be discovered as a gap.
   since the first fill is what triggers it.
 - **Strategy subscriptions.** `EntryService` takes an `is_subscribed` check
   and nothing feeds it, so subscription state is not enforced at entry.
+- **Indicator-based trailing modes.** ATR, EMA, SuperTrend and Heikin Ashi
+  all need candle history and indicators the engine does not have. A strategy
+  configured for one is refused with an alert rather than trailed some other
+  way, so the gap is loud.
 - **Market data account and per-client streams are not wired at startup.**
   The resolver, the feed and the stream manager all exist; nothing composes
   them into a running engine yet.

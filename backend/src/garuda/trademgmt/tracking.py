@@ -209,7 +209,9 @@ class TradeTracker:
             return trade.exiting_for
         if role is OrderRole.TARGET:
             return TradeExitReason.TARGET
-        if trade.protection.is_trailing and trade.protection.initial_stop_loss is not None:
+        if trade.protection.has_moved:
+            # Stopped after trailing, not at the level it started with. The
+            # two read differently on a closed trade.
             return TradeExitReason.TRAILING_STOP_LOSS
         return TradeExitReason.STOP_LOSS
 

@@ -87,6 +87,21 @@ class Protection:
             initial_stop_loss=self.initial_stop_loss or self.stop_loss,
         )
 
+    @property
+    def has_moved(self) -> bool:
+        """Whether the stop has been trailed away from where it started.
+
+        This is what tells a stop that fired at its original level from one
+        that fired after trailing -- two different outcomes an operator reads
+        differently, and the reference engine distinguished by stamping the
+        exit reason ahead of time.
+        """
+        return (
+            self.initial_stop_loss is not None
+            and self.stop_loss is not None
+            and self.stop_loss != self.initial_stop_loss
+        )
+
 
 @dataclass(frozen=True, slots=True)
 class Relationships:
@@ -219,6 +234,12 @@ class Trade:
     slice: int = 1
     #: 0 for the first entry; 1, 2, 3 for re-entries after a stop.
     re_entry_count: int = 0
+    #: The best and worst the market has been since entry. Kept on the trade
+    #: rather than in memory because trailing measures from them, and a
+    #: restart that forgot them would trail from the price at restart --
+    #: giving back everything the position had already earned.
+    high_since_entry: Money | None = None
+    low_since_entry: Money | None = None
     #: Routed to the paper broker rather than the real one. A property of the
     #: subscription, so the same strategy runs paper on one account and live on
     #: another at once.
@@ -395,6 +416,16 @@ class Trade:
         if price is None:
             raise DomainError(f"{self.id}: closing on {reason} needs an exit price")
         return self.closed(price, reason, at)
+
+    def with_price_seen(self, price: Money) -> Trade:
+        """Record a price the market traded at while this position was open."""
+        high = self.high_since_entry
+        low = self.low_since_entry
+        return replace(
+            self,
+            high_since_entry=price if high is None or price > high else high,
+            low_since_entry=price if low is None or price < low else low,
+        )
 
     def __str__(self) -> str:
         return f"{self.instrument} {self.direction} x{self.quantity} [{self.strategy}]"
