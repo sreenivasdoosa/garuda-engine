@@ -21,7 +21,7 @@ from garuda.brokers.zerodha.instruments import is_stale, parse_instruments
 from garuda.domain.exchange import Exchange
 from garuda.domain.symbol import SymbolInfo
 from garuda.marketdata.cache import CachedMaster, InstrumentCache
-from garuda.marketdata.registry import InstrumentRegistry
+from garuda.marketdata.registry import EMPTY_REGISTRY, InstrumentRegistry
 
 #: Downloads a broker's raw instrument master.
 type MasterDownloader = Callable[[], Awaitable[str]]
@@ -89,24 +89,42 @@ class InstrumentLoader:
 
 
 class InstrumentRegistryHolder:
-    """The registry the engine reads, swapped whole when a load succeeds.
+    """One instrument registry per broker, swapped whole when a load succeeds.
 
-    A holder rather than a module-level variable so a failed load cannot leave
-    the engine with a half-built index: the new registry is only published once
-    it is complete.
+    **Per broker, because each broker publishes its own master.** They cover
+    the same contracts and disagree about how to address them: the token is
+    private to each, and the trading symbol can differ for the same instrument
+    on the same exchange. One shared map would resolve the second broker's
+    orders through the first broker's identifiers.
+
+    A holder rather than module state so a failed load cannot leave the engine
+    with a half-built index: a registry is published only once it is complete,
+    and the previous one stays readable until then.
     """
 
-    def __init__(self, registry: InstrumentRegistry | None = None) -> None:
-        self._registry = registry or InstrumentRegistry()
+    def __init__(self, registries: Mapping[str, InstrumentRegistry] | None = None) -> None:
+        self._registries: dict[str, InstrumentRegistry] = dict(registries or {})
 
-    @property
-    def current(self) -> InstrumentRegistry:
-        return self._registry
+    def for_broker(self, broker: str) -> InstrumentRegistry:
+        """That broker's instruments, or an empty registry before its first load.
 
-    def publish(self, registry: InstrumentRegistry) -> None:
+        Empty rather than an error: an account can be configured before its
+        master has been downloaded, and every lookup on an empty registry
+        answers "not known", which is the truth.
+        """
+        return self._registries.get(broker, EMPTY_REGISTRY)
+
+    def publish(self, broker: str, registry: InstrumentRegistry) -> None:
         if registry.is_empty:
             raise ValueError(
-                "refusing to publish an empty instrument registry; "
+                f"refusing to publish an empty instrument registry for {broker}; "
                 "an empty master means the download failed, not that nothing is listed"
             )
-        self._registry = registry
+        self._registries[broker] = registry
+
+    @property
+    def brokers(self) -> frozenset[str]:
+        return frozenset(self._registries)
+
+    def is_loaded(self, broker: str) -> bool:
+        return broker in self._registries

@@ -40,7 +40,7 @@ from garuda.domain.enums import (
 )
 from garuda.domain.errors import DomainError
 from garuda.domain.exchange import Exchange
-from garuda.domain.instrument import Instrument, InstrumentId
+from garuda.domain.instrument import BrokerToken, Instrument, InstrumentId
 from garuda.domain.symbol import SymbolInfo
 
 #: The hour a broker's new instrument master appears, with that day's new
@@ -91,13 +91,13 @@ class InstrumentCatalogue:
     """
 
     instruments: tuple[Instrument, ...] = field(default_factory=tuple)
-    tokens: dict[InstrumentId, int] = field(default_factory=dict)
+    tokens: dict[InstrumentId, BrokerToken] = field(default_factory=dict)
     #: Rows the parser refused, with the reason. Surfaced rather than swallowed:
     #: a master that silently lost a third of its rows looks like a working
     #: master.
     skipped: tuple[tuple[str, str], ...] = field(default_factory=tuple)
 
-    def token_for(self, instrument: InstrumentId) -> int | None:
+    def token_for(self, instrument: InstrumentId) -> BrokerToken | None:
         return self.tokens.get(instrument)
 
     def __len__(self) -> int:
@@ -153,7 +153,7 @@ def parse_instruments(
         )
 
     instruments: list[Instrument] = []
-    tokens: dict[InstrumentId, int] = {}
+    tokens: dict[InstrumentId, BrokerToken] = {}
     skipped: list[tuple[str, str]] = []
 
     known_symbols = symbols or {}
@@ -168,7 +168,9 @@ def parse_instruments(
             continue
         instrument, token = parsed
         instruments.append(instrument)
-        tokens[instrument.id] = token
+        # Kite numbers its instruments; stored as text because the engine
+        # treats a token as opaque and this adapter converts back on the wire.
+        tokens[instrument.id] = str(token)
 
     return InstrumentCatalogue(
         instruments=tuple(instruments), tokens=tokens, skipped=tuple(skipped)

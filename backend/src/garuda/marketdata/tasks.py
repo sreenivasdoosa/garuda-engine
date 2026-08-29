@@ -43,7 +43,7 @@ def register_instrument_load(
 
     async def load(context: PhaseContext) -> None:
         result = await loader.load(context.now)
-        holder.publish(result.registry)
+        holder.publish(broker, result.registry)
         logger.info(
             "instrument master loaded: broker=%s instruments=%d downloaded=%s "
             "cached_at=%s venue=%s day=%s",

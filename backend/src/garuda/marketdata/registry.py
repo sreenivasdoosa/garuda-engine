@@ -20,7 +20,7 @@ from decimal import Decimal
 
 from garuda.domain.enums import InstrumentKind, OptionType
 from garuda.domain.errors import DomainError
-from garuda.domain.instrument import Instrument, InstrumentId
+from garuda.domain.instrument import BrokerToken, Instrument, InstrumentId
 
 
 @dataclass(frozen=True)
@@ -40,9 +40,9 @@ class InstrumentRegistry:
     #: tokens differ between brokers, and so do trading symbols for the same
     #: contract. Deliberately not built ahead of a second broker's master to
     #: shape it against.
-    tokens: dict[InstrumentId, int] = field(default_factory=dict)
+    tokens: dict[InstrumentId, BrokerToken] = field(default_factory=dict)
     _by_symbol: dict[tuple[str, str], Instrument] = field(default_factory=dict)
-    _by_token: dict[int, Instrument] = field(default_factory=dict)
+    _by_token: dict[BrokerToken, Instrument] = field(default_factory=dict)
     _options: dict[tuple[InstrumentId, date], list[Instrument]] = field(default_factory=dict)
     _futures: dict[InstrumentId, list[Instrument]] = field(default_factory=dict)
     _expiries: dict[InstrumentId, list[date]] = field(default_factory=dict)
@@ -51,7 +51,7 @@ class InstrumentRegistry:
     def build(
         cls,
         instruments: Iterable[Instrument],
-        tokens: dict[InstrumentId, int] | None = None,
+        tokens: dict[InstrumentId, BrokerToken] | None = None,
     ) -> InstrumentRegistry:
         by_id: dict[InstrumentId, Instrument] = {}
         by_symbol: dict[tuple[str, str], Instrument] = {}
@@ -108,10 +108,10 @@ class InstrumentRegistry:
         """What a broker calls it, on the venue it trades."""
         return self._by_symbol.get((exchange, symbol))
 
-    def token_for(self, instrument_id: InstrumentId) -> int | None:
+    def token_for(self, instrument_id: InstrumentId) -> BrokerToken | None:
         return self.tokens.get(instrument_id)
 
-    def by_token(self, token: int) -> Instrument | None:
+    def by_token(self, token: BrokerToken) -> Instrument | None:
         """What a broker token stands for. The direction a tick arrives in."""
         return self._by_token.get(token)
 

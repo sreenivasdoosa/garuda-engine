@@ -32,6 +32,17 @@ from garuda.domain.money import Currency, Money, Numeric, to_decimal
 DERIVATIVE_KINDS: Final = frozenset({InstrumentKind.FUTURE, InstrumentKind.OPTION})
 
 
+#: A broker's own handle on an instrument, as text.
+#:
+#: Brokers do not agree on the shape: Zerodha numbers them, and an XTS-style
+#: broker may use a string. The engine never computes on a token -- it looks
+#: one up, sends it back, and matches it -- so the widest honest type is text,
+#: and each adapter converts at its own boundary where it already translates
+#: everything else. Typing it as a number would make the first string-token
+#: broker a change to every signature that touches one.
+type BrokerToken = str
+
+
 @dataclass(frozen=True, slots=True)
 class InstrumentId:
     """A canonical, engine-owned instrument identifier."""

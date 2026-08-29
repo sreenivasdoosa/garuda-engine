@@ -109,7 +109,7 @@ class TestRegistryLookups:
         self,
         registry: InstrumentRegistry,
     ) -> None:
-        assert registry.token_for(InstrumentId("NSE:RELIANCE")) == 738561
+        assert registry.token_for(InstrumentId("NSE:RELIANCE")) == "738561"
 
 
 class TestExpiries:
@@ -328,21 +328,21 @@ class TestRegistryHolder:
     def test_it_starts_empty_rather_than_absent(self) -> None:
         """A lookup before day-init should fail as a missing instrument."""
         holder = InstrumentRegistryHolder()
-        assert holder.current.is_empty
-        assert holder.current.get(NIFTY) is None
+        assert holder.for_broker("zerodha").is_empty
+        assert holder.for_broker("zerodha").get(NIFTY) is None
 
     def test_publishing_swaps_the_whole_registry(self, registry: InstrumentRegistry) -> None:
         holder = InstrumentRegistryHolder()
-        holder.publish(registry)
-        assert len(holder.current) == 9
+        holder.publish("zerodha", registry)
+        assert len(holder.for_broker("zerodha")) == 9
 
     def test_an_empty_registry_is_refused(self, registry: InstrumentRegistry) -> None:
         """An empty master means the download failed."""
         holder = InstrumentRegistryHolder()
-        holder.publish(registry)
+        holder.publish("zerodha", registry)
         with pytest.raises(ValueError, match="refusing to publish an empty"):
-            holder.publish(InstrumentRegistry())
-        assert len(holder.current) == 9, "the previous registry is untouched"
+            holder.publish("zerodha", InstrumentRegistry())
+        assert len(holder.for_broker("zerodha")) == 9, "the previous registry is untouched"
 
 
 class TestDayInitWiring:
@@ -379,7 +379,7 @@ class TestDayInitWiring:
     ) -> None:
         calls: list[int] = []
         registry, holder, clock = self.parts(tmp_path, venues, symbols, calls)
-        assert holder.current.is_empty
+        assert holder.for_broker("zerodha").is_empty
 
         runner = EngineRunner(
             exchanges=[nse], clock=clock, registry=registry, recorder=InMemoryPhaseRecorder()
@@ -387,7 +387,7 @@ class TestDayInitWiring:
         result = await runner.run_once()
 
         assert DayPhase.DAY_INIT in {instant.phase for instant in result.ran}
-        assert len(holder.current) == 9
+        assert len(holder.for_broker("zerodha")) == 9
         assert calls == [1]
 
     async def test_a_download_failure_leaves_day_init_to_be_retried(
@@ -424,11 +424,11 @@ class TestDayInitWiring:
 
         first = await runner.run_once()
         assert [instant.phase for instant, _ in first.failed] == [DayPhase.DAY_INIT]
-        assert holder.current.is_empty
+        assert holder.for_broker("zerodha").is_empty
 
         second = await runner.run_once()
         assert DayPhase.DAY_INIT in {instant.phase for instant in second.ran}
-        assert len(holder.current) == 9
+        assert len(holder.for_broker("zerodha")) == 9
 
     async def test_a_second_venue_reuses_the_days_master(
         self,
@@ -458,10 +458,68 @@ class TestTokenLookup:
     def test_a_token_resolves_back_to_its_instrument(self, registry: InstrumentRegistry) -> None:
         """The direction a tick arrives in: the wire carries a token, not a name."""
         token = registry.token_for(InstrumentId("NSE:RELIANCE"))
-        assert token == 738561
+        assert token == "738561"
         found = registry.by_token(token)
         assert found is not None
         assert found.id == InstrumentId("NSE:RELIANCE")
 
     def test_an_unknown_token_is_none(self, registry: InstrumentRegistry) -> None:
-        assert registry.by_token(999999) is None
+        assert registry.by_token("999999") is None
+
+
+class TestOneRegistryPerBroker:
+    """Each broker publishes its own master, and they disagree about how to
+    address the same contract."""
+
+    def test_a_brokers_registry_is_its_own(self, registry: InstrumentRegistry) -> None:
+        holder = InstrumentRegistryHolder()
+        holder.publish("zerodha", registry)
+        assert len(holder.for_broker("zerodha")) == 9
+        assert holder.for_broker("fyers").is_empty
+
+    def test_two_brokers_keep_separate_tokens_for_one_instrument(
+        self, venues: Venues, symbols: Symbols
+    ) -> None:
+        """The token is private to a broker. One shared map would send the
+        second broker's orders under the first broker's identifiers."""
+        from garuda.brokers.zerodha.instruments import parse_instruments
+
+        catalogue = parse_instruments(FULL_MASTER, venues, symbols)
+        zerodha = InstrumentRegistry.build(catalogue.instruments, catalogue.tokens)
+        elsewhere = InstrumentRegistry.build(
+            catalogue.instruments,
+            {instrument_id: f"F{token}" for instrument_id, token in catalogue.tokens.items()},
+        )
+
+        holder = InstrumentRegistryHolder()
+        holder.publish("zerodha", zerodha)
+        holder.publish("fyers", elsewhere)
+
+        reliance = InstrumentId("NSE:RELIANCE")
+        assert holder.for_broker("zerodha").token_for(reliance) == "738561"
+        assert holder.for_broker("fyers").token_for(reliance) == "F738561"
+
+    def test_an_unloaded_broker_answers_not_known_rather_than_failing(self) -> None:
+        """An account can be configured before its master is downloaded."""
+        holder = InstrumentRegistryHolder()
+        assert holder.for_broker("dhan").token_for(InstrumentId("NSE:RELIANCE")) is None
+        assert not holder.is_loaded("dhan")
+
+    def test_a_token_is_opaque_text_because_brokers_disagree_on_its_shape(
+        self, venues: Venues, symbols: Symbols
+    ) -> None:
+        """Zerodha numbers its instruments; an XTS-style broker may not. The
+        engine never computes on one, so text is the honest type."""
+        from garuda.brokers.zerodha.instruments import parse_instruments
+
+        catalogue = parse_instruments(FULL_MASTER, venues, symbols)
+        token = catalogue.token_for(InstrumentId("NSE:RELIANCE"))
+        assert isinstance(token, str)
+
+    def test_publishing_replaces_only_that_brokers_registry(
+        self, registry: InstrumentRegistry
+    ) -> None:
+        holder = InstrumentRegistryHolder()
+        holder.publish("zerodha", registry)
+        holder.publish("fyers", registry)
+        assert holder.brokers == frozenset({"zerodha", "fyers"})

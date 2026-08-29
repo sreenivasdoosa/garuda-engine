@@ -182,7 +182,7 @@ class TestCalendarSpreadGuard:
 class TestTokens:
     def test_the_broker_token_is_kept_beside_the_instrument(self, venues):
         catalogue = parse_instruments(csv_of("equity"), venues)
-        assert catalogue.token_for(InstrumentId("NSE:RELIANCE")) == 738561
+        assert catalogue.token_for(InstrumentId("NSE:RELIANCE")) == "738561"
 
     def test_the_instrument_itself_carries_no_broker_token(self, venues):
         """Or the same instrument on two brokers becomes two instruments."""

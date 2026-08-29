@@ -63,7 +63,7 @@ def ltp_frame(token: int, paise: int) -> bytes:
 def registry(nifty_call: Instrument, reliance: Instrument) -> InstrumentRegistry:
     return InstrumentRegistry.build(
         [nifty_call, reliance],
-        {nifty_call.id: CALL_TOKEN, reliance.id: EQUITY_TOKEN},
+        {nifty_call.id: str(CALL_TOKEN), reliance.id: str(EQUITY_TOKEN)},
     )
 
 
@@ -174,7 +174,7 @@ class TestSubscribing:
             for i in range(MAX_SUBSCRIPTIONS + 1)
         ]
         registry = InstrumentRegistry.build(
-            many, {instrument.id: i + 1 for i, instrument in enumerate(many)}
+            many, {instrument.id: str(i + 1) for i, instrument in enumerate(many)}
         )
         connection = FakeConnection()
         subject = feed(registry, connection)

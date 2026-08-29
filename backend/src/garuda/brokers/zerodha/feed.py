@@ -129,6 +129,13 @@ class ZerodhaFeed:
             await self._send({"a": "unsubscribe", "v": tokens})
 
     def _tokens_for(self, instruments: Sequence[InstrumentId]) -> list[int]:
+        """The tokens Kite wants, as numbers.
+
+        The engine holds a token as opaque text because brokers disagree about
+        its shape -- Kite numbers them, an XTS-style broker may not. Turning it
+        back into a number is this adapter's business, done here where every
+        other translation happens.
+        """
         registry = self._registry()
         tokens: list[int] = []
         for instrument in instruments:
@@ -138,8 +145,15 @@ class ZerodhaFeed:
                     "%s has no broker token in today's master; not subscribed", instrument
                 )
                 continue
-            self._subscribed[instrument] = token
-            tokens.append(token)
+            try:
+                numeric = int(token)
+            except ValueError:
+                logger.error(
+                    "%s has a non-numeric Kite token %r; not subscribed", instrument, token
+                )
+                continue
+            self._subscribed[instrument] = numeric
+            tokens.append(numeric)
         return tokens
 
     async def _send(self, message: dict[str, object]) -> None:
@@ -179,7 +193,8 @@ class ZerodhaFeed:
             return self._decode_text(message)
 
         registry = self._registry()
-        batch = parse_frame(message, registry.by_token, self._clock.now())
+        # The wire carries numbers; the registry is keyed by the opaque form.
+        batch = parse_frame(message, lambda token: registry.by_token(str(token)), self._clock.now())
         if batch.malformed:
             return FeedProblem("; ".join(batch.malformed), self._clock.now())
         if batch.unresolved:
