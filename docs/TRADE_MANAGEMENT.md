@@ -36,11 +36,30 @@ TradeProcessor                  one thread per partition of accounts
 
 UserBrokerTradeManager          one per account
   └── the entire trade lifecycle for that account
+                                (ported as TradingClientManager -- see 2a)
 ```
 
 The important structural fact: **nothing schedules trade management except the
 processor loop.** There is no reconciler service and no second timer. The poll
 is a method, and the loop is its only caller.
+
+## 2a. Names in the port
+
+The identity change -- `username + broker` becomes one trading client -- makes
+the reference engine's names wrong rather than merely long. The mapping:
+
+| Reference engine | Garuda | Why |
+|---|---|---|
+| `UserBrokerTradeManager` | `TradingClientManager` | One per account; owns that account's whole trade lifecycle |
+| `TradeManager` | `TradeManager` | Unchanged: it owns the client managers and the cross-account view |
+| `TradeProcessor` | `TradeLoop` | It is a loop, not a pool of threads over a partition |
+| `UserBrokerKey` | *(gone)* | A `TradingClientId` is already the key |
+
+`TradingClientManager` reads two ways -- "the manager for a trading client"
+and "the thing that manages trading clients" -- so the second meaning is
+deliberately given a different word: the account records themselves are
+created and edited through a **registry**, never a manager. Nothing in the
+codebase called a manager does CRUD on accounts.
 
 ## 3. The lifecycle
 
