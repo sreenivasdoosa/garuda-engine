@@ -1,8 +1,8 @@
-"""initial schema — every table the engine has
+"""initial schema
 
-Revision ID: e9d08ecd021a
+Revision ID: c58ea94aa251
 Revises:
-Create Date: 2026-08-29 00:12:55.658055
+Create Date: 2026-08-29 07:30:51.708467
 
 """
 
@@ -294,12 +294,12 @@ def upgrade() -> None:
         sa.Column("post_market_window_minutes", sa.Integer(), nullable=True),
         sa.Column("positional_squareoff_minutes_before_close", sa.Integer(), nullable=True),
         sa.Column("report_minutes_after_close", sa.Integer(), nullable=True),
-        sa.Column("billing_minutes_after_close", sa.Integer(), nullable=True),
         sa.Column("history_cache_enabled", sa.Boolean(), nullable=True),
         sa.Column("weekend_days", sa.String(length=50), nullable=True),
         sa.Column("is_active", sa.Boolean(), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("day_init_minutes_before_market_open", sa.Integer(), nullable=True),
         sa.Column("login_minutes_before_market_open", sa.Integer(), nullable=True),
         sa.Column("algo_start_minutes_before_market_open", sa.Integer(), nullable=True),
         sa.PrimaryKeyConstraint("exchange_code", name=op.f("pk_exchanges")),

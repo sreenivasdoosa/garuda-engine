@@ -366,6 +366,73 @@ the clock, which is why there is no APScheduler. A lint rule bans `datetime.now(
 
 ---
 
+## 7.5 The day, and the process that never stops
+
+The engine runs continuously. It is not started before the open and stopped
+after the close: it comes up, and from then on each venue's day begins and
+ends underneath it.
+
+### Phases are venue-relative, never wall-clock
+
+The reference engine runs one worker loop that initialises "when the hour is at
+least 6" and closes the day "at 23:45". Those are Indian hours written into
+code, and they do not survive a second timezone: at 06:00 IST a US venue is
+mid-session, and at 23:45 IST an MCX evening session has only just closed.
+
+So Garuda derives **every** phase from the venue's own calendar and its own
+offsets, in the venue's own timezone, on the venue's own trading day:
+
+| Phase | When |
+|---|---|
+| `DAY_INIT` | first session open − `day_init_lead` |
+| `LOGIN_WINDOW` | first session open − `login_lead` |
+| `ALGO_START` | first session open − `algo_start_lead` |
+| `PRE_OPEN` | the venue's pre-market start |
+| `SESSION_OPEN` | each session's open |
+| `INTRADAY_SQUARE_OFF` | last session close − `intraday_square_off_lead` |
+| `SESSION_CLOSE` | each session's close |
+| `REPORTS` | last session close + `report_lag` |
+| `EOD` | last session close + `post_market_window` |
+
+The offsets are columns on the exchange, so adding CME means adding a row, not
+an `if`. NSE's day begins at 06:15 IST and MCX's ends after 23:30 IST because
+their rows say so, not because the code knows about India.
+
+### Venues run independently
+
+Two venues are routinely in different phases at the same moment: MCX is still
+trading while NSE is in EOD, and a US venue's day opens while both are closed.
+There is therefore no global "the market is open" and no global day boundary —
+each venue advances through its own phases, and a task is registered against a
+venue rather than against the process.
+
+Work that belongs to no venue — retention pruning, backups, log rotation — is
+scheduled separately, on a system schedule, and preferably while nothing is
+trading.
+
+### Tasks are idempotent and recorded
+
+Each task records the trading day it last completed for its venue. Two
+consequences:
+
+* **A restart does not repeat the day.** The reference engine keeps its
+  last-run date in memory, so restarting after EOD re-runs EOD. Squaring off
+  twice is not harmless.
+* **A missed phase is caught up rather than skipped.** A process that was down
+  at 06:15 runs `DAY_INIT` when it comes up at 07:00, because the record says
+  today's has not run — not because a timer happened to fire.
+
+That makes the scheduler a *reconciler* rather than a timer: it repeatedly asks
+"which phases are due for which venue and have not run", which is the same
+question after a crash as before one.
+
+### The clock is still the clock
+
+Every instant comes from the `Clock` protocol, so a whole trading day —
+day-init, session, square-off, EOD — replays in seconds against a
+`ReplayClock`. Testing expiry-day behaviour does not require waiting for an
+expiry.
+
 ## 8. Market data (in-process)
 
 ### 8.1 Feeds

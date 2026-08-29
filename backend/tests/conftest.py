@@ -52,6 +52,7 @@ def nse_calendar() -> TradingCalendar:
         weekly={d: (Session(time(9, 15), time(15, 30)),) for d in WEEKDAYS},
         holidays=frozenset({NSE_HOLIDAY, MUHURAT_DAY}),
         special_sessions={MUHURAT_DAY: (Session(time(18, 15), time(19, 15)),)},
+        pre_open=Session(time(9, 0), time(9, 8)),
     )
 
 

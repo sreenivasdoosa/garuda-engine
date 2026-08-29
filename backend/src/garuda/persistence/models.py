@@ -210,12 +210,16 @@ class ExchangesRow(Base):
         Integer, nullable=True
     )
     report_minutes_after_close: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    billing_minutes_after_close: Mapped[int | None] = mapped_column(Integer, nullable=True)
     history_cache_enabled: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     weekend_days: Mapped[str | None] = mapped_column(String(50), nullable=True)
     is_active: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     created_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     updated_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    #: How long before the open the day is prepared — caches, instrument
+    #: master, corporate actions. Every phase of a venue's day is an offset
+    #: from its own open or close, so a venue in another timezone needs a row
+    #: rather than a code change.
+    day_init_minutes_before_market_open: Mapped[int | None] = mapped_column(Integer, nullable=True)
     login_minutes_before_market_open: Mapped[int | None] = mapped_column(Integer, nullable=True)
     algo_start_minutes_before_market_open: Mapped[int | None] = mapped_column(
         Integer, nullable=True

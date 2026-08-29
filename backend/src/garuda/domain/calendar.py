@@ -101,6 +101,11 @@ class TradingCalendar:
     weekly: Mapping[int, tuple[Session, ...]]
     holidays: frozenset[date] = field(default_factory=frozenset)
     special_sessions: Mapping[date, tuple[Session, ...]] = field(default_factory=dict)
+    #: The pre-open window, where the venue has one. Orders behave differently
+    #: in it -- NSE runs an auction between 09:00 and 09:08 -- so it is a
+    #: distinct window rather than an early part of the session. Venues without
+    #: one leave it None.
+    pre_open: Session | None = None
 
     # -- schedule -----------------------------------------------------------
 
@@ -120,6 +125,12 @@ class TradingCalendar:
         """``day``'s sessions resolved to instants, in chronological order."""
         windows = [s.window_for(day, self.timezone) for s in self.sessions_on(day)]
         return tuple(sorted(windows, key=lambda w: w.start))
+
+    def pre_open_window_on(self, day: date) -> SessionWindow | None:
+        """The pre-open auction on a trading day, if the venue runs one."""
+        if self.pre_open is None or not self.is_trading_day(day):
+            return None
+        return self.pre_open.window_for(day, self.timezone)
 
     def is_open(self, instant: datetime) -> bool:
         require_aware(instant)
