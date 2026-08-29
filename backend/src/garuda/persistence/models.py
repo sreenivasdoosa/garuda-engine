@@ -454,7 +454,13 @@ class StrategyTemplatesRow(Base):
 
 
 class StrategyDefinitionsRow(Base):
-    """STRATEGY_DEFINITIONS in the reference engine."""
+    """STRATEGY_DEFINITIONS in the reference engine.
+
+    Four of its columns are gone with the features they served. `username`,
+    `scope` and `is_public` describe who owns a strategy and who may see it,
+    which one operator does not need — and a visibility flag nothing enforces
+    is worse than none, because it reads like a guarantee. `is_mock` marked a
+    strategy as belonging to a mock session, and mock trading is not ported."""
 
     __tablename__ = "strategy_definitions"
 
@@ -495,12 +501,8 @@ class StrategyDefinitionsRow(Base):
     status: Mapped[str] = mapped_column(String(20))
     catch_up_missed_tranches: Mapped[bool] = mapped_column(Boolean)
     adaptive_tranches_enabled: Mapped[bool] = mapped_column(Boolean)
-    username: Mapped[str] = mapped_column(String(100))
     created_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     updated_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    is_public: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
-    is_mock: Mapped[bool] = mapped_column(Boolean)
-    scope: Mapped[str | None] = mapped_column(String(10), nullable=True)
     periodic_interval_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
     periodic_offset_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
     hedge_replace_enabled: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
@@ -659,9 +661,18 @@ class StrategySymbolSubscriptionsRow(Base):
 
 
 class StrategyBreakoutWatchesRow(Base):
-    """STRATEGY_BREAKOUT_WATCHES in the reference engine."""
+    """STRATEGY_BREAKOUT_WATCHES in the reference engine.
+
+    Watched for one account.
+    """
 
     __tablename__ = "strategy_breakout_watches"
+    trading_client_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("trading_clients.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     watch_type: Mapped[str] = mapped_column(String(20))
@@ -674,8 +685,6 @@ class StrategyBreakoutWatchesRow(Base):
     trigger_mode: Mapped[str] = mapped_column(String(15))
     trigger_value: Mapped[Decimal] = mapped_column(Numeric(10, 4))
     strategy_name: Mapped[str] = mapped_column(String(100))
-    username: Mapped[str] = mapped_column(String(100))
-    broker_name: Mapped[str] = mapped_column(String(50))
     tranch_number: Mapped[int] = mapped_column(Integer)
     group_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
     valid_till: Mapped[dt.time | None] = mapped_column(Time, nullable=True)
@@ -1017,14 +1026,21 @@ class TradesRow(Base):
 
 
 class TradeLogRow(Base):
-    """TRADE_LOG in the reference engine."""
+    """TRADE_LOG in the reference engine.
+
+    Every entry belongs to one account.
+    """
 
     __tablename__ = "trade_log"
+    trading_client_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("trading_clients.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     trade_id: Mapped[str] = mapped_column(String(64))
-    username: Mapped[str] = mapped_column(String(64))
-    broker: Mapped[str] = mapped_column(String(32))
     strategy: Mapped[str | None] = mapped_column(String(128), nullable=True)
     trading_symbol: Mapped[str | None] = mapped_column(String(64), nullable=True)
     hedge_correlation_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
@@ -1061,7 +1077,6 @@ class LiveTradesRow(Base):
     strategy_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
     trading_symbol: Mapped[str | None] = mapped_column(String(50), nullable=True)
     signal_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    is_mock: Mapped[bool] = mapped_column(Boolean)
     is_paper_trading: Mapped[bool] = mapped_column(Boolean)
     start_timestamp: Mapped[dt.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -1097,7 +1112,6 @@ class LiveTradesArchiveRow(Base):
     strategy_name: Mapped[str | None] = mapped_column(String(64), nullable=True)
     trading_symbol: Mapped[str | None] = mapped_column(String(50), nullable=True)
     signal_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    is_mock: Mapped[bool] = mapped_column(Boolean)
     is_paper_trading: Mapped[bool] = mapped_column(Boolean)
     start_timestamp: Mapped[dt.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -1135,7 +1149,6 @@ class LiveTradeSignalsRow(Base):
     direction: Mapped[str | None] = mapped_column(String(10), nullable=True)
     is_triggered: Mapped[bool] = mapped_column(Boolean)
     is_disabled: Mapped[bool] = mapped_column(Boolean)
-    is_mock: Mapped[bool] = mapped_column(Boolean)
     is_paper_trading: Mapped[bool] = mapped_column(Boolean)
     signal_timestamp: Mapped[dt.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -1167,7 +1180,6 @@ class LiveTradeSignalsArchiveRow(Base):
     direction: Mapped[str | None] = mapped_column(String(10), nullable=True)
     is_triggered: Mapped[bool] = mapped_column(Boolean)
     is_disabled: Mapped[bool] = mapped_column(Boolean)
-    is_mock: Mapped[bool] = mapped_column(Boolean)
     is_paper_trading: Mapped[bool] = mapped_column(Boolean)
     signal_timestamp: Mapped[dt.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -1317,9 +1329,19 @@ class RmsConfigRow(Base):
 
 
 class RmsBreachLogRow(Base):
-    """RMS_BREACH_LOG in the reference engine."""
+    """RMS_BREACH_LOG in the reference engine.
+
+    Nullable: a breach can be raised by a check with no account in scope,
+    such as a venue-wide volatility circuit.
+    """
 
     __tablename__ = "rms_breach_log"
+    trading_client_id: Mapped[str | None] = mapped_column(
+        String(64),
+        ForeignKey("trading_clients.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     breach_time: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -1336,13 +1358,24 @@ class RmsBreachLogRow(Base):
 
 
 class RmsClientStateRow(Base):
-    """RMS_USER_STATE in the reference engine."""
+    """RMS_USER_STATE in the reference engine.
+
+    One row per account per trading day.
+    """
 
     __tablename__ = "rms_client_state"
+    __table_args__ = (
+        UniqueConstraint("trading_client_id", "trading_date", name="uq_rms_client_state_day"),
+    )
+
+    trading_client_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("trading_clients.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    username: Mapped[str] = mapped_column(String(50))
-    broker: Mapped[str] = mapped_column(String(50))
     trading_date: Mapped[dt.date] = mapped_column(Date)
     deployed_capital: Mapped[Decimal | None] = mapped_column(Numeric(15, 2), nullable=True)
     used_margin: Mapped[Decimal | None] = mapped_column(Numeric(15, 2), nullable=True)
@@ -1536,7 +1569,6 @@ class AggregatedPnlSnapshotsRow(Base):
     total_algo_pnl: Mapped[Decimal | None] = mapped_column(Numeric(20, 6), nullable=True)
     total_broker_pnl: Mapped[Decimal | None] = mapped_column(Numeric(20, 6), nullable=True)
     total_capital: Mapped[Decimal | None] = mapped_column(Numeric(20, 6), nullable=True)
-    total_external_capital: Mapped[Decimal | None] = mapped_column(Numeric(20, 6), nullable=True)
     total_margin: Mapped[Decimal | None] = mapped_column(Numeric(20, 6), nullable=True)
     total_utilized_margin: Mapped[Decimal | None] = mapped_column(Numeric(20, 6), nullable=True)
     created_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -1544,13 +1576,29 @@ class AggregatedPnlSnapshotsRow(Base):
 
 
 class ClientPnlSnapshotsRow(Base):
-    """USER_PNL_SNAPSHOT in the reference engine."""
+    """USER_PNL_SNAPSHOT in the reference engine.
+
+    One row per account per snapshot, live and paper kept apart.
+    """
 
     __tablename__ = "client_pnl_snapshots"
+    __table_args__ = (
+        UniqueConstraint(
+            "trading_client_id",
+            "snapshot_timestamp",
+            "is_paper_trading",
+            name="uq_client_pnl_snapshots_at",
+        ),
+    )
+
+    trading_client_id: Mapped[str] = mapped_column(
+        String(64),
+        ForeignKey("trading_clients.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    username: Mapped[str] = mapped_column(String(100))
-    broker: Mapped[str] = mapped_column(String(50))
     snapshot_date: Mapped[dt.date] = mapped_column(Date)
     snapshot_timestamp: Mapped[int] = mapped_column(BigInteger)
     algo_pnl: Mapped[Decimal | None] = mapped_column(Numeric(20, 6), nullable=True)

@@ -11,6 +11,7 @@ import datetime as dt
 import pytest
 
 from garuda.persistence import (
+    Base,
     Page,
     RowNotFoundError,
     UnitOfWork,
@@ -310,3 +311,82 @@ class TestSpecificFinders:
         async with UnitOfWork(session_factory) as uow:
             indices = await uow.repositories.symbols.indices()
         assert [row.symbol for row in indices] == ["NIFTY"]
+
+
+class TestAccountIdentityIsOneColumn:
+    """The reference engine keys accounts on a user and a broker, in four
+    different spellings. Garuda has one column, and this is what stops the
+    other three creeping back in."""
+
+    def test_no_table_carries_a_username(self):
+        offenders = [
+            name
+            for name, table in Base.metadata.tables.items()
+            if "username" in table.columns or "user_name" in table.columns
+        ]
+        assert offenders == []
+
+    def test_no_account_table_also_carries_a_broker(self):
+        """A broker column beside trading_client_id means two sources for the
+        same fact, and they disagree the day one is updated."""
+        offenders = [
+            name
+            for name, table in Base.metadata.tables.items()
+            if "trading_client_id" in table.columns
+            and ({"broker", "broker_name"} & set(table.columns.keys()))
+        ]
+        assert offenders == []
+
+    def test_every_account_reference_points_at_trading_clients(self):
+        for name, table in Base.metadata.tables.items():
+            column = table.columns.get("trading_client_id")
+            if column is None:
+                continue
+            targets = {fk.column.table.name for fk in column.foreign_keys}
+            assert targets == {"trading_clients"}, name
+
+    async def test_an_account_reference_is_enforced(self, session_factory):
+        """Not merely named the same — the database refuses an unknown one."""
+        from sqlalchemy.exc import IntegrityError
+
+        async def orphan() -> None:
+            async with UnitOfWork(session_factory) as uow:
+                await uow.repositories.client_capital.upsert(
+                    {"trading_client_id": "nobody", "date": dt.date(2026, 8, 29)}
+                )
+
+        with pytest.raises(IntegrityError):
+            await orphan()
+
+
+class TestDroppedFeaturesLeftNoColumns:
+    """A column for a feature that does not exist is how the feature comes
+    back: someone reads it, believes it means something, and builds on it."""
+
+    def test_no_table_mentions_mock_trading(self):
+        self.assert_no_column_matching(r"mock")
+
+    def test_no_table_carries_strategy_sharing(self):
+        """A visibility flag nothing enforces reads like a guarantee."""
+        self.assert_no_column_matching(r"^(is_public|scope|shared|visibility)$")
+
+    def test_no_table_carries_external_capital(self):
+        self.assert_no_column_matching(r"external")
+
+    def test_no_table_carries_licensing(self):
+        self.assert_no_column_matching(r"(license|licence|seat_assigned)")
+
+    def test_no_table_carries_auto_login_credentials(self):
+        self.assert_no_column_matching(r"(totp|client_password|client_pin|pan_or_dob|auto_login)")
+
+    @staticmethod
+    def assert_no_column_matching(pattern: str) -> None:
+        import re
+
+        offenders = [
+            f"{name}.{column}"
+            for name, table in Base.metadata.tables.items()
+            for column in list(table.columns.keys())
+            if re.search(pattern, column)
+        ]
+        assert offenders == []

@@ -1,8 +1,8 @@
 """initial schema
 
-Revision ID: 4559d5b0a1b2
+Revision ID: ebae222b7841
 Revises:
-Create Date: 2026-08-29 08:22:39.657883
+Create Date: 2026-08-29 08:29:10.788996
 
 """
 
@@ -30,7 +30,6 @@ def upgrade() -> None:
         sa.Column("total_algo_pnl", sa.Numeric(precision=20, scale=6), nullable=True),
         sa.Column("total_broker_pnl", sa.Numeric(precision=20, scale=6), nullable=True),
         sa.Column("total_capital", sa.Numeric(precision=20, scale=6), nullable=True),
-        sa.Column("total_external_capital", sa.Numeric(precision=20, scale=6), nullable=True),
         sa.Column("total_margin", sa.Numeric(precision=20, scale=6), nullable=True),
         sa.Column("total_utilized_margin", sa.Numeric(precision=20, scale=6), nullable=True),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=True),
@@ -173,22 +172,6 @@ def upgrade() -> None:
         sa.Column("iosocket_version", sa.String(length=10), nullable=True),
         sa.Column("mtf_interest_rate_per_annum", sa.Numeric(precision=20, scale=6), nullable=False),
         sa.PrimaryKeyConstraint("broker_name", name=op.f("pk_brokers")),
-    )
-    op.create_table(
-        "client_pnl_snapshots",
-        sa.Column("id", sa.BigInteger(), nullable=False),
-        sa.Column("username", sa.String(length=100), nullable=False),
-        sa.Column("broker", sa.String(length=50), nullable=False),
-        sa.Column("snapshot_date", sa.Date(), nullable=False),
-        sa.Column("snapshot_timestamp", sa.BigInteger(), nullable=False),
-        sa.Column("algo_pnl", sa.Numeric(precision=20, scale=6), nullable=True),
-        sa.Column("broker_pnl", sa.Numeric(precision=20, scale=6), nullable=True),
-        sa.Column("capital", sa.Numeric(precision=20, scale=6), nullable=True),
-        sa.Column("total_margin", sa.Numeric(precision=20, scale=6), nullable=True),
-        sa.Column("utilized_margin", sa.Numeric(precision=20, scale=6), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("is_paper_trading", sa.Boolean(), nullable=True),
-        sa.PrimaryKeyConstraint("id", name=op.f("pk_client_pnl_snapshots")),
     )
     op.create_table(
         "corporate_actions",
@@ -389,49 +372,6 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("product", name=op.f("pk_products")),
     )
     op.create_table(
-        "rms_breach_log",
-        sa.Column("id", sa.BigInteger(), nullable=False),
-        sa.Column("breach_time", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("strategy_name", sa.String(length=100), nullable=True),
-        sa.Column("trading_symbol", sa.String(length=100), nullable=True),
-        sa.Column("exchange", sa.String(length=10), nullable=True),
-        sa.Column("breach_type", sa.String(length=50), nullable=True),
-        sa.Column("breach_category", sa.String(length=20), nullable=True),
-        sa.Column("breach_details", sa.Text(), nullable=True),
-        sa.Column("action_taken", sa.String(length=50), nullable=True),
-        sa.Column("current_value", sa.String(length=50), nullable=True),
-        sa.Column("limit_value", sa.String(length=50), nullable=True),
-        sa.Column("severity", sa.Integer(), nullable=True),
-        sa.PrimaryKeyConstraint("id", name=op.f("pk_rms_breach_log")),
-    )
-    op.create_table(
-        "rms_client_state",
-        sa.Column("id", sa.BigInteger(), nullable=False),
-        sa.Column("username", sa.String(length=50), nullable=False),
-        sa.Column("broker", sa.String(length=50), nullable=False),
-        sa.Column("trading_date", sa.Date(), nullable=False),
-        sa.Column("deployed_capital", sa.Numeric(precision=15, scale=2), nullable=True),
-        sa.Column("used_margin", sa.Numeric(precision=15, scale=2), nullable=True),
-        sa.Column("available_margin", sa.Numeric(precision=15, scale=2), nullable=True),
-        sa.Column("peak_margin_used", sa.Numeric(precision=15, scale=2), nullable=True),
-        sa.Column("realized_pnl", sa.Numeric(precision=15, scale=2), nullable=True),
-        sa.Column("unrealized_pnl", sa.Numeric(precision=15, scale=2), nullable=True),
-        sa.Column("total_pnl", sa.Numeric(precision=15, scale=2), nullable=True),
-        sa.Column("peak_pnl", sa.Numeric(precision=15, scale=2), nullable=True),
-        sa.Column("drawdown", sa.Numeric(precision=15, scale=2), nullable=True),
-        sa.Column("total_positions", sa.Integer(), nullable=True),
-        sa.Column("gross_exposure", sa.Numeric(precision=15, scale=2), nullable=True),
-        sa.Column("net_exposure", sa.Numeric(precision=15, scale=2), nullable=True),
-        sa.Column("orders_today", sa.Integer(), nullable=True),
-        sa.Column("rejections_today", sa.Integer(), nullable=True),
-        sa.Column("consecutive_losses", sa.Integer(), nullable=True),
-        sa.Column("is_killed", sa.Boolean(), nullable=True),
-        sa.Column("kill_reason", sa.String(length=200), nullable=True),
-        sa.Column("kill_time", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
-        sa.PrimaryKeyConstraint("id", name=op.f("pk_rms_client_state")),
-    )
-    op.create_table(
         "rules",
         sa.Column("id", sa.Integer(), nullable=False),
         sa.Column("exchange", sa.String(length=10), nullable=True),
@@ -540,48 +480,6 @@ def upgrade() -> None:
         sa.Column("low", sa.Numeric(precision=20, scale=6), nullable=True),
         sa.Column("close", sa.Numeric(precision=20, scale=6), nullable=True),
         sa.PrimaryKeyConstraint("symbol", "timestamp", name=op.f("pk_straddle_candles")),
-    )
-    op.create_table(
-        "strategy_breakout_watches",
-        sa.Column("id", sa.BigInteger(), nullable=False),
-        sa.Column("watch_type", sa.String(length=20), nullable=False),
-        sa.Column("watch_symbol", sa.String(length=100), nullable=False),
-        sa.Column("exchange", sa.String(length=10), nullable=False),
-        sa.Column("reference_price", sa.Numeric(precision=15, scale=4), nullable=False),
-        sa.Column("trigger_price_above", sa.Numeric(precision=15, scale=4), nullable=True),
-        sa.Column("trigger_price_below", sa.Numeric(precision=15, scale=4), nullable=True),
-        sa.Column("direction", sa.String(length=10), nullable=False),
-        sa.Column("trigger_mode", sa.String(length=15), nullable=False),
-        sa.Column("trigger_value", sa.Numeric(precision=10, scale=4), nullable=False),
-        sa.Column("strategy_name", sa.String(length=100), nullable=False),
-        sa.Column("username", sa.String(length=100), nullable=False),
-        sa.Column("broker_name", sa.String(length=50), nullable=False),
-        sa.Column("tranch_number", sa.Integer(), nullable=False),
-        sa.Column("group_id", sa.String(length=50), nullable=True),
-        sa.Column("valid_till", sa.Time(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
-        sa.Column("is_triggered", sa.Boolean(), nullable=False),
-        sa.Column("triggered_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("triggered_price", sa.Numeric(precision=15, scale=4), nullable=True),
-        sa.Column("is_expired", sa.Boolean(), nullable=False),
-        sa.Column("expired_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("trading_symbol", sa.String(length=100), nullable=True),
-        sa.Column("option_type", sa.String(length=5), nullable=True),
-        sa.Column("strike", sa.Integer(), nullable=True),
-        sa.Column("trade_direction", sa.String(length=10), nullable=True),
-        sa.Column("quantity", sa.Integer(), nullable=True),
-        sa.Column("quantity_per_lot", sa.Integer(), nullable=True),
-        sa.Column("entry_premium", sa.Numeric(precision=15, scale=4), nullable=True),
-        sa.Column("fno_symbol", sa.String(length=50), nullable=True),
-        sa.Column("strike_type", sa.String(length=20), nullable=True),
-        sa.Column("strike_value", sa.String(length=20), nullable=True),
-        sa.Column("option_premium", sa.Integer(), nullable=True),
-        sa.Column("option_premium_upper", sa.Integer(), nullable=True),
-        sa.Column("is_directional", sa.Boolean(), nullable=True),
-        sa.Column("metadata_json", sa.Text(), nullable=True),
-        sa.Column("risk_used_estimate", sa.Numeric(precision=20, scale=6), nullable=False),
-        sa.Column("is_paper_trading", sa.Boolean(), nullable=False),
-        sa.PrimaryKeyConstraint("id", name=op.f("pk_strategy_breakout_watches")),
     )
     op.create_table(
         "strategy_config",
@@ -702,12 +600,8 @@ def upgrade() -> None:
         sa.Column("status", sa.String(length=20), nullable=False),
         sa.Column("catch_up_missed_tranches", sa.Boolean(), nullable=False),
         sa.Column("adaptive_tranches_enabled", sa.Boolean(), nullable=False),
-        sa.Column("username", sa.String(length=100), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
-        sa.Column("is_public", sa.Boolean(), nullable=True),
-        sa.Column("is_mock", sa.Boolean(), nullable=False),
-        sa.Column("scope", sa.String(length=10), nullable=True),
         sa.Column("periodic_interval_minutes", sa.Integer(), nullable=True),
         sa.Column("periodic_offset_seconds", sa.Integer(), nullable=True),
         sa.Column("hedge_replace_enabled", sa.Boolean(), nullable=True),
@@ -864,32 +758,6 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("symbol", "timestamp", name=op.f("pk_synthetic_candles")),
     )
     op.create_table(
-        "trade_log",
-        sa.Column("id", sa.BigInteger(), nullable=False),
-        sa.Column("trade_id", sa.String(length=64), nullable=False),
-        sa.Column("username", sa.String(length=64), nullable=False),
-        sa.Column("broker", sa.String(length=32), nullable=False),
-        sa.Column("strategy", sa.String(length=128), nullable=True),
-        sa.Column("trading_symbol", sa.String(length=64), nullable=True),
-        sa.Column("hedge_correlation_id", sa.String(length=64), nullable=True),
-        sa.Column("event_category", sa.String(length=24), nullable=False),
-        sa.Column("event_type", sa.String(length=48), nullable=False),
-        sa.Column("event_timestamp", sa.DateTime(timezone=True), nullable=False),
-        sa.Column("order_id", sa.String(length=64), nullable=True),
-        sa.Column("order_status", sa.String(length=32), nullable=True),
-        sa.Column("order_type", sa.String(length=16), nullable=True),
-        sa.Column("price", sa.Numeric(precision=14, scale=4), nullable=True),
-        sa.Column("quantity", sa.Integer(), nullable=True),
-        sa.Column("filled_quantity", sa.Integer(), nullable=True),
-        sa.Column("sl_price", sa.Numeric(precision=14, scale=4), nullable=True),
-        sa.Column("target_price", sa.Numeric(precision=14, scale=4), nullable=True),
-        sa.Column("message", sa.Text(), nullable=True),
-        sa.Column("details", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
-        sa.Column("error_message", sa.Text(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=True),
-        sa.PrimaryKeyConstraint("id", name=op.f("pk_trade_log")),
-    )
-    op.create_table(
         "trading_clients",
         sa.Column("id", sa.String(length=64), nullable=False),
         sa.Column("display_name", sa.String(length=255), nullable=False),
@@ -987,6 +855,39 @@ def upgrade() -> None:
         unique=False,
     )
     op.create_table(
+        "client_pnl_snapshots",
+        sa.Column("trading_client_id", sa.String(length=64), nullable=False),
+        sa.Column("id", sa.BigInteger(), nullable=False),
+        sa.Column("snapshot_date", sa.Date(), nullable=False),
+        sa.Column("snapshot_timestamp", sa.BigInteger(), nullable=False),
+        sa.Column("algo_pnl", sa.Numeric(precision=20, scale=6), nullable=True),
+        sa.Column("broker_pnl", sa.Numeric(precision=20, scale=6), nullable=True),
+        sa.Column("capital", sa.Numeric(precision=20, scale=6), nullable=True),
+        sa.Column("total_margin", sa.Numeric(precision=20, scale=6), nullable=True),
+        sa.Column("utilized_margin", sa.Numeric(precision=20, scale=6), nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("is_paper_trading", sa.Boolean(), nullable=True),
+        sa.ForeignKeyConstraint(
+            ["trading_client_id"],
+            ["trading_clients.id"],
+            name=op.f("fk_client_pnl_snapshots_trading_client_id"),
+            ondelete="CASCADE",
+        ),
+        sa.PrimaryKeyConstraint("id", name=op.f("pk_client_pnl_snapshots")),
+        sa.UniqueConstraint(
+            "trading_client_id",
+            "snapshot_timestamp",
+            "is_paper_trading",
+            name="uq_client_pnl_snapshots_at",
+        ),
+    )
+    op.create_index(
+        op.f("ix_client_pnl_snapshots_trading_client_id"),
+        "client_pnl_snapshots",
+        ["trading_client_id"],
+        unique=False,
+    )
+    op.create_table(
         "eod_pnl_reports",
         sa.Column("trading_client_id", sa.String(length=64), nullable=False),
         sa.Column("date", sa.Date(), nullable=False),
@@ -1060,7 +961,6 @@ def upgrade() -> None:
         sa.Column("direction", sa.String(length=10), nullable=True),
         sa.Column("is_triggered", sa.Boolean(), nullable=False),
         sa.Column("is_disabled", sa.Boolean(), nullable=False),
-        sa.Column("is_mock", sa.Boolean(), nullable=False),
         sa.Column("is_paper_trading", sa.Boolean(), nullable=False),
         sa.Column("signal_timestamp", sa.DateTime(timezone=True), nullable=True),
         sa.Column("payload", sa.Text(), nullable=False),
@@ -1094,7 +994,6 @@ def upgrade() -> None:
         sa.Column("direction", sa.String(length=10), nullable=True),
         sa.Column("is_triggered", sa.Boolean(), nullable=False),
         sa.Column("is_disabled", sa.Boolean(), nullable=False),
-        sa.Column("is_mock", sa.Boolean(), nullable=False),
         sa.Column("is_paper_trading", sa.Boolean(), nullable=False),
         sa.Column("signal_timestamp", sa.DateTime(timezone=True), nullable=True),
         sa.Column("payload", sa.Text(), nullable=False),
@@ -1126,7 +1025,6 @@ def upgrade() -> None:
         sa.Column("strategy_name", sa.String(length=64), nullable=True),
         sa.Column("trading_symbol", sa.String(length=50), nullable=True),
         sa.Column("signal_id", sa.String(length=50), nullable=True),
-        sa.Column("is_mock", sa.Boolean(), nullable=False),
         sa.Column("is_paper_trading", sa.Boolean(), nullable=False),
         sa.Column("start_timestamp", sa.DateTime(timezone=True), nullable=True),
         sa.Column("end_timestamp", sa.DateTime(timezone=True), nullable=True),
@@ -1159,7 +1057,6 @@ def upgrade() -> None:
         sa.Column("strategy_name", sa.String(length=64), nullable=True),
         sa.Column("trading_symbol", sa.String(length=50), nullable=True),
         sa.Column("signal_id", sa.String(length=50), nullable=True),
-        sa.Column("is_mock", sa.Boolean(), nullable=False),
         sa.Column("is_paper_trading", sa.Boolean(), nullable=False),
         sa.Column("start_timestamp", sa.DateTime(timezone=True), nullable=True),
         sa.Column("end_timestamp", sa.DateTime(timezone=True), nullable=True),
@@ -1184,6 +1081,74 @@ def upgrade() -> None:
     op.create_index(
         op.f("ix_live_trades_archive_trading_client_id"),
         "live_trades_archive",
+        ["trading_client_id"],
+        unique=False,
+    )
+    op.create_table(
+        "rms_breach_log",
+        sa.Column("trading_client_id", sa.String(length=64), nullable=True),
+        sa.Column("id", sa.BigInteger(), nullable=False),
+        sa.Column("breach_time", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("strategy_name", sa.String(length=100), nullable=True),
+        sa.Column("trading_symbol", sa.String(length=100), nullable=True),
+        sa.Column("exchange", sa.String(length=10), nullable=True),
+        sa.Column("breach_type", sa.String(length=50), nullable=True),
+        sa.Column("breach_category", sa.String(length=20), nullable=True),
+        sa.Column("breach_details", sa.Text(), nullable=True),
+        sa.Column("action_taken", sa.String(length=50), nullable=True),
+        sa.Column("current_value", sa.String(length=50), nullable=True),
+        sa.Column("limit_value", sa.String(length=50), nullable=True),
+        sa.Column("severity", sa.Integer(), nullable=True),
+        sa.ForeignKeyConstraint(
+            ["trading_client_id"],
+            ["trading_clients.id"],
+            name=op.f("fk_rms_breach_log_trading_client_id"),
+            ondelete="CASCADE",
+        ),
+        sa.PrimaryKeyConstraint("id", name=op.f("pk_rms_breach_log")),
+    )
+    op.create_index(
+        op.f("ix_rms_breach_log_trading_client_id"),
+        "rms_breach_log",
+        ["trading_client_id"],
+        unique=False,
+    )
+    op.create_table(
+        "rms_client_state",
+        sa.Column("trading_client_id", sa.String(length=64), nullable=False),
+        sa.Column("id", sa.BigInteger(), nullable=False),
+        sa.Column("trading_date", sa.Date(), nullable=False),
+        sa.Column("deployed_capital", sa.Numeric(precision=15, scale=2), nullable=True),
+        sa.Column("used_margin", sa.Numeric(precision=15, scale=2), nullable=True),
+        sa.Column("available_margin", sa.Numeric(precision=15, scale=2), nullable=True),
+        sa.Column("peak_margin_used", sa.Numeric(precision=15, scale=2), nullable=True),
+        sa.Column("realized_pnl", sa.Numeric(precision=15, scale=2), nullable=True),
+        sa.Column("unrealized_pnl", sa.Numeric(precision=15, scale=2), nullable=True),
+        sa.Column("total_pnl", sa.Numeric(precision=15, scale=2), nullable=True),
+        sa.Column("peak_pnl", sa.Numeric(precision=15, scale=2), nullable=True),
+        sa.Column("drawdown", sa.Numeric(precision=15, scale=2), nullable=True),
+        sa.Column("total_positions", sa.Integer(), nullable=True),
+        sa.Column("gross_exposure", sa.Numeric(precision=15, scale=2), nullable=True),
+        sa.Column("net_exposure", sa.Numeric(precision=15, scale=2), nullable=True),
+        sa.Column("orders_today", sa.Integer(), nullable=True),
+        sa.Column("rejections_today", sa.Integer(), nullable=True),
+        sa.Column("consecutive_losses", sa.Integer(), nullable=True),
+        sa.Column("is_killed", sa.Boolean(), nullable=True),
+        sa.Column("kill_reason", sa.String(length=200), nullable=True),
+        sa.Column("kill_time", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
+        sa.ForeignKeyConstraint(
+            ["trading_client_id"],
+            ["trading_clients.id"],
+            name=op.f("fk_rms_client_state_trading_client_id"),
+            ondelete="CASCADE",
+        ),
+        sa.PrimaryKeyConstraint("id", name=op.f("pk_rms_client_state")),
+        sa.UniqueConstraint("trading_client_id", "trading_date", name="uq_rms_client_state_day"),
+    )
+    op.create_index(
+        op.f("ix_rms_client_state_trading_client_id"),
+        "rms_client_state",
         ["trading_client_id"],
         unique=False,
     )
@@ -1281,6 +1246,59 @@ def upgrade() -> None:
     op.create_index(
         op.f("ix_rms_daily_stats_trading_client_id"),
         "rms_daily_stats",
+        ["trading_client_id"],
+        unique=False,
+    )
+    op.create_table(
+        "strategy_breakout_watches",
+        sa.Column("trading_client_id", sa.String(length=64), nullable=False),
+        sa.Column("id", sa.BigInteger(), nullable=False),
+        sa.Column("watch_type", sa.String(length=20), nullable=False),
+        sa.Column("watch_symbol", sa.String(length=100), nullable=False),
+        sa.Column("exchange", sa.String(length=10), nullable=False),
+        sa.Column("reference_price", sa.Numeric(precision=15, scale=4), nullable=False),
+        sa.Column("trigger_price_above", sa.Numeric(precision=15, scale=4), nullable=True),
+        sa.Column("trigger_price_below", sa.Numeric(precision=15, scale=4), nullable=True),
+        sa.Column("direction", sa.String(length=10), nullable=False),
+        sa.Column("trigger_mode", sa.String(length=15), nullable=False),
+        sa.Column("trigger_value", sa.Numeric(precision=10, scale=4), nullable=False),
+        sa.Column("strategy_name", sa.String(length=100), nullable=False),
+        sa.Column("tranch_number", sa.Integer(), nullable=False),
+        sa.Column("group_id", sa.String(length=50), nullable=True),
+        sa.Column("valid_till", sa.Time(), nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("is_triggered", sa.Boolean(), nullable=False),
+        sa.Column("triggered_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("triggered_price", sa.Numeric(precision=15, scale=4), nullable=True),
+        sa.Column("is_expired", sa.Boolean(), nullable=False),
+        sa.Column("expired_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("trading_symbol", sa.String(length=100), nullable=True),
+        sa.Column("option_type", sa.String(length=5), nullable=True),
+        sa.Column("strike", sa.Integer(), nullable=True),
+        sa.Column("trade_direction", sa.String(length=10), nullable=True),
+        sa.Column("quantity", sa.Integer(), nullable=True),
+        sa.Column("quantity_per_lot", sa.Integer(), nullable=True),
+        sa.Column("entry_premium", sa.Numeric(precision=15, scale=4), nullable=True),
+        sa.Column("fno_symbol", sa.String(length=50), nullable=True),
+        sa.Column("strike_type", sa.String(length=20), nullable=True),
+        sa.Column("strike_value", sa.String(length=20), nullable=True),
+        sa.Column("option_premium", sa.Integer(), nullable=True),
+        sa.Column("option_premium_upper", sa.Integer(), nullable=True),
+        sa.Column("is_directional", sa.Boolean(), nullable=True),
+        sa.Column("metadata_json", sa.Text(), nullable=True),
+        sa.Column("risk_used_estimate", sa.Numeric(precision=20, scale=6), nullable=False),
+        sa.Column("is_paper_trading", sa.Boolean(), nullable=False),
+        sa.ForeignKeyConstraint(
+            ["trading_client_id"],
+            ["trading_clients.id"],
+            name=op.f("fk_strategy_breakout_watches_trading_client_id"),
+            ondelete="CASCADE",
+        ),
+        sa.PrimaryKeyConstraint("id", name=op.f("pk_strategy_breakout_watches")),
+    )
+    op.create_index(
+        op.f("ix_strategy_breakout_watches_trading_client_id"),
+        "strategy_breakout_watches",
         ["trading_client_id"],
         unique=False,
     )
@@ -1397,6 +1415,40 @@ def upgrade() -> None:
         unique=False,
     )
     op.create_table(
+        "trade_log",
+        sa.Column("trading_client_id", sa.String(length=64), nullable=False),
+        sa.Column("id", sa.BigInteger(), nullable=False),
+        sa.Column("trade_id", sa.String(length=64), nullable=False),
+        sa.Column("strategy", sa.String(length=128), nullable=True),
+        sa.Column("trading_symbol", sa.String(length=64), nullable=True),
+        sa.Column("hedge_correlation_id", sa.String(length=64), nullable=True),
+        sa.Column("event_category", sa.String(length=24), nullable=False),
+        sa.Column("event_type", sa.String(length=48), nullable=False),
+        sa.Column("event_timestamp", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("order_id", sa.String(length=64), nullable=True),
+        sa.Column("order_status", sa.String(length=32), nullable=True),
+        sa.Column("order_type", sa.String(length=16), nullable=True),
+        sa.Column("price", sa.Numeric(precision=14, scale=4), nullable=True),
+        sa.Column("quantity", sa.Integer(), nullable=True),
+        sa.Column("filled_quantity", sa.Integer(), nullable=True),
+        sa.Column("sl_price", sa.Numeric(precision=14, scale=4), nullable=True),
+        sa.Column("target_price", sa.Numeric(precision=14, scale=4), nullable=True),
+        sa.Column("message", sa.Text(), nullable=True),
+        sa.Column("details", postgresql.JSONB(astext_type=sa.Text()), nullable=True),
+        sa.Column("error_message", sa.Text(), nullable=True),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=True),
+        sa.ForeignKeyConstraint(
+            ["trading_client_id"],
+            ["trading_clients.id"],
+            name=op.f("fk_trade_log_trading_client_id"),
+            ondelete="CASCADE",
+        ),
+        sa.PrimaryKeyConstraint("id", name=op.f("pk_trade_log")),
+    )
+    op.create_index(
+        op.f("ix_trade_log_trading_client_id"), "trade_log", ["trading_client_id"], unique=False
+    )
+    op.create_table(
         "trades",
         sa.Column("trading_client_id", sa.String(length=64), nullable=False),
         sa.Column("trade_date", sa.Date(), nullable=False),
@@ -1491,6 +1543,8 @@ def downgrade() -> None:
     op.drop_table("trading_client_login_status")
     op.drop_index(op.f("ix_trades_trading_client_id"), table_name="trades")
     op.drop_table("trades")
+    op.drop_index(op.f("ix_trade_log_trading_client_id"), table_name="trade_log")
+    op.drop_table("trade_log")
     op.drop_index(
         op.f("ix_trade_corporate_actions_trading_client_id"), table_name="trade_corporate_actions"
     )
@@ -1503,10 +1557,19 @@ def downgrade() -> None:
         op.f("ix_strategy_evaluation_log_trading_client_id"), table_name="strategy_evaluation_log"
     )
     op.drop_table("strategy_evaluation_log")
+    op.drop_index(
+        op.f("ix_strategy_breakout_watches_trading_client_id"),
+        table_name="strategy_breakout_watches",
+    )
+    op.drop_table("strategy_breakout_watches")
     op.drop_index(op.f("ix_rms_daily_stats_trading_client_id"), table_name="rms_daily_stats")
     op.drop_table("rms_daily_stats")
     op.drop_index(op.f("ix_rms_config_trading_client_id"), table_name="rms_config")
     op.drop_table("rms_config")
+    op.drop_index(op.f("ix_rms_client_state_trading_client_id"), table_name="rms_client_state")
+    op.drop_table("rms_client_state")
+    op.drop_index(op.f("ix_rms_breach_log_trading_client_id"), table_name="rms_breach_log")
+    op.drop_table("rms_breach_log")
     op.drop_index(
         op.f("ix_live_trades_archive_trading_client_id"), table_name="live_trades_archive"
     )
@@ -1524,6 +1587,10 @@ def downgrade() -> None:
     op.drop_table("kill_switches")
     op.drop_index(op.f("ix_eod_pnl_reports_trading_client_id"), table_name="eod_pnl_reports")
     op.drop_table("eod_pnl_reports")
+    op.drop_index(
+        op.f("ix_client_pnl_snapshots_trading_client_id"), table_name="client_pnl_snapshots"
+    )
+    op.drop_table("client_pnl_snapshots")
     op.drop_index(op.f("ix_client_margins_trading_client_id"), table_name="client_margins")
     op.drop_table("client_margins")
     op.drop_index(op.f("ix_client_capital_trading_client_id"), table_name="client_capital")
@@ -1534,7 +1601,6 @@ def downgrade() -> None:
     op.drop_table("capital_change_history")
     op.drop_table("trailing_sl_policy")
     op.drop_table("trading_clients")
-    op.drop_table("trade_log")
     op.drop_table("synthetic_candles")
     op.drop_table("symbols")
     op.drop_table("symbol_broker_info")
@@ -1546,7 +1612,6 @@ def downgrade() -> None:
     op.drop_table("strategy_indicator_rules")
     op.drop_table("strategy_definitions")
     op.drop_table("strategy_config")
-    op.drop_table("strategy_breakout_watches")
     op.drop_table("straddle_candles")
     op.drop_table("stock_universes")
     op.drop_table("stock_universe_members")
@@ -1554,8 +1619,6 @@ def downgrade() -> None:
     op.drop_table("statutory_charges")
     op.drop_table("sl_target_policy")
     op.drop_table("rules")
-    op.drop_table("rms_client_state")
-    op.drop_table("rms_breach_log")
     op.drop_table("products")
     op.drop_table("pcr_candles")
     op.drop_table("order_fill_escalation_policy")
@@ -1574,7 +1637,6 @@ def downgrade() -> None:
     op.drop_table("data_provider_sessions")
     op.drop_table("daily_symbol_close_prices")
     op.drop_table("corporate_actions")
-    op.drop_table("client_pnl_snapshots")
     op.drop_table("brokers")
     op.drop_table("brokerage_plans")
     op.drop_table("brokerage_plan_rates")
