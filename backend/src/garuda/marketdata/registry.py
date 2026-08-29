@@ -31,6 +31,7 @@ class InstrumentRegistry:
     #: Broker tokens, kept beside instruments rather than on them.
     tokens: dict[InstrumentId, int] = field(default_factory=dict)
     _by_symbol: dict[tuple[str, str], Instrument] = field(default_factory=dict)
+    _by_token: dict[int, Instrument] = field(default_factory=dict)
     _options: dict[tuple[InstrumentId, date], list[Instrument]] = field(default_factory=dict)
     _futures: dict[InstrumentId, list[Instrument]] = field(default_factory=dict)
     _expiries: dict[InstrumentId, list[date]] = field(default_factory=dict)
@@ -66,10 +67,16 @@ class InstrumentRegistry:
         for series in futures.values():
             series.sort(key=lambda i: i.expiry or date.max)
 
+        resolved = dict(tokens or {})
         return cls(
             by_id=by_id,
-            tokens=dict(tokens or {}),
+            tokens=resolved,
             _by_symbol=by_symbol,
+            _by_token={
+                token: by_id[instrument_id]
+                for instrument_id, token in resolved.items()
+                if instrument_id in by_id
+            },
             _options=dict(options),
             _futures=dict(futures),
             _expiries={key: sorted(value) for key, value in expiries.items()},
@@ -92,6 +99,10 @@ class InstrumentRegistry:
 
     def token_for(self, instrument_id: InstrumentId) -> int | None:
         return self.tokens.get(instrument_id)
+
+    def by_token(self, token: int) -> Instrument | None:
+        """What a broker token stands for. The direction a tick arrives in."""
+        return self._by_token.get(token)
 
     def expiries_for(self, underlying: InstrumentId) -> Sequence[date]:
         """Every expiry with a listed derivative, soonest first."""

@@ -14,7 +14,7 @@ import pytest
 from garuda.domain import Currency, Money, OrderType, ProductType
 from garuda.domain.client import TradingClientId
 from garuda.domain.instrument import Instrument
-from garuda.domain.market import Tick
+from garuda.domain.market import DepthLevel, Tick
 from garuda.domain.order import ClientOrderId, OrderRequest, Side
 from garuda.rms import (
     Breach,
@@ -70,8 +70,8 @@ def a_quote(
         instrument=instrument.id,
         last_price=rupees(last),
         timestamp=at,
-        bid=rupees(bid) if bid else None,
-        ask=rupees(ask) if ask else None,
+        bids=(DepthLevel(rupees(bid), 50),) if bid else (),
+        asks=(DepthLevel(rupees(ask), 50),) if ask else (),
         volume=volume,
     )
 

@@ -452,3 +452,16 @@ class TestDayInitWiring:
         assert (nse.code, DayPhase.DAY_INIT) in ran
         assert (mcx.code, DayPhase.DAY_INIT) in ran
         assert calls == [1]
+
+
+class TestTokenLookup:
+    def test_a_token_resolves_back_to_its_instrument(self, registry: InstrumentRegistry) -> None:
+        """The direction a tick arrives in: the wire carries a token, not a name."""
+        token = registry.token_for(InstrumentId("NSE:RELIANCE"))
+        assert token == 738561
+        found = registry.by_token(token)
+        assert found is not None
+        assert found.id == InstrumentId("NSE:RELIANCE")
+
+    def test_an_unknown_token_is_none(self, registry: InstrumentRegistry) -> None:
+        assert registry.by_token(999999) is None

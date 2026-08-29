@@ -18,7 +18,7 @@ from garuda.domain.enums import TradingMode
 from garuda.domain.instrument import Instrument, InstrumentId
 from garuda.domain.intent import IntentKind, LegRole
 from garuda.domain.journal import JournalEvent
-from garuda.domain.market import Tick
+from garuda.domain.market import DepthLevel, Tick
 from garuda.domain.order import ClientOrderId, Fill, Side
 from garuda.domain.position import Position
 from garuda.engine import (
@@ -50,8 +50,8 @@ def a_quote(instrument: Instrument, last: str = "120.00") -> Tick:
         instrument=instrument.id,
         last_price=rupees(last),
         timestamp=T0,
-        bid=rupees(str(Decimal(last) - Decimal("0.10"))),
-        ask=rupees(str(Decimal(last) + Decimal("0.10"))),
+        bids=(DepthLevel(rupees(str(Decimal(last) - Decimal("0.10"))), 75),),
+        asks=(DepthLevel(rupees(str(Decimal(last) + Decimal("0.10"))), 75),),
     )
 
 

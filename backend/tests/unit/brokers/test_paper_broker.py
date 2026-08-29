@@ -16,7 +16,7 @@ from garuda.core.clock import ReplayClock
 from garuda.domain import Currency, Money, OrderType, ProductType
 from garuda.domain.client import TradingClientId
 from garuda.domain.instrument import Instrument
-from garuda.domain.market import Tick
+from garuda.domain.market import DepthLevel, Tick
 from garuda.domain.order import ClientOrderId, OrderRequest, Side
 from garuda.protocols.broker import (
     BrokerAdapter,
@@ -52,8 +52,8 @@ def quote(
         instrument=instrument.id,
         last_price=rupees(last),
         timestamp=T0,
-        bid=rupees(bid) if bid else None,
-        ask=rupees(ask) if ask else None,
+        bids=(DepthLevel(rupees(bid), 50),) if bid else (),
+        asks=(DepthLevel(rupees(ask), 50),) if ask else (),
     )
 
 

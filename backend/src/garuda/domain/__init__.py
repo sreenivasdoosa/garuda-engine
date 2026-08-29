@@ -37,7 +37,7 @@ from garuda.domain.errors import (
 )
 from garuda.domain.exchange import Exchange
 from garuda.domain.instrument import DERIVATIVE_KINDS, Instrument, InstrumentId
-from garuda.domain.market import Bar, BarInterval, Tick
+from garuda.domain.market import Bar, BarInterval, DepthLevel, Tick
 from garuda.domain.money import MONEY_ROUNDING, Currency, Money, Numeric, to_decimal
 from garuda.domain.order import (
     ORDER_TRANSITIONS,
@@ -64,6 +64,7 @@ __all__ = [
     "ClientOrderId",
     "Currency",
     "CurrencyMismatchError",
+    "DepthLevel",
     "Direction",
     "DomainError",
     "Exchange",

@@ -44,50 +44,131 @@ _INTERVAL_DURATIONS: dict[BarInterval, timedelta] = {
 
 
 @dataclass(frozen=True, slots=True)
+class DepthLevel:
+    """One rung of the order book ladder."""
+
+    price: Money
+    quantity: int
+    orders: int = 0
+
+    def __post_init__(self) -> None:
+        if self.quantity < 0 or self.orders < 0:
+            raise DomainError(f"a depth level cannot have {self.quantity} at {self.price}")
+
+
+@dataclass(frozen=True, slots=True)
 class Tick:
     """A last-traded price with whatever else the feed carried.
 
     Depth, open interest and volume are optional because feeds differ in what
     they publish; a missing value is ``None`` and never a zero standing in for
     one. RMS treats an absent price as a breach rather than guessing.
+
+    The day's open, high and low are the *exchange's* running values, carried
+    on the tick rather than accumulated here -- a restart at eleven has no way
+    to recompute a day high it did not watch, and a breakout strategy that
+    thinks the day opened at eleven is worse than one that waits.
+
+    ``previous_close`` is yesterday's close, not today's. The feed calls this
+    field "close" and it is the single most confusable value on a tick: today
+    has no close until the session ends.
+
+    Depth is the full ladder, best price first, because a liquidity check sums
+    across levels rather than reading only the touch. ``bid`` and ``ask`` are
+    the top of that ladder by definition, not a second copy of it.
     """
 
     instrument: InstrumentId
     last_price: Money
     timestamp: datetime
     last_quantity: int | None = None
+    average_price: Money | None = None
     volume: int | None = None
+    total_buy_quantity: int | None = None
+    total_sell_quantity: int | None = None
+    open: Money | None = None
+    high: Money | None = None
+    low: Money | None = None
+    previous_close: Money | None = None
     open_interest: int | None = None
-    bid: Money | None = None
-    ask: Money | None = None
-    bid_quantity: int | None = None
-    ask_quantity: int | None = None
+    open_interest_day_high: int | None = None
+    open_interest_day_low: int | None = None
+    bids: tuple[DepthLevel, ...] = ()
+    asks: tuple[DepthLevel, ...] = ()
+    #: True for a tick built from a REST quote while the feed was stalled.
+    #: Anything holding time-series state -- candle builders, indicator
+    #: smoothers -- must skip these: they arrive at the poll cadence, not the
+    #: tick cadence, and would corrupt the series. Trigger evaluation and
+    #: trade tracking consume them, which is the point of the fallback.
+    is_synthetic: bool = False
 
     def __post_init__(self) -> None:
         require_aware(self.timestamp)
-        for name, price in (("bid", self.bid), ("ask", self.ask)):
-            if price is not None and price.currency is not self.last_price.currency:
+        currency = self.last_price.currency
+        for name, price in (
+            ("average price", self.average_price),
+            ("open", self.open),
+            ("high", self.high),
+            ("low", self.low),
+            ("previous close", self.previous_close),
+        ):
+            if price is not None and price.currency is not currency:
                 raise DomainError(
-                    f"{self.instrument}: {name} is {price.currency}, "
-                    f"last price is {self.last_price.currency}"
+                    f"{self.instrument}: {name} is {price.currency}, last price is {currency}"
                 )
+        for side, levels in (("bid", self.bids), ("ask", self.asks)):
+            for level in levels:
+                if level.price.currency is not currency:
+                    raise DomainError(
+                        f"{self.instrument}: a {side} is {level.price.currency}, "
+                        f"last price is {currency}"
+                    )
+
+    @property
+    def bid(self) -> Money | None:
+        return self.bids[0].price if self.bids else None
+
+    @property
+    def ask(self) -> Money | None:
+        return self.asks[0].price if self.asks else None
+
+    @property
+    def bid_quantity(self) -> int | None:
+        return self.bids[0].quantity if self.bids else None
+
+    @property
+    def ask_quantity(self) -> int | None:
+        return self.asks[0].quantity if self.asks else None
 
     @property
     def has_depth(self) -> bool:
-        return self.bid is not None and self.ask is not None
+        return bool(self.bids) and bool(self.asks)
 
     @property
     def spread(self) -> Money | None:
         """Ask minus bid, or None when the feed carried no depth."""
-        if self.bid is None or self.ask is None:
+        if not self.bids or not self.asks:
             return None
-        return self.ask - self.bid
+        return self.asks[0].price - self.bids[0].price
 
     @property
     def mid(self) -> Money | None:
-        if self.bid is None or self.ask is None:
+        if not self.bids or not self.asks:
             return None
-        return (self.bid + self.ask) / 2
+        return (self.bids[0].price + self.asks[0].price) / 2
+
+    @property
+    def change_percent(self) -> Decimal | None:
+        """Move from yesterday's close, or None when the feed carried none.
+
+        Computed rather than carried: feeds disagree about whether their
+        "change" field is absolute or a percentage, and one that means the
+        other is a silent factor-of-a-hundred error in a strategy filter.
+        """
+        if self.previous_close is None or self.previous_close.amount == 0:
+            return None
+        move = self.last_price.amount - self.previous_close.amount
+        return move / self.previous_close.amount * Decimal(100)
 
 
 @dataclass(frozen=True, slots=True)

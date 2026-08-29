@@ -14,7 +14,7 @@ from garuda.domain import Currency, Money, OrderStatus, OrderType, ProductType
 from garuda.domain.client import TradingClientId
 from garuda.domain.instrument import Instrument
 from garuda.domain.journal import EventType, JournalEvent
-from garuda.domain.market import Tick
+from garuda.domain.market import DepthLevel, Tick
 from garuda.domain.order import BrokerOrderId, ClientOrderId, OrderRequest, Side
 from garuda.ordermgmt import ClientOrderIdSequence, OrderManager, OrderManagerError
 from garuda.protocols.broker import (
@@ -253,7 +253,13 @@ class TestWithThePaperBroker:
     async def test_a_market_order_fills_and_is_journalled(self, clock, bus, journal, nifty_call):
         paper = PaperBroker(CLIENT, clock, {nifty_call.id: nifty_call})
         await paper.on_tick(
-            Tick(nifty_call.id, rupees("120.00"), T0, bid=rupees("119.90"), ask=rupees("120.10"))
+            Tick(
+                nifty_call.id,
+                rupees("120.00"),
+                T0,
+                bids=(DepthLevel(rupees("119.90"), 75),),
+                asks=(DepthLevel(rupees("120.10"), 75),),
+            )
         )
         order_manager = manager(paper, clock, bus, journal)
 
@@ -276,7 +282,13 @@ class TestWithThePaperBroker:
     ):
         paper = PaperBroker(CLIENT, clock, {nifty_call.id: nifty_call})
         await paper.on_tick(
-            Tick(nifty_call.id, rupees("120.00"), T0, bid=rupees("119.90"), ask=rupees("120.10"))
+            Tick(
+                nifty_call.id,
+                rupees("120.00"),
+                T0,
+                bids=(DepthLevel(rupees("119.90"), 75),),
+                asks=(DepthLevel(rupees("120.10"), 75),),
+            )
         )
         order_manager = manager(paper, clock, bus, journal)
         await order_manager.place(request(nifty_call, ClientOrderId("gar-1")))
@@ -293,7 +305,13 @@ class TestWithThePaperBroker:
         subscription = bus.subscribe(Topic.FILLS)
         paper = PaperBroker(CLIENT, clock, {nifty_call.id: nifty_call})
         await paper.on_tick(
-            Tick(nifty_call.id, rupees("120.00"), T0, bid=rupees("119.90"), ask=rupees("120.10"))
+            Tick(
+                nifty_call.id,
+                rupees("120.00"),
+                T0,
+                bids=(DepthLevel(rupees("119.90"), 75),),
+                asks=(DepthLevel(rupees("120.10"), 75),),
+            )
         )
         order_manager = manager(paper, clock, bus, journal)
         await order_manager.place(request(nifty_call, ClientOrderId("gar-1")))
@@ -306,7 +324,13 @@ class TestWithThePaperBroker:
     async def test_working_orders_exclude_the_filled_ones(self, clock, bus, journal, nifty_call):
         paper = PaperBroker(CLIENT, clock, {nifty_call.id: nifty_call})
         await paper.on_tick(
-            Tick(nifty_call.id, rupees("120.00"), T0, bid=rupees("119.90"), ask=rupees("120.10"))
+            Tick(
+                nifty_call.id,
+                rupees("120.00"),
+                T0,
+                bids=(DepthLevel(rupees("119.90"), 75),),
+                asks=(DepthLevel(rupees("120.10"), 75),),
+            )
         )
         order_manager = manager(paper, clock, bus, journal)
         await order_manager.place(request(nifty_call, ClientOrderId("gar-1")))

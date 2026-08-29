@@ -19,7 +19,7 @@ from garuda.core.bus import InProcessEventBus
 from garuda.core.clock import ReplayClock
 from garuda.domain import Currency, Money, OrderStatus, OrderType, ProductType
 from garuda.domain.client import TradingClientId
-from garuda.domain.market import Tick
+from garuda.domain.market import DepthLevel, Tick
 from garuda.domain.order import ClientOrderId, OrderRequest, Side
 from garuda.journal import PositionBasis, PositionKey
 from garuda.ordermgmt import ClientOrderIdSequence, OrderManager, recover
@@ -88,8 +88,8 @@ class Session:
                 nifty_call.id,
                 rupees(last),
                 T0,
-                bid=rupees(str(Decimal(last) - Decimal("0.10"))),
-                ask=rupees(str(Decimal(last) + Decimal("0.10"))),
+                bids=(DepthLevel(rupees(str(Decimal(last) - Decimal("0.10"))), 75),),
+                asks=(DepthLevel(rupees(str(Decimal(last) + Decimal("0.10"))), 75),),
             )
         )
 

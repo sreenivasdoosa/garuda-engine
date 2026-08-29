@@ -24,7 +24,7 @@ from garuda.domain.client import TradingClientId
 from garuda.domain.enums import TradingMode
 from garuda.domain.instrument import Instrument, InstrumentId
 from garuda.domain.journal import JournalEvent
-from garuda.domain.market import Tick
+from garuda.domain.market import DepthLevel, Tick
 from garuda.engine import (
     FixedDirection,
     FixedInstrumentSelector,
@@ -60,8 +60,8 @@ def a_session(instrument: Instrument, minutes: int = 12) -> list[Tick]:
                 instrument=instrument.id,
                 last_price=Money(last, Currency.INR),
                 timestamp=OPEN + timedelta(minutes=index),
-                bid=Money(last - Decimal("0.10"), Currency.INR),
-                ask=Money(last + Decimal("0.10"), Currency.INR),
+                bids=(DepthLevel(Money(last - Decimal("0.10"), Currency.INR), 75),),
+                asks=(DepthLevel(Money(last + Decimal("0.10"), Currency.INR), 75),),
                 volume=250_000,
             )
         )
@@ -234,8 +234,12 @@ class TestTwoRunsAreIdentical:
                 instrument=tick.instrument,
                 last_price=tick.last_price - rupees("20"),
                 timestamp=tick.timestamp,
-                bid=(tick.bid - rupees("20")) if tick.bid else None,
-                ask=(tick.ask - rupees("20")) if tick.ask else None,
+                bids=tuple(
+                    DepthLevel(level.price - rupees("20"), level.quantity) for level in tick.bids
+                ),
+                asks=tuple(
+                    DepthLevel(level.price - rupees("20"), level.quantity) for level in tick.asks
+                ),
                 volume=tick.volume,
             )
             for tick in a_session(nifty_call)
