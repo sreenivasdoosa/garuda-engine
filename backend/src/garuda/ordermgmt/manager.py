@@ -32,7 +32,7 @@ from garuda.domain.journal import (
     order_rejected,
     order_terminal,
 )
-from garuda.domain.order import ClientOrderId, Order, OrderRequest
+from garuda.domain.order import BrokerOrderId, ClientOrderId, Order, OrderRequest
 from garuda.ordermgmt.protection import MarketProtection
 from garuda.protocols.broker import (
     BrokerAdapter,
@@ -63,6 +63,12 @@ class OrderManagerError(DomainError):
 class PlacementResult:
     order: Order
     attempts: int
+    #: What the broker calls the order, when it said so on placement. Most
+    #: brokers answer with it, and discarding that answer would mean waiting
+    #: for an acknowledgement event to learn something already known -- which
+    #: leaves a window where a fill cannot be matched to its trade.
+    #: None when the placement failed or the broker answered with nothing.
+    broker_order_id: BrokerOrderId | None = None
 
 
 class OrderManager:
@@ -167,11 +173,12 @@ class OrderManager:
         await self._bus.publish(Topic.ORDERS, order)
 
         attempts = 0
+        broker_order_id: BrokerOrderId | None = None
         last_error: RetryableBrokerError | None = None
         while attempts <= self._max_retries:
             attempts += 1
             try:
-                await self._adapter.place(request)
+                broker_order_id = await self._adapter.place(request)
             except RetryableBrokerError as error:
                 # Retry with the same request, and therefore the same client
                 # order id. A fresh id is how one intent becomes two positions.
@@ -179,7 +186,7 @@ class OrderManager:
                 continue
             except OrderRejectedError as error:
                 await self._reject(request.client_order_id, str(error))
-            return self._result(request.client_order_id, attempts)
+            return self._result(request.client_order_id, attempts, broker_order_id)
 
         await self._reject(
             request.client_order_id,
@@ -187,8 +194,17 @@ class OrderManager:
         )
         return self._result(request.client_order_id, attempts)
 
-    def _result(self, client_order_id: ClientOrderId, attempts: int) -> PlacementResult:
-        return PlacementResult(order=self._orders[client_order_id], attempts=attempts)
+    def _result(
+        self,
+        client_order_id: ClientOrderId,
+        attempts: int,
+        broker_order_id: BrokerOrderId | None = None,
+    ) -> PlacementResult:
+        return PlacementResult(
+            order=self._orders[client_order_id],
+            attempts=attempts,
+            broker_order_id=broker_order_id,
+        )
 
     async def cancel(self, client_order_id: ClientOrderId) -> None:
         order = self._require(client_order_id)

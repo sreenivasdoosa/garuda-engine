@@ -60,6 +60,11 @@ class InstrumentLoader:
         self._symbols = dict(symbols)
         self._timezone = timezone
 
+    @property
+    def broker(self) -> str:
+        """Whose master this loads. Named, because the holder is keyed by it."""
+        return self._broker
+
     async def load(self, now: datetime, *, force: bool = False) -> LoadResult:
         """Return today's registry, downloading only if the cache is stale."""
         cached = self._cache.read(self._broker)

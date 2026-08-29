@@ -31,6 +31,8 @@ from re import compile as compile_pattern
 from typing import Final
 from zoneinfo import ZoneInfo
 
+import httpx
+
 from garuda.domain.enums import (
     ExerciseStyle,
     InstrumentKind,
@@ -42,6 +44,15 @@ from garuda.domain.errors import DomainError
 from garuda.domain.exchange import Exchange
 from garuda.domain.instrument import BrokerToken, Instrument, InstrumentId
 from garuda.domain.symbol import SymbolInfo
+
+#: Where Kite publishes the master. A plain CSV over HTTP, several megabytes,
+#: fetched once a day. It carries no authentication, which is why it is read
+#: with a bare client rather than through the signed REST wrapper.
+MASTER_URL: Final = "https://api.kite.trade/instruments"
+
+#: Several megabytes over a domestic link. The default client timeout is far
+#: too short for it, and a truncated master is worse than a late one.
+MASTER_TIMEOUT_SECONDS: Final = 120.0
 
 #: The hour a broker's new instrument master appears, with that day's new
 #: weekly strikes. A file downloaded before it is stale once it passes.
@@ -65,6 +76,21 @@ EXCHANGE_SEGMENTS: Final[dict[str, tuple[str, Segment]]] = {
 }
 
 _OPTION_TYPES: Final[dict[str, OptionType]] = {"CE": OptionType.CALL, "PE": OptionType.PUT}
+
+
+async def download_master(client: httpx.AsyncClient, *, url: str = MASTER_URL) -> str:
+    """Fetch the day's master.
+
+    The response is returned as text and handed straight to the cache, so that
+    a parse failure later can be diagnosed against exactly the bytes the broker
+    sent rather than against a reconstruction of them.
+    """
+    response = await client.get(url, timeout=MASTER_TIMEOUT_SECONDS)
+    response.raise_for_status()
+    body = response.text
+    if not body.strip():
+        raise DomainError("the Kite instrument master came back empty")
+    return body
 
 
 def canonical_symbol(broker_symbol: str) -> str:

@@ -99,6 +99,7 @@ ignore = [
 # makes the next regeneration a diff nobody can review.
 "alembic/versions/**" = ["E501", "W291"]
 "tools/**" = ["T20"]          # the check scripts are meant to print
+"src/garuda/cli.py" = ["T20"]  # a command-line tool reports on stdout
 
 [tool.ruff.lint.isort]
 known-first-party = ["garuda"]
@@ -143,6 +144,10 @@ root_package = "garuda"
 name = "Layers point downward only"
 type = "layers"
 layers = [
+    # The composition root is the one place that may see every layer at once:
+    # that is what makes the rest of them able to point downward only.
+    "garuda.cli",
+    "garuda.composition",
     "garuda.api",
     # The engine orchestrates the services below it: it composes the sizer, the
     # risk gate and the order manager into one path an intent can take. They do

@@ -227,10 +227,6 @@ be discovered as a gap.
   since the first fill is what triggers it.
 - **Strategy subscriptions.** `EntryService` takes an `is_subscribed` check
   and nothing feeds it, so subscription state is not enforced at entry.
-- **Nothing constructs any of this.** Every piece is built and tested, and
-  no composition root wires a book, a tracker, a coordinator, a square-off
-  queue and a loop together for a real account. That is the next thing, and
-  it is where integration problems will surface.
 - **A hedge exiting first does not close the main it protected.** The
   reference engine reserves an exit reason for that direction and never wires
   one, so the position runs unhedged. Ours alerts loudly and closes nothing,
@@ -246,6 +242,55 @@ be discovered as a gap.
   yet reconciles two brokers spelling one contract differently. That surfaces
   when the second broker is added and its master can be compared against the
   first.
-- **Market data account and per-client streams are not wired at startup.**
-  The resolver, the feed and the stream manager all exist; nothing composes
-  them into a running engine yet.
+- **Segments and currency are not columns.** `exchanges` says when a venue
+  opens and closes but not what it trades or what it settles in, so
+  `composition/venues.py` carries a table of three. A fourth venue needs two
+  columns, not an entry in that table.
+- **One stop-loss gap for every venue.** `ProtectiveOrderService` caps a
+  strategy's stop distance by a per-segment maximum; the composition root
+  supplies a single constant because nothing stores one. It belongs beside
+  the other per-segment limits.
+- **`OrderChanges` is not built anywhere.** Trailing modifies a standing stop
+  through the broker's `modify`, and the composition root passes it straight
+  through. Nothing yet decides *what* to change on a partial modification —
+  price only, or price and trigger — per broker.
+
+
+## 9. What the composition root does
+
+`garuda.composition` is the one place allowed to see every layer at once, and
+import-linter now says so — it sits above `api` in the layer contract.
+
+`build_engine` constructs; `runtime.start` starts. The split is what lets a
+test inspect a fully-built engine without opening a socket or advancing a
+clock, and it is worth keeping.
+
+What it wires today:
+
+- **Venues** from `exchanges` and `holidays`, including each venue's own day
+  offsets, so `EngineRunner` schedules a day per venue rather than per engine.
+- **Accounts and sessions** through `SessionResolver`, which resolves a
+  dealer's borrowed token as readily as an account's own.
+- **The feed**, on whichever account is nominated for market data, with one
+  `TickHub` shared by every client — a price is a fact about the market, not
+  about an account.
+- **Per client**: a Kite REST client routed through that account's static IP
+  if it has one, a book, a tracker, entry, protective, trailing, square-off
+  and coordination services, a trade loop, and a persistence sweep.
+- **Order updates**, routed by the client id on the payload rather than by the
+  socket they arrived on.
+- **`garuda seed`, `garuda check`, `garuda run`** — `check` builds everything
+  and reports who can trade without touching a socket or writing to disk.
+
+**An account that cannot be built does not stop the others.** A disabled
+account, an expired session and a missing login are each reported by name and
+the rest of the engine is assembled. At six in the morning nobody has logged
+in, and an engine that refuses to start then is an engine nobody can use.
+
+### What it still cannot produce
+
+A trade. `EntryService.consider` takes a `TradeSignal`, the strategy engine
+emits an `Intent`, and nothing converts one to the other. The engine starts,
+loads its instruments, connects its feed, restores its book, reconciles
+against the broker and squares off on time — and never enters anything,
+because no signal ever arrives. That seam is the next piece of work.
