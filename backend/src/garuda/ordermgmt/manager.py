@@ -16,6 +16,7 @@ Two rules shape the design:
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -32,6 +33,7 @@ from garuda.domain.journal import (
     order_terminal,
 )
 from garuda.domain.order import ClientOrderId, Order, OrderRequest
+from garuda.ordermgmt.protection import MarketProtection
 from garuda.protocols.broker import (
     BrokerAdapter,
     BrokerEvent,
@@ -49,6 +51,8 @@ from garuda.protocols.topics import Topic
 #: their sequence numbers. The order manager does not own transactions; it is
 #: handed the means to write into one.
 type JournalAppender = Callable[[Sequence[JournalEvent]], Awaitable[Sequence[JournalEvent]]]
+
+logger = logging.getLogger(__name__)
 
 
 class OrderManagerError(DomainError):
@@ -73,6 +77,7 @@ class OrderManager:
         trading_day_for: Callable[[datetime], date],
         *,
         max_retries: int = 2,
+        protection: MarketProtection | None = None,
     ) -> None:
         self._adapter = adapter
         self._clock = clock
@@ -80,6 +85,7 @@ class OrderManager:
         self._journal = journal
         self._trading_day_for = trading_day_for
         self._max_retries = max_retries
+        self._protection = protection
         self._orders: dict[ClientOrderId, Order] = {}
         self._by_broker_id: dict[str, ClientOrderId] = {}
 
@@ -142,6 +148,15 @@ class OrderManager:
                 f"{request.client_order_id}: already placed; a retry must reuse the "
                 "request, not create a new one"
             )
+
+        if self._protection is not None:
+            # Before the journal, so what is recorded is what was sent. A
+            # journal holding the MARKET order the engine wanted rather than
+            # the LIMIT it actually placed would replay to a different fill.
+            protected = self._protection.apply(request)
+            if protected.was_changed:
+                logger.info("%s: %s", request.client_order_id, protected.change)
+                request = protected.request
 
         now = self._clock.now()
         trading_day = self._trading_day_for(now)
