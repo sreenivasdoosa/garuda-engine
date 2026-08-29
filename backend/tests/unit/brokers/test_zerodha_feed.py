@@ -14,11 +14,8 @@ from datetime import UTC, datetime
 
 import pytest
 
-from garuda.brokers.zerodha.feed import (
-    MAX_SUBSCRIPTIONS,
-    WebSocketConnection,
-    ZerodhaFeed,
-)
+from garuda.brokers.websocket import WebSocketConnection
+from garuda.brokers.zerodha.feed import MAX_SUBSCRIPTIONS, ZerodhaFeed
 from garuda.brokers.zerodha.ticks import NFO, NSE
 from garuda.core.clock import ReplayClock
 from garuda.domain.errors import DomainError

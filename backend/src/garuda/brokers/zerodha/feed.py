@@ -14,9 +14,9 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
-from typing import Protocol, runtime_checkable
+from collections.abc import AsyncIterator, Callable, Sequence
 
+from garuda.brokers.websocket import Connector, WebSocketConnection
 from garuda.brokers.zerodha.ticks import parse_frame
 from garuda.domain.errors import DomainError
 from garuda.domain.instrument import InstrumentId
@@ -45,22 +45,6 @@ MAX_SUBSCRIPTIONS = 3000
 MODE_FULL = "full"
 MODE_QUOTE = "quote"
 MODE_LTP = "ltp"
-
-
-@runtime_checkable
-class WebSocketConnection(Protocol):
-    """The part of a WebSocket client this needs, and no more."""
-
-    async def send(self, message: str) -> None: ...
-
-    async def close(self) -> None: ...
-
-    def __aiter__(self) -> AsyncIterator[str | bytes]: ...
-
-
-#: Opens a connection to a URL. Injected so the feed can be driven without a
-#: server, and so a proxy or a timeout is decided by the caller.
-type Connector = Callable[[str], Awaitable[WebSocketConnection]]
 
 
 class ZerodhaFeed:
@@ -228,26 +212,3 @@ class ZerodhaFeed:
             return FeedProblem(f"kite reported: {payload.get('data')}", self._clock.now())
         logger.debug("kite text frame ignored: type=%s", kind)
         return None
-
-
-#: Kite frames carry every subscribed instrument at once. Three thousand
-#: instruments in full mode is a little over half a megabyte, which is close
-#: enough to the library's default cap that a busy open would trip it -- and a
-#: frame over the cap does not truncate, it closes the connection.
-MAX_FRAME_BYTES = 4 * 1024 * 1024
-
-
-def websocket_connector(*, proxy: str | None = None, open_timeout: float = 10.0) -> Connector:
-    """The real connector, over ``websockets``.
-
-    A proxy is accepted but not the default. The address a broker whitelists
-    covers the trading APIs; routing market data through it is the operator's
-    call, and one their provider has to agree with.
-    """
-
-    async def open_connection(url: str) -> WebSocketConnection:
-        from websockets.asyncio.client import connect
-
-        return await connect(url, proxy=proxy, open_timeout=open_timeout, max_size=MAX_FRAME_BYTES)
-
-    return open_connection
