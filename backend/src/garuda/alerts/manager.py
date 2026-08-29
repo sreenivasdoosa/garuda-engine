@@ -59,6 +59,11 @@ type AlertSink = Callable[[Alert], Awaitable[None]]
 NOT_WORTH_STORING_AT_INFO: frozenset[str] = frozenset(
     {"trade-entry", "trade-exit", "square-off", "square-off-all"}
 )
+#: These are the *routine* forms of those events. A related operation that is
+#: not routine -- "square-off-stopped", say, meaning the engine has given up --
+#: is deliberately named differently so it is never swept up by the rule above.
+#: Naming it "square-off" would silently discard the one record an operator has
+#: that a position was left open.
 
 #: Occurrence counts at which a recurring problem is worth interrupting the
 #: operator again. Between them the count advances silently and the Alerts

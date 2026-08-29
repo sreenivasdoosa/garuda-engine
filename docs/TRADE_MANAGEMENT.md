@@ -164,7 +164,7 @@ each concern has its own field group and its own entry point.
 
 Each step ends with something that runs and tests that prove it.
 
-**Done: 1-6.** Next: 7 (exit).
+**Done: 1-7.** Next: 8 (relationships).
 
 1. ✅ **The model.** `Trade`, `TradeSignal`, `TradeState`, `TradeExitReason`, and
    the state machine. Pure domain, no I/O.
@@ -177,7 +177,7 @@ Each step ends with something that runs and tests that prove it.
 5. ✅ **Tracking.** The per-trade advance: order updates in, state transitions out,
    plus the broker order-book poll that backs it.
 6. ✅ **Trailing.** Tick-based trailing SL, trail-to-cost, and the trailing modes.
-7. **Exit.** Square-off queue, the worker, retry policy, attempt caps, and the
+7. ✅ **Exit.** Square-off queue, the worker, retry policy, attempt caps, and the
    exit reasons.
 8. **Relationships.** Hedge, pair and combo resolution, and the consequences one
    leg's exit has for another.
