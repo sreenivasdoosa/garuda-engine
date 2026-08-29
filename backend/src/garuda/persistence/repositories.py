@@ -10,14 +10,17 @@ invented for a table that never needed one.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import select, text
+from sqlalchemy import select, text, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from garuda.domain.alert import Alert
+from garuda.domain.trade import Trade
+from garuda.domain.trade_serde import encode_signal, encode_trade
+from garuda.domain.trade_signal import TradeSignal
 from garuda.persistence import models
 from garuda.persistence.repository import Repository
 
@@ -206,6 +209,47 @@ class KillSwitchesRepository(Repository[models.KillSwitchesRow]):
 class LiveTradeSignalsRepository(Repository[models.LiveTradeSignalsRow]):
     model = models.LiveTradeSignalsRow
 
+    async def upsert_signal(self, signal: TradeSignal, now: datetime) -> None:
+        values = {
+            "trading_client_id": signal.trading_client.value,
+            "signal_id": signal.id,
+            "product": signal.product.value,
+            "strategy_name": signal.strategy,
+            "trading_symbol": signal.instrument.value,
+            "direction": signal.direction.value,
+            "is_triggered": signal.is_triggered,
+            "is_disabled": signal.disabled,
+            "is_paper_trading": signal.is_paper,
+            "signal_timestamp": signal.generated_at,
+            "payload": encode_signal(signal),
+            "created_at": now,
+            "updated_at": now,
+            "trade_group": signal.group,
+            "tranch": signal.tranche,
+            "slice": signal.slice,
+            "evicted": False,
+        }
+        statement = insert(models.LiveTradeSignalsRow).values(**values)
+        await self.session.execute(
+            statement.on_conflict_do_update(
+                index_elements=["signal_id"],
+                set_={
+                    key: statement.excluded[key]
+                    for key in values
+                    if key not in ("signal_id", "created_at")
+                },
+            )
+        )
+
+    async def for_client(self, trading_client_id: str) -> Sequence[models.LiveTradeSignalsRow]:
+        result = await self.session.execute(
+            select(models.LiveTradeSignalsRow).where(
+                models.LiveTradeSignalsRow.trading_client_id == trading_client_id,
+                models.LiveTradeSignalsRow.evicted.is_(False),
+            )
+        )
+        return list(result.scalars().all())
+
 
 class LiveTradeSignalsArchiveRepository(Repository[models.LiveTradeSignalsArchiveRow]):
     model = models.LiveTradeSignalsArchiveRow
@@ -214,8 +258,75 @@ class LiveTradeSignalsArchiveRepository(Repository[models.LiveTradeSignalsArchiv
 class LiveTradesRepository(Repository[models.LiveTradesRow]):
     model = models.LiveTradesRow
 
+    async def upsert_trade(self, trade: Trade, now: datetime) -> None:
+        """Write a trade, replacing what was there.
+
+        Upserted rather than read-then-written: a trade changes several times
+        a second under a fill burst, and a read-modify-write between two of
+        them loses one.
+        """
+        values = {
+            "trading_client_id": trade.trading_client.value,
+            "trade_id": trade.id.value,
+            "product": trade.product.value,
+            "strategy_name": trade.strategy,
+            "trading_symbol": trade.instrument.value,
+            "signal_id": trade.signal_id,
+            "is_paper_trading": trade.is_paper,
+            "start_timestamp": trade.started_at,
+            "end_timestamp": trade.ended_at,
+            "payload": encode_trade(trade),
+            "created_at": now,
+            "updated_at": now,
+            "state": trade.state.value,
+            "hedge_correlation_id": trade.relationships.hedge_correlation_id,
+            "pair_correlation_id": trade.relationships.pair_correlation_id,
+            "trade_group": trade.group,
+            "tranch": trade.tranche,
+            "slice": trade.slice,
+            "evicted": False,
+        }
+        statement = insert(models.LiveTradesRow).values(**values)
+        await self.session.execute(
+            statement.on_conflict_do_update(
+                index_elements=["trade_id"],
+                set_={
+                    key: statement.excluded[key]
+                    for key in values
+                    if key not in ("trade_id", "created_at")
+                },
+            )
+        )
+
     async def for_client(self, trading_client_id: str) -> Sequence[models.LiveTradesRow]:
-        return await self.find(trading_client_id=trading_client_id)
+        result = await self.session.execute(
+            select(models.LiveTradesRow).where(
+                models.LiveTradesRow.trading_client_id == trading_client_id,
+                models.LiveTradesRow.evicted.is_(False),
+            )
+        )
+        return list(result.scalars().all())
+
+    async def archive_finished(self, trading_client_id: str, before: datetime) -> int:
+        """Take finished trades out of the working set.
+
+        ``before`` keeps today's finished trades in place: an operator looking
+        at the Console after the close should still see what closed today, and
+        the next morning's load is what clears them.
+        """
+        statement = (
+            update(models.LiveTradesRow)
+            .where(
+                models.LiveTradesRow.trading_client_id == trading_client_id,
+                models.LiveTradesRow.state.in_(("COMPLETED", "CANCELLED")),
+                models.LiveTradesRow.end_timestamp.is_not(None),
+                models.LiveTradesRow.end_timestamp < before,
+                models.LiveTradesRow.evicted.is_(False),
+            )
+            .values(evicted=True)
+            .returning(models.LiveTradesRow.trade_id)
+        )
+        return len(list((await self.session.execute(statement)).scalars().all()))
 
     async def in_state(self, state: str) -> Sequence[models.LiveTradesRow]:
         return await self.find(state=state)
