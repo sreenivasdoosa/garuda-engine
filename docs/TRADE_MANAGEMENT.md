@@ -242,10 +242,11 @@ be discovered as a gap.
   yet reconciles two brokers spelling one contract differently. That surfaces
   when the second broker is added and its master can be compared against the
   first.
-- **Segments and currency are not columns.** `exchanges` says when a venue
-  opens and closes but not what it trades or what it settles in, so
-  `composition/venues.py` carries a table of three. A fourth venue needs two
-  columns, not an entry in that table.
+- **Segments are not a column.** `exchanges` now carries `currency` — added
+  here deliberately, since the reference engine is single-market and never
+  needed it — but still does not say what a venue *trades*, so
+  `composition/venues.py` carries a table of three. A fourth venue needs a
+  column, not an entry in that table.
 - **One stop-loss gap for every venue.** `ProtectiveOrderService` caps a
   strategy's stop distance by a per-segment maximum; the composition root
   supplies a single constant because nothing stores one. It belongs beside

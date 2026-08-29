@@ -5,11 +5,10 @@ day sits from its own open and close. Everything here reads those rows and
 returns the value objects the runner and the square-off services work in, so
 that adding a venue is an insert and not a code change.
 
-Two things the rows do not carry yet are filled in from a table below --
-which segments a venue trades, and what currency it settles in. Both belong
-in columns on ``exchanges``; until they are there, a venue nobody has listed
-gets every segment rather than none, because an exchange with no segments
-cannot be constructed at all.
+One thing the rows do not carry yet is filled in from a table below: which
+segments a venue trades. It belongs in a column on ``exchanges``; until it is
+there, a venue nobody has listed gets every segment rather than none, because
+an exchange with no segments cannot be constructed at all.
 """
 
 from __future__ import annotations
@@ -24,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from garuda.domain.calendar import Session, TradingCalendar
 from garuda.domain.enums import Segment, SettlementCycle
+from garuda.domain.errors import DomainError
 from garuda.domain.exchange import Exchange
 from garuda.domain.money import Currency
 from garuda.domain.phases import DayOffsets
@@ -45,9 +45,6 @@ SEGMENTS: Mapping[str, frozenset[Segment]] = {
     "BSE": frozenset({Segment.EQUITY, Segment.FNO}),
     "MCX": frozenset({Segment.COMMODITY}),
 }
-
-#: What each venue settles in. Also belongs in a column.
-CURRENCIES: Mapping[str, Currency] = {"NSE": Currency.INR, "BSE": Currency.INR, "MCX": Currency.INR}
 
 #: Used where a venue's row does not say. Indian equities settle T+1.
 DEFAULT_SETTLEMENT = SettlementCycle.T1
@@ -126,7 +123,13 @@ def venues_from(rows: Sequence[ExchangesRow], holiday_rows: Sequence[HolidaysRow
         if row.is_active is False:
             continue
         code = row.exchange_code
-        exchanges[code] = _exchange_from(row, frozenset(holidays.get(code, ())))
+        try:
+            exchanges[code] = _exchange_from(row, frozenset(holidays.get(code, ())))
+        except DomainError as error:
+            # One misconfigured venue is not a reason for the others to stop
+            # trading. It is reported by name and left out.
+            logger.error("%s is not usable and will not be traded: %s", code, error)
+            continue
         offsets[code] = _offsets_from(row)
         blocks[code] = (
             timedelta(minutes=row.intraday_squareoff_block_minutes_before_close)
@@ -154,11 +157,27 @@ def _exchange_from(row: ExchangesRow, holidays: frozenset[date]) -> Exchange:
     return Exchange(
         code=code,
         name=row.exchange_name or code,
-        currency=CURRENCIES.get(code, Currency.INR),
+        currency=_currency(row),
         calendar=calendar,
         settlement=DEFAULT_SETTLEMENT,
         segments=SEGMENTS.get(code, frozenset(Segment)),
     )
+
+
+def _currency(row: ExchangesRow) -> Currency:
+    """What the venue settles in, as the engine's own enum.
+
+    A code the engine does not know is refused loudly rather than defaulted:
+    a P&L figure carrying the wrong currency is worse than a venue that will
+    not load, because nothing about it looks wrong.
+    """
+    try:
+        return Currency(row.currency.strip().upper())
+    except (ValueError, AttributeError):
+        raise DomainError(
+            f"{row.exchange_code} settles in {row.currency!r}, which is not a currency "
+            "the engine knows"
+        ) from None
 
 
 def _pre_open(row: ExchangesRow) -> Session | None:

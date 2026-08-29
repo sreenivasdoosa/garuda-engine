@@ -1,6 +1,7 @@
 - exchange_code: BSE
   exchange_name: Bombay Stock Exchange
   timezone: Asia/Kolkata
+  currency: INR
   pre_market_start: 09:00:00
   pre_market_end: 09:08:00
   market_open: 09:15:00
@@ -19,6 +20,7 @@
 - exchange_code: MCX
   exchange_name: Multi Commodity Exchange
   timezone: Asia/Kolkata
+  currency: INR
   pre_market_start: 08:45:00
   pre_market_end: 08:59:00
   market_open: 09:00:00
@@ -37,6 +39,7 @@
 - exchange_code: NSE
   exchange_name: National Stock Exchange
   timezone: Asia/Kolkata
+  currency: INR
   pre_market_start: 09:00:00
   pre_market_end: 09:08:00
   market_open: 09:15:00

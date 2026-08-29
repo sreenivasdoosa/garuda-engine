@@ -78,6 +78,7 @@ def venues() -> Venues:
                 timezone="Asia/Kolkata",
                 market_open=time(9, 15),
                 market_close=time(15, 30),
+                currency="INR",
                 is_active=True,
                 intraday_squareoff_minutes_before_close=20,
             )

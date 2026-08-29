@@ -9,6 +9,7 @@ import pytest
 
 from garuda.composition.venues import DEFAULT_WEEKEND, Venues, venues_from
 from garuda.domain.enums import ProductType, Segment
+from garuda.domain.money import Currency
 from garuda.persistence.models import ExchangesRow, HolidaysRow
 
 IST = ZoneInfo("Asia/Kolkata")
@@ -22,6 +23,7 @@ def exchange_row(**overrides: object) -> ExchangesRow:
         "timezone": "Asia/Kolkata",
         "market_open": time(9, 15),
         "market_close": time(15, 30),
+        "currency": "INR",
         "is_active": True,
     }
     return ExchangesRow(**{**defaults, **overrides})
@@ -223,3 +225,30 @@ def test_a_weekend_of_nothing_is_still_a_weekend() -> None:
     assert not calendar.is_trading_day(date(2026, 9, 5))
     assert not calendar.is_trading_day(date(2026, 9, 6))
     assert calendar.is_trading_day(MONDAY)
+
+
+def test_a_venue_settles_in_the_currency_its_row_names() -> None:
+    row = exchange_row(exchange_code="NYSE", exchange_name="New York", currency="USD")
+
+    venues = venues_from([row], [])
+
+    assert venues.exchanges["NYSE"].currency is Currency.USD
+
+
+def test_a_currency_the_engine_does_not_know_takes_only_that_venue_down() -> None:
+    """A P&L figure in the wrong currency is worse than a venue that will not load."""
+    rows = [
+        exchange_row(exchange_code="XXX", exchange_name="Nowhere", currency="ZZZ"),
+        exchange_row(),
+    ]
+
+    venues = venues_from(rows, [])
+
+    assert "XXX" not in venues.exchanges
+    assert venues.exchanges["NSE"].currency is Currency.INR
+
+
+def test_a_venue_with_no_currency_is_not_traded() -> None:
+    venues = venues_from([exchange_row(currency=None)], [])
+
+    assert venues.exchanges == {}
