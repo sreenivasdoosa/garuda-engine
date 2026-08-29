@@ -29,7 +29,10 @@ start() {
             -e POSTGRES_PASSWORD=garuda \
             -e POSTGRES_INITDB_ARGS="--encoding=UTF8 --locale=C" \
             -p "${PORT}:5432" \
-            -v "${VOLUME}:/var/lib/postgresql/data" \
+            `# 18+ puts its data in a versioned subdirectory, so the mount goes` \
+            `# one level up. Mounting .../data instead leaves the container` \
+            `# initialising somewhere else and the volume silently empty.` \
+            -v "${VOLUME}:/var/lib/postgresql" \
             "$IMAGE" \
             postgres -c log_min_duration_statement=1000 -c timezone=UTC >/dev/null
         echo "created $NAME on port $PORT"

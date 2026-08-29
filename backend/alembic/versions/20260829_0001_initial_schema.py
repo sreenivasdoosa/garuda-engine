@@ -771,11 +771,26 @@ def upgrade() -> None:
         sa.Column("is_pro", sa.Boolean(), server_default="false", nullable=False),
         sa.Column("use_dealer_apis", sa.Boolean(), nullable=True),
         sa.Column("websocket_enabled", sa.Boolean(), server_default="true", nullable=False),
+        sa.Column("uses_credentials_of", sa.String(length=64), nullable=True),
+        sa.Column("is_market_data_source", sa.Boolean(), server_default="false", nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+        sa.ForeignKeyConstraint(
+            ["uses_credentials_of"],
+            ["trading_clients.id"],
+            name=op.f("fk_trading_clients_uses_credentials_of_trading_clients"),
+            ondelete="RESTRICT",
+        ),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_trading_clients")),
         sa.UniqueConstraint("broker", "client_id", name="uq_trading_clients_account"),
         sa.UniqueConstraint("display_name", name=op.f("uq_trading_clients_display_name")),
+    )
+    op.create_index(
+        "uq_trading_clients_market_data_source",
+        "trading_clients",
+        ["is_market_data_source"],
+        unique=True,
+        postgresql_where=sa.text("is_market_data_source"),
     )
     op.create_table(
         "trailing_sl_policy",

@@ -40,6 +40,7 @@ from sqlalchemy import (
     Text,
     Time,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
@@ -81,7 +82,17 @@ class TradingClientRow(Base):
     """One broker account, with what is needed to reach it."""
 
     __tablename__ = "trading_clients"
-    __table_args__ = (UniqueConstraint("broker", "client_id", name="uq_trading_clients_account"),)
+    __table_args__ = (
+        UniqueConstraint("broker", "client_id", name="uq_trading_clients_account"),
+        # At most one market data source, enforced by the database rather than
+        # by whoever writes the next admin endpoint.
+        Index(
+            "uq_trading_clients_market_data_source",
+            "is_market_data_source",
+            unique=True,
+            postgresql_where=text("is_market_data_source"),
+        ),
+    )
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     display_name: Mapped[MediumText] = mapped_column(unique=True)
@@ -120,6 +131,38 @@ class TradingClientRow(Base):
     #: Whether to take order and position updates over the broker's socket.
     #: Off means polling, which some accounts need.
     websocket_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+
+    #: Another trading client whose broker session this one rides on.
+    #:
+    #: A dealer terminal issues one access token that covers several client
+    #: ids. The account named here logs in; this one never does, which has
+    #: three consequences that are wrong by default: a failed login for this
+    #: account is meaningless (it does not attempt one), one socket carries
+    #: updates for all of them, and an order update therefore belongs to the
+    #: client id **in the payload** rather than to the account whose socket it
+    #: arrived on.
+    #:
+    #: RESTRICT rather than CASCADE: deleting the account others authenticate
+    #: through must fail loudly, not silently strand them.
+    uses_credentials_of: Mapped[str | None] = mapped_column(
+        String(64),
+        ForeignKey("trading_clients.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+
+    #: This account's session is the one the tick feed and the quotes API use.
+    #:
+    #: Market data needs a live access token, and a token belongs to an
+    #: account, so one account has to provide it. Which one is the operator's
+    #: choice and need not be an account that trades -- the partial unique
+    #: index below allows at most one, and none at all until it is chosen.
+    #:
+    #: A flag on the row rather than a name in app_config: a configured name
+    #: can outlive the account it names, and market data silently stopping
+    #: because a row was deleted elsewhere is a bad morning.
+    is_market_data_source: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false"
+    )
 
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True))
