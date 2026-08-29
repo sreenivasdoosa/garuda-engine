@@ -39,14 +39,26 @@ def upgrade() -> None:
     op.create_table(
         "alerts",
         sa.Column("id", sa.BigInteger(), nullable=False),
-        sa.Column("timestamp", sa.String(length=30), nullable=False),
-        sa.Column("alert_level", sa.String(length=10), nullable=True),
-        sa.Column("entity_type", sa.String(length=50), nullable=True),
-        sa.Column("entity_name", sa.String(length=100), nullable=True),
-        sa.Column("operation", sa.String(length=50), nullable=True),
-        sa.Column("alert_message", sa.Text(), nullable=True),
+        sa.Column("trading_day", sa.Date(), nullable=False),
+        sa.Column("raised_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("first_raised_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("level", sa.String(length=10), nullable=False),
+        sa.Column("entity_type", sa.String(length=32), nullable=False),
+        sa.Column("entity", sa.String(length=200), nullable=False),
+        sa.Column("operation", sa.String(length=64), nullable=False),
+        sa.Column("message", sa.Text(), nullable=False),
+        sa.Column("unique_key", sa.String(length=200), nullable=True),
+        sa.Column("occurrences", sa.Integer(), server_default="1", nullable=False),
         sa.PrimaryKeyConstraint("id", name=op.f("pk_alerts")),
     )
+    op.create_index(
+        "uq_alerts_key_per_day",
+        "alerts",
+        ["trading_day", "unique_key"],
+        unique=True,
+        postgresql_where=sa.text("unique_key IS NOT NULL"),
+    )
+    op.create_index("ix_alerts_day_raised", "alerts", ["trading_day", "raised_at"])
     op.create_table(
         "allocation_model_strategies",
         sa.Column("model_name", sa.String(length=50), nullable=False),

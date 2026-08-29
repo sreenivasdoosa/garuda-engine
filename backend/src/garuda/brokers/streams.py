@@ -23,8 +23,10 @@ from contextlib import suppress
 from dataclasses import dataclass, field
 from datetime import datetime
 
+from garuda.alerts.manager import AlertManager
 from garuda.brokers.sessions import Account, Credentials, SessionResolver, SessionUnavailableError
 from garuda.core.backoff import ReconnectPolicy
+from garuda.domain.alert import AlertLevel, EntityType
 from garuda.domain.client import TradingClientId
 from garuda.protocols.account import (
     AccountConnected,
@@ -82,15 +84,19 @@ class AccountStreamManager:
         factory: StreamFactory,
         clock: Clock,
         handler: UpdateHandler,
+        alerts: AlertManager,
         *,
         policy: ReconnectPolicy | None = None,
     ) -> None:
+        self._alerts = alerts
         self._resolver = resolver
         self._factory = factory
         self._clock = clock
         self._handler = handler
         self._policy = policy or ReconnectPolicy()
         self._streams: dict[TradingClientId, AccountStream] = {}
+        #: How each account should appear in a log line or an alert.
+        self._labels: dict[TradingClientId, str] = {}
         self._tasks: dict[TradingClientId, asyncio.Task[None]] = {}
         self.health: dict[TradingClientId, StreamHealth] = {}
 
@@ -126,7 +132,17 @@ class AccountStreamManager:
             credentials = self._resolver.credentials_for(account.id, now)
         except SessionUnavailableError as error:
             health.last_error = str(error)
-            logger.info("%s: no order stream — %s", account.id, error)
+            logger.info("no order stream for %s (%s): %s", account.label, account.id, error)
+            # A warning rather than critical: the operator has not logged in
+            # yet, which is a normal state at six in the morning and a serious
+            # one at ten. Coalesced so a whole morning of retries is one line.
+            await self._alerts.warning(
+                EntityType.BROKER,
+                account.label,
+                "order-stream",
+                f"no order updates: {error}",
+                key=f"order-stream-session:{account.id}",
+            )
             return str(error)
 
         try:
@@ -135,15 +151,32 @@ class AccountStreamManager:
         except Exception as error:
             health.failures += 1
             health.last_error = f"{type(error).__name__}: {error}"
-            logger.warning("%s: order stream failed to connect: %s", account.id, error)
+            logger.warning(
+                "order stream failed to connect for %s (%s): %s", account.label, account.id, error
+            )
+            await self._alerts.warning(
+                EntityType.BROKER,
+                account.label,
+                "order-stream",
+                f"the order update socket would not connect: {error}",
+                key=f"order-stream-connect:{account.id}",
+            )
             return health.last_error
 
         self._streams[account.id] = stream
+        self._labels[account.id] = account.label
         self._tasks[account.id] = asyncio.create_task(
-            self._consume(account.id, stream), name=f"account-stream:{account.id}"
+            self._consume(account.id, stream), name=f"account-stream:{account.label}"
         )
         health.connected = True
         health.failures = 0
+        await self._alerts.info(
+            EntityType.BROKER,
+            account.label,
+            "order-stream",
+            "receiving order updates",
+            key=f"order-stream-up:{account.id}",
+        )
         return None
 
     async def _consume(self, trading_client: TradingClientId, stream: AccountStream) -> None:
@@ -160,30 +193,66 @@ class AccountStreamManager:
                     case AccountProblem(_, detail, _):
                         health.problems += 1
                         health.last_error = detail
+                        # Throttled: a stream sending malformed frames sends
+                        # them faster than anyone can read.
+                        await self._alerts.throttled(
+                            AlertLevel.WARNING,
+                            EntityType.BROKER,
+                            self._label(trading_client),
+                            "order-stream",
+                            detail,
+                            key=f"order-stream-problem:{trading_client}",
+                        )
                     case AccountConnected():
                         health.connected = True
                     case AccountDisconnected(_, reason, _):
                         health.connected = False
                         health.last_error = reason
+                        await self._alerts.warning(
+                            EntityType.BROKER,
+                            self._label(trading_client),
+                            "order-stream",
+                            f"order updates stopped: {reason}",
+                            key=f"order-stream-down:{trading_client}",
+                        )
                 try:
                     await self._handler(event, trading_client)
                 except Exception as error:
                     # A handler that raises must not take the stream down with
                     # it: the next update may be the fill that matters.
                     logger.exception(
-                        "%s: handling %s failed: %s",
-                        trading_client,
+                        "handling %s for %s (%s) failed: %s",
                         type(event).__name__,
+                        self._label(trading_client),
+                        trading_client,
                         error,
+                    )
+                    # Critical: an update that could not be applied is a fill
+                    # the engine may not know about.
+                    await self._alerts.critical(
+                        EntityType.ORDER,
+                        self._label(trading_client),
+                        "order-update",
+                        f"an order update could not be applied: {type(error).__name__}: {error}",
+                        key=f"order-update-failed:{trading_client}",
                     )
         except asyncio.CancelledError:
             raise
         except Exception as error:
             health.connected = False
             health.last_error = f"{type(error).__name__}: {error}"
-            logger.warning("%s: order stream ended: %s", trading_client, error)
+            logger.warning(
+                "order stream for %s (%s) ended: %s",
+                self._label(trading_client),
+                trading_client,
+                error,
+            )
         finally:
             health.connected = False
+
+    def _label(self, trading_client: TradingClientId) -> str:
+        """Never the bare id: nobody recognises one at seven in the morning."""
+        return self._labels.get(trading_client, str(trading_client))
 
     async def reconcile(self, now: datetime) -> StartReport:
         """Replace whatever has stopped. Cheap when everything is healthy."""
@@ -217,4 +286,4 @@ class AccountStreamManager:
             await self._retire(trading_client)
         for trading_client, health in self.health.items():
             health.connected = False
-            logger.debug("%s: order stream stopped", trading_client)
+            logger.debug("order stream for %s stopped", self._label(trading_client))

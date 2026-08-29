@@ -41,6 +41,7 @@ def account(
         id=name,
         broker="zerodha",
         client_id=client_id,
+        display_name=str(name),
         enabled=enabled,
         api_key=api_key,
         static_ip=static_ip,
@@ -129,7 +130,9 @@ class TestABorrowedSession:
 
     def test_a_child_whose_dealer_never_logged_in_says_which(self) -> None:
         subject = resolver([account(DEALER, "DEAL01"), account(CHILD, "CHILD9", uses=DEALER)], {})
-        with pytest.raises(SessionUnavailableError, match="it uses dealer's"):
+        with pytest.raises(
+            SessionUnavailableError, match=r"it uses dealer \(zerodha:DEAL01\)'s session"
+        ):
             subject.credentials_for(CHILD, NOW)
 
     def test_accounts_borrowing_in_a_loop_are_refused(self) -> None:

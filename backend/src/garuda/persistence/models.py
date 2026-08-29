@@ -1688,17 +1688,48 @@ class AuditLogRow(Base):
 
 
 class AlertsRow(Base):
-    """ALERTS in the reference engine."""
+    """One alert, however many times it happened.
+
+    Shaped after the reference engine's coalescing alert store rather than its
+    flat one: a row is one distinct ``unique_key`` on one trading day, not one
+    occurrence. ``raised_at`` is the latest, ``first_raised_at`` the first, and
+    ``occurrences`` says how many times it fired. Without that, a socket that
+    flapped through the night wrote a row per flap and buried everything else.
+
+    The unique index is partial, so keyless alerts -- genuinely one-shot
+    events -- never collide with each other, while keyed ones coalesce. It
+    includes the trading day, so a problem recurring the next morning is a new
+    row an operator will notice rather than a count quietly advancing on
+    yesterday's.
+
+    ``entity`` is human-readable by contract: a display name, a trading symbol,
+    a strategy's name. An alert nobody can act on without a database query is
+    not an alert.
+    """
 
     __tablename__ = "alerts"
+    __table_args__ = (
+        Index(
+            "uq_alerts_key_per_day",
+            "trading_day",
+            "unique_key",
+            unique=True,
+            postgresql_where=text("unique_key IS NOT NULL"),
+        ),
+        Index("ix_alerts_day_raised", "trading_day", "raised_at"),
+    )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    timestamp: Mapped[str] = mapped_column(String(30))
-    alert_level: Mapped[str | None] = mapped_column(String(10), nullable=True)
-    entity_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    entity_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    operation: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    alert_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    trading_day: Mapped[dt.date] = mapped_column(Date)
+    raised_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True))
+    first_raised_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True))
+    level: Mapped[str] = mapped_column(String(10))
+    entity_type: Mapped[str] = mapped_column(String(32))
+    entity: Mapped[str] = mapped_column(String(200))
+    operation: Mapped[str] = mapped_column(String(64))
+    message: Mapped[str] = mapped_column(Text)
+    unique_key: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    occurrences: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
 
 
 class DataProviderSessionsRow(Base):

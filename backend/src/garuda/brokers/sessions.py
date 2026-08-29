@@ -46,6 +46,11 @@ class Account:
     broker: str
     #: The broker's own id for the account. Orders are placed against this.
     client_id: str
+    #: What the operator calls it. Every log line and every alert uses this
+    #: rather than ``id``: nobody recognises an internal identifier at seven in
+    #: the morning, and an alert they cannot act on without a database query
+    #: is not an alert.
+    display_name: str = ""
     enabled: bool = True
     api_key: str | None = None
     static_ip: str | None = None
@@ -53,6 +58,12 @@ class Account:
     #: The account whose session this one uses instead of logging in itself.
     uses_credentials_of: TradingClientId | None = None
     is_market_data_source: bool = False
+
+    @property
+    def label(self) -> str:
+        """How this account appears to a person: "Appa (zerodha:AB1234)"."""
+        name = self.display_name or str(self.id)
+        return f"{name} ({self.broker}:{self.client_id})"
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,6 +109,8 @@ class SessionResolver:
     def account(self, trading_client: TradingClientId) -> Account:
         found = self._accounts.get(trading_client)
         if found is None:
+            # The only case where a bare id is the right thing to print:
+            # there is no configured account, so there is no name to use.
             raise SessionUnavailableError(f"{trading_client} is not a configured trading client")
         return found
 
@@ -116,7 +129,7 @@ class SessionResolver:
         if len(chosen) > 1:  # pragma: no cover - the database refuses this
             raise SessionUnavailableError(
                 "more than one account is marked as the market data source: "
-                + ", ".join(str(account.id) for account in chosen)
+                + ", ".join(account.label for account in chosen)
             )
         return chosen[0].id
 
@@ -135,22 +148,22 @@ class SessionResolver:
         """Credentials for an account, following whose session it uses."""
         account = self.account(trading_client)
         if not account.enabled:
-            raise SessionUnavailableError(f"{trading_client} is disabled")
+            raise SessionUnavailableError(f"{account.label} is disabled")
 
         holder = self._session_holder(account)
         session = self._sessions.get(holder.id)
         if session is None:
             raise SessionUnavailableError(
-                f"{trading_client} has no broker session"
+                f"{account.label} has no broker session"
                 + (
-                    f" (it uses {holder.id}'s, which has not logged in)"
+                    f" (it uses {holder.label}'s session, which has not logged in)"
                     if holder.id != account.id
                     else ""
                 )
             )
         if session.is_expired(now, timezone=self._timezone, cutoff=self._cutoff):
             raise SessionUnavailableError(
-                f"{trading_client}: the session created at {session.created_at.isoformat()} "
+                f"{account.label}: the session created at {session.created_at.isoformat()} "
                 "predates today's cutoff; the operator must log in again"
             )
 
@@ -158,7 +171,7 @@ class SessionResolver:
         if not api_key:
             # The key belongs to the account that registered the app, which is
             # the one that logs in -- not necessarily the one trading.
-            raise SessionUnavailableError(f"{holder.id} has no API key configured")
+            raise SessionUnavailableError(f"{holder.label} has no API key configured")
 
         return Credentials(
             trading_client=account.id,
@@ -185,7 +198,7 @@ class SessionResolver:
                 )
             if len(seen) > MAX_CREDENTIAL_HOPS:
                 raise SessionUnavailableError(
-                    f"{account.id} is {len(seen)} accounts away from one that logs in; "
+                    f"{account.label} is {len(seen)} accounts away from one that logs in; "
                     "that is a misconfiguration, not a dealer hierarchy"
                 )
             current = self.account(current.uses_credentials_of)

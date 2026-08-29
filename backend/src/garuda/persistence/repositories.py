@@ -10,10 +10,14 @@ invented for a table that never needed one.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import date
 from typing import Any
 
+from sqlalchemy import select, text
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from garuda.domain.alert import Alert
 from garuda.persistence import models
 from garuda.persistence.repository import Repository
 
@@ -24,6 +28,57 @@ class AggregatedPnlSnapshotsRepository(Repository[models.AggregatedPnlSnapshotsR
 
 class AlertsRepository(Repository[models.AlertsRow]):
     model = models.AlertsRow
+
+    async def record(self, alert: Alert) -> None:
+        """Insert an alert, or advance the count of one already raised today.
+
+        The upsert is on ``(trading_day, unique_key)`` rather than a read then
+        a write, because the alert path runs from several tasks at once and a
+        read-modify-write there loses occurrences under exactly the storm the
+        counting exists to survive.
+
+        A keyless alert always inserts: a one-shot event happening twice
+        really is two events.
+        """
+        values = {
+            "trading_day": alert.trading_day,
+            "raised_at": alert.raised_at,
+            "first_raised_at": alert.began_at,
+            "level": alert.level.value,
+            "entity_type": alert.entity_type.value,
+            "entity": alert.entity,
+            "operation": alert.operation,
+            "message": alert.message,
+            "unique_key": alert.key,
+            "occurrences": alert.occurrences,
+        }
+        if alert.key is None:
+            await self.session.execute(insert(models.AlertsRow).values(**values))
+            return
+
+        statement = insert(models.AlertsRow).values(**values)
+        await self.session.execute(
+            statement.on_conflict_do_update(
+                index_elements=["trading_day", "unique_key"],
+                index_where=text("unique_key IS NOT NULL"),
+                set_={
+                    "raised_at": statement.excluded.raised_at,
+                    # The latest wording of a recurring problem is the
+                    # informative one.
+                    "message": statement.excluded.message,
+                    "level": statement.excluded.level,
+                    "occurrences": models.AlertsRow.occurrences + 1,
+                },
+            )
+        )
+
+    async def on_day(self, trading_day: date) -> Sequence[models.AlertsRow]:
+        result = await self.session.execute(
+            select(models.AlertsRow)
+            .where(models.AlertsRow.trading_day == trading_day)
+            .order_by(models.AlertsRow.raised_at.desc())
+        )
+        return list(result.scalars().all())
 
 
 class AllocationModelStrategiesRepository(Repository[models.AllocationModelStrategiesRow]):

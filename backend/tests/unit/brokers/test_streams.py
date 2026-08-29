@@ -11,14 +11,18 @@ from collections.abc import AsyncIterator, Sequence
 from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 
+from garuda.alerts.manager import AlertManager
 from garuda.brokers.sessions import Account, Credentials, SessionResolver
 from garuda.brokers.streams import AccountStreamManager
+from garuda.core.bus import InProcessEventBus
 from garuda.core.clock import ReplayClock
+from garuda.domain.alert import Alert
 from garuda.domain.client import TradingClientId
 from garuda.domain.order import BrokerOrderId, Side
 from garuda.domain.session import BrokerSession
 from garuda.protocols.account import (
     AccountConnected,
+    AccountDisconnected,
     AccountEvent,
     AccountProblem,
     AccountStream,
@@ -87,12 +91,26 @@ def account(
     )
 
 
+def alerts(raised: list[Alert] | None = None) -> AlertManager:
+    async def sink(alert: Alert) -> None:
+        if raised is not None:
+            raised.append(alert)
+
+    return AlertManager(
+        clock=ReplayClock(NOW),
+        bus=InProcessEventBus(),
+        trading_day_for=lambda now: NOW.date(),
+        sink=sink,
+    )
+
+
 def manager(
     accounts: Sequence[Account],
     sessions: dict[TradingClientId, BrokerSession],
     streams: dict[TradingClientId, FakeStream] | None = None,
     handled: list[tuple[AccountEvent, TradingClientId]] | None = None,
     fail_for: set[TradingClientId] | None = None,
+    raised: list[Alert] | None = None,
 ) -> AccountStreamManager:
     resolver = SessionResolver({a.id: a for a in accounts}, sessions, timezone=IST)
     built = streams if streams is not None else {}
@@ -108,7 +126,7 @@ def manager(
         if handled is not None:
             handled.append((event, trading_client))
 
-    return AccountStreamManager(resolver, factory, ReplayClock(NOW), handler)
+    return AccountStreamManager(resolver, factory, ReplayClock(NOW), handler, alerts(raised))
 
 
 async def settle() -> None:
@@ -227,7 +245,7 @@ class TestConsuming:
         async def factory(credentials: Credentials) -> AccountStream:
             return stream
 
-        subject = AccountStreamManager(resolver, factory, ReplayClock(NOW), handler)
+        subject = AccountStreamManager(resolver, factory, ReplayClock(NOW), handler, alerts())
         await subject.start(NOW)
         await settle()
         await subject.stop()
@@ -264,7 +282,7 @@ class TestReplacing:
 
         async def handler(event: AccountEvent, trading_client: TradingClientId) -> None: ...
 
-        subject = AccountStreamManager(resolver, factory, ReplayClock(NOW), handler)
+        subject = AccountStreamManager(resolver, factory, ReplayClock(NOW), handler, alerts())
         await subject.start(NOW)
         await settle()
 
@@ -295,3 +313,71 @@ class TestReplacing:
         await subject.stop()
         await subject.stop()
         assert subject.running == frozenset()
+
+
+class TestWhatTheOperatorSees:
+    """An alert nobody can act on without a database query is not an alert."""
+
+    def opaque(self) -> Account:
+        return Account(
+            id=TradingClientId("a3f9c2e1-0b44-4c1e-9a77-2d5f8e6b1c30"),
+            broker="zerodha",
+            client_id="AB1234",
+            display_name="Appa",
+            api_key="key",
+        )
+
+    async def test_a_stream_that_cannot_start_names_the_account_readably(self) -> None:
+        raised: list[Alert] = []
+        account = self.opaque()
+        subject = manager([account], {}, raised=raised)
+
+        await subject.start(NOW)
+
+        assert raised, "an account with no session must tell the operator"
+        alert = raised[0]
+        assert alert.entity == "Appa (zerodha:AB1234)"
+        assert str(account.id) not in alert.entity
+        assert str(account.id) not in alert.message
+
+    async def test_a_connected_stream_says_so_readably(self) -> None:
+        raised: list[Alert] = []
+        account = self.opaque()
+        subject = manager(
+            [account], {account.id: BrokerSession("AB1234", "t1", TODAY)}, raised=raised
+        )
+        await subject.start(NOW)
+        try:
+            assert [a.entity for a in raised] == ["Appa (zerodha:AB1234)"]
+        finally:
+            await subject.stop()
+
+    async def test_a_disconnection_reaches_the_operator(self) -> None:
+        raised: list[Alert] = []
+        account = self.opaque()
+        streams = {
+            account.id: FakeStream(
+                account.id, [AccountDisconnected(account.id, "token expired", NOW)]
+            )
+        }
+        subject = manager(
+            [account],
+            {account.id: BrokerSession("AB1234", "t1", TODAY)},
+            streams,
+            raised=raised,
+        )
+        await subject.start(NOW)
+        await settle()
+        await subject.stop()
+
+        messages = [a.message for a in raised]
+        assert any("token expired" in message for message in messages)
+
+    async def test_an_account_with_no_display_name_still_reads_sensibly(self) -> None:
+        """A half-configured account must not produce a blank alert."""
+        raised: list[Alert] = []
+        account = Account(
+            id=TradingClientId("abc123"), broker="zerodha", client_id="AB1234", api_key="key"
+        )
+        await manager([account], {}, raised=raised).start(NOW)
+        assert raised[0].entity == "abc123 (zerodha:AB1234)"
