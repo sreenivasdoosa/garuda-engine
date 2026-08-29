@@ -30,6 +30,7 @@ from garuda.domain.trade_state import (
     TRADE_TRANSITIONS,
     TradeExitReason,
     TradeState,
+    more_urgent,
 )
 
 
@@ -113,6 +114,11 @@ class Relationships:
     #: orphan is squared off on every sweep and after a restart, rather than
     #: depending on the main signal still being in memory.
     main_entry_failed: bool = False
+    #: On a signal, the hedge this one replaces. Its presence is what makes a
+    #: signal a hedge *replacement* rather than a hedge entry, and replacements
+    #: are deliberately allowed back into a slot a live hedge already occupies
+    #: -- that is the whole point of rolling one.
+    hedge_trade_id_to_square_off: TradeId | None = None
 
     @property
     def is_hedge(self) -> bool:
@@ -183,6 +189,12 @@ class Trade:
     entry: Money | None = None
     exit: Money | None = None
     exit_reason: TradeExitReason | None = None
+    #: Why this trade is on its way out, while it still holds a position. Set
+    #: when a square-off is initiated and before it fills -- a window that can
+    #: last minutes on an illiquid strike. Anything choosing between legs has
+    #: to know: a hedge whose replacement is already placed is not the
+    #: operative hedge, even though it is still live.
+    exiting_for: TradeExitReason | None = None
     #: Why the entry failed, in the words the operator needs: the risk gate's
     #: rejection, the broker's message, or an internal failure. A trade that
     #: failed at entry often has no usable order to inspect.
@@ -250,6 +262,11 @@ class Trade:
     def is_live(self) -> bool:
         """Placed and not finished, whether or not anything has filled."""
         return self.state.is_live
+
+    @property
+    def is_exiting(self) -> bool:
+        """A square-off is in flight but has not completed."""
+        return self.exiting_for is not None and not self.is_terminal
 
     @property
     def open_quantity(self) -> int:
@@ -328,6 +345,19 @@ class Trade:
                 started_at=self.started_at or at,
             )
         return replace(self, filled_quantity=filled, entry=average)
+
+    def exiting(self, reason: TradeExitReason) -> Trade:
+        """Mark a square-off as under way, keeping the more urgent reason.
+
+        A trade already leaving for one reason can be asked again for another
+        -- an end-of-day sweep catching a position a stop is already working
+        on. The more urgent wins, so a daily-loss breach is never downgraded.
+        """
+        if self.is_terminal:
+            raise IllegalTradeTransitionError(f"{self.id}: already {self.state}")
+        if self.exiting_for is None:
+            return replace(self, exiting_for=reason)
+        return replace(self, exiting_for=more_urgent(self.exiting_for, reason))
 
     def closed(self, price: Money, reason: TradeExitReason, at: datetime) -> Trade:
         """The position is out."""
