@@ -231,6 +231,13 @@ be discovered as a gap.
   all need candle history and indicators the engine does not have. A strategy
   configured for one is refused with an alert rather than trailed some other
   way, so the gap is loud.
+- **Per-broker tokens and trading symbols.** `InstrumentId` is
+  `EXCHANGE:SYMBOL` and correct as it stands -- tokens never touch the engine's
+  model and are translated only at the adapter boundary. But the registry holds
+  *one* broker's token map and *one* spelling, taken from whichever master was
+  downloaded. Both differ between brokers, so a second broker needs them keyed
+  by broker; `symbol_broker_info` is where that belongs. Not built ahead of a
+  second broker's master to shape it against.
 - **Market data account and per-client streams are not wired at startup.**
   The resolver, the feed and the stream manager all exist; nothing composes
   them into a running engine yet.

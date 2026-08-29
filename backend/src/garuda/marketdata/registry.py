@@ -28,7 +28,18 @@ class InstrumentRegistry:
     """An immutable index over one day's instrument master."""
 
     by_id: dict[InstrumentId, Instrument] = field(default_factory=dict)
-    #: Broker tokens, kept beside instruments rather than on them.
+    #: Broker tokens, kept beside instruments rather than on them: a token is
+    #: one broker's private identifier, and putting one on the instrument
+    #: would make the same contract two instruments as soon as a second broker
+    #: is added.
+    #:
+    #: **Single-broker for now.** One master is loaded -- the one belonging to
+    #: the account that provides market data -- so this map and the trading
+    #: symbols beside it are that broker's. A second broker needs both keyed by
+    #: broker, which is what ``symbol_broker_info`` exists for (DESIGN 8.2):
+    #: tokens differ between brokers, and so do trading symbols for the same
+    #: contract. Deliberately not built ahead of a second broker's master to
+    #: shape it against.
     tokens: dict[InstrumentId, int] = field(default_factory=dict)
     _by_symbol: dict[tuple[str, str], Instrument] = field(default_factory=dict)
     _by_token: dict[int, Instrument] = field(default_factory=dict)
