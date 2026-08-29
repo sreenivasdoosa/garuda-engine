@@ -244,8 +244,13 @@ class Trade:
     #: subscription, so the same strategy runs paper on one account and live on
     #: another at once.
     is_paper: bool = False
-    #: Exempt from automatic square-off.
+    #: Exempt from automatic square-off. A carry-forward position the
+    #: strategy manages itself.
     no_square_off: bool = False
+    #: When the strategy wants this out regardless of where the price is.
+    #: The venue has its own cut-off for intraday products; whichever comes
+    #: first wins, because the later one can no longer be acted on.
+    square_off_at: datetime | None = None
     remarks: str | None = None
 
     def __post_init__(self) -> None:

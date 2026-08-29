@@ -133,6 +133,8 @@ class TradeSignal:
     slice: int = 1
     is_paper: bool = False
     no_square_off: bool = False
+    #: When the strategy wants the position out, whatever the price is doing.
+    square_off_at: datetime | None = None
     #: The contract's expiry, for a derivative leg. Carried because it cannot
     #: be recovered later: a trading symbol has no day component, so nothing
     #: downstream can derive a real date from it.

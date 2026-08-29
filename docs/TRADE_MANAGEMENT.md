@@ -164,7 +164,7 @@ each concern has its own field group and its own entry point.
 
 Each step ends with something that runs and tests that prove it.
 
-**Done: 1-8.** Next: 9 (the loop).
+**Done: 1-9.** The port's build order is complete; what remains is in section 8.
 
 1. ✅ **The model.** `Trade`, `TradeSignal`, `TradeState`, `TradeExitReason`, and
    the state machine. Pure domain, no I/O.
@@ -181,7 +181,7 @@ Each step ends with something that runs and tests that prove it.
    exit reasons.
 8. ✅ **Relationships.** Hedge, pair and combo resolution, and the consequences one
    leg's exit has for another.
-9. **The loop.** The processor that drives it, wired to the day phases.
+9. ✅ **The loop.** The processor that drives it, wired to the day phases.
 
 Escalation and operator edits (`alterTradeDetails`) fold into 3 and 7.
 
@@ -227,6 +227,10 @@ be discovered as a gap.
   since the first fill is what triggers it.
 - **Strategy subscriptions.** `EntryService` takes an `is_subscribed` check
   and nothing feeds it, so subscription state is not enforced at entry.
+- **Nothing constructs any of this.** Every piece is built and tested, and
+  no composition root wires a book, a tracker, a coordinator, a square-off
+  queue and a loop together for a real account. That is the next thing, and
+  it is where integration problems will surface.
 - **A hedge exiting first does not close the main it protected.** The
   reference engine reserves an exit reason for that direction and never wires
   one, so the position runs unhedged. Ours alerts loudly and closes nothing,

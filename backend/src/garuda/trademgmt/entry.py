@@ -470,6 +470,7 @@ def _trade_from(signal: TradeSignal, now: datetime) -> Trade:
         re_entry_count=signal.re_entry.entries_so_far,
         is_paper=signal.is_paper,
         no_square_off=signal.no_square_off,
+        square_off_at=signal.square_off_at,
     )
 
 
