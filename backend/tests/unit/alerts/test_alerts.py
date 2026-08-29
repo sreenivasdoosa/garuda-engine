@@ -17,6 +17,7 @@ from garuda.domain.alert import Alert, AlertLevel, EntityType
 from garuda.domain.client import BrokerCode, TradingClient, TradingClientId
 from garuda.domain.errors import DomainError
 from garuda.protocols.topics import Topic
+from tests.support import next_published
 
 T0 = datetime(2026, 8, 31, 9, 20, tzinfo=UTC)
 DAY = date(2026, 8, 31)
@@ -184,7 +185,7 @@ class TestDelivery:
         subscription = bus.subscribe(Topic.ALERTS, name="console")
         await subject.critical(EntityType.ORDER, "NIFTY26AUG25000CE", "rejected", "margin")
 
-        received = await anext(aiter(subscription))
+        received = await next_published(subscription)
         assert isinstance(received, Alert)
         assert received.entity == "NIFTY26AUG25000CE"
 
@@ -221,13 +222,13 @@ class TestWhatInterruptsTheOperator:
         bus, subject = self.bus_and_manager()
         toasts = bus.subscribe(Topic.UI, name="console")
         await subject.warning(EntityType.BROKER, "Appa", "login", "session expired")
-        assert isinstance(await anext(aiter(toasts)), Alert)
+        assert isinstance(await next_published(toasts), Alert)
 
     async def test_a_critical_interrupts(self) -> None:
         bus, subject = self.bus_and_manager()
         toasts = bus.subscribe(Topic.UI, name="console")
         await subject.critical(EntityType.ORDER, "NIFTY", "rejected", "margin")
-        assert isinstance(await anext(aiter(toasts)), Alert)
+        assert isinstance(await next_published(toasts), Alert)
 
     async def test_an_ordinary_info_does_not(self) -> None:
         """A restart otherwise fires a toast per account for every socket."""
@@ -291,6 +292,10 @@ class TestWhatInterruptsTheOperator:
 
         async def watch() -> None:
             subscription = bus.subscribe(Topic.UI, name="console")
+            # Deliberately the blocking form: this watcher must already be
+            # waiting when the alert is raised, which is the ordering under
+            # test. Everywhere else, waiting for something that may never
+            # arrive would wedge the run instead of failing it.
             await anext(aiter(subscription))
             order.append("toasted")
 

@@ -18,7 +18,7 @@ loop above it decides when to ask.
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
 
@@ -28,6 +28,7 @@ from garuda.domain.client import TradingClientId
 from garuda.domain.instrument import InstrumentId
 from garuda.domain.order import BrokerOrderId
 from garuda.domain.trade import Trade, TradeId
+from garuda.domain.trade_orders import OrderRole
 from garuda.domain.trade_signal import TradeSignal
 from garuda.trademgmt.dedup import (
     Duplicate,
@@ -82,6 +83,8 @@ class TradingClientManager:
         self._by_instrument: dict[InstrumentId, set[TradeId]] = {}
         self._by_signal: dict[str, set[TradeId]] = {}
         self._by_broker_order: dict[BrokerOrderId, TradeId] = {}
+        self._orders_by_trade: dict[TradeId, dict[OrderRole, BrokerOrderId]] = {}
+        self._superseded: dict[TradeId, list[BrokerOrderId]] = {}
         self._signals_by_strategy: dict[str, set[str]] = {}
         #: Trades that never became positions, kept separately: the live
         #: listings are what the loop walks, and a failed entry is not live.
@@ -218,13 +221,54 @@ class TradingClientManager:
         self._trades[trade.id] = trade
         self._index_trade(trade)
 
-    def link_order(self, broker_order_id: BrokerOrderId, trade_id: TradeId) -> None:
-        """Remember which trade an order belongs to.
+    def link_order(
+        self,
+        broker_order_id: BrokerOrderId,
+        trade_id: TradeId,
+        role: OrderRole = OrderRole.ENTRY,
+    ) -> None:
+        """Remember which trade an order belongs to, and what it is for.
 
         The push stream and the poll both arrive knowing only a broker order
-        id, and both need the trade behind it.
+        id, and both need the trade behind it. The role is what lets the
+        tracker tell "the entry filled" from "the stop fired" -- the same
+        status on different orders means opposite things.
+
+        A new order in a role replaces the old one in that role: a trailing
+        stop is a fresh order each time it moves, and only the current one is
+        the position's protection.
         """
         self._by_broker_order[broker_order_id] = trade_id
+        orders = self._orders_by_trade.setdefault(trade_id, {})
+        previous = orders.get(role)
+        if previous is not None and previous != broker_order_id:
+            self._superseded.setdefault(trade_id, []).append(previous)
+        orders[role] = broker_order_id
+
+    def role_of(self, broker_order_id: BrokerOrderId) -> OrderRole | None:
+        trade_id = self._by_broker_order.get(broker_order_id)
+        if trade_id is None:
+            return None
+        for role, order_id in self._orders_by_trade.get(trade_id, {}).items():
+            if order_id == broker_order_id:
+                return role
+        # Known to belong to a trade but no longer current in any role: a
+        # superseded stop, whose fill still matters.
+        return OrderRole.SUPERSEDED
+
+    def order_for(self, trade_id: TradeId, role: OrderRole) -> BrokerOrderId | None:
+        return self._orders_by_trade.get(trade_id, {}).get(role)
+
+    def orders_of(self, trade_id: TradeId) -> Mapping[OrderRole, BrokerOrderId]:
+        return dict(self._orders_by_trade.get(trade_id, {}))
+
+    def superseded_orders(self, trade_id: TradeId) -> Sequence[BrokerOrderId]:
+        """Orders replaced in their role -- previous stops, mostly.
+
+        Kept because they may still be live at the broker until the cancel
+        confirms, and a fill on one is a real exit.
+        """
+        return list(self._superseded.get(trade_id, ()))
 
     def trade_for_order(self, broker_order_id: BrokerOrderId) -> Trade | None:
         trade_id = self._by_broker_order.get(broker_order_id)

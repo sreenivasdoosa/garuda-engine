@@ -29,6 +29,7 @@ from garuda.protocols.feed import (
     TicksReceived,
 )
 from garuda.protocols.topics import Topic
+from tests.support import next_published
 
 T0 = datetime(2026, 8, 31, 9, 20, tzinfo=UTC)
 NIFTY = InstrumentId("NSE:NIFTY")
@@ -143,7 +144,7 @@ class TestDispatch:
         await hub.consume([TicksReceived((tick(NIFTY, "25000"),))])
         await hub.dispatch_once()
 
-        received = await anext(aiter(subscription))
+        received = await next_published(subscription)
         assert isinstance(received, Tick)
         assert received.last_price == Money.of("25000", Currency.INR)
 
@@ -163,7 +164,7 @@ class TestDispatch:
 
         prices = {}
         for _ in range(2):
-            received = await anext(aiter(subscription))
+            received = await next_published(subscription)
             assert isinstance(received, Tick)
             prices[received.instrument] = received.last_price
         assert prices[NIFTY] == Money.of("25020", Currency.INR)

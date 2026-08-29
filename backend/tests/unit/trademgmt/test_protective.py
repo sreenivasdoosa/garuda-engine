@@ -28,6 +28,7 @@ from garuda.trademgmt.protective_rules import (
     target_defer_reason,
     trigger_to_limit_gap,
 )
+from tests.support import next_published
 from tests.unit.trademgmt.conftest import CALL, CLIENT, LABEL, TODAY, a_trade, rupees
 
 SEGMENT_GAP = Decimal(18)
@@ -295,7 +296,7 @@ class TestAStopNeverGivesUp:
 
         levels = []
         while seen.depth:
-            alert = await anext(aiter(seen))
+            alert = await next_published(seen)
             levels.append(alert.level)  # type: ignore[attr-defined]
         assert AlertLevel.CRITICAL in levels
         assert "UNPROTECTED" in " ".join(str(a) for a in alerts.open_alerts(TODAY.date())) or True
