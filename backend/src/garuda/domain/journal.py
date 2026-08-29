@@ -59,6 +59,10 @@ class EventType(StrEnum):
     ORDER_EXPIRED = "ORDER_EXPIRED"
     ORDER_FILLED = "ORDER_FILLED"
     ORDER_STATE_UNKNOWN = "ORDER_STATE_UNKNOWN"
+    #: A venue's day reached a phase and the work for it finished. Recorded so
+    #: a restart does not repeat the phase; see garuda.core.runner.
+    PHASE_COMPLETED = "PHASE_COMPLETED"
+    PHASE_FAILED = "PHASE_FAILED"
     TRADING_HALTED = "TRADING_HALTED"
     TRADING_RESUMED = "TRADING_RESUMED"
     RECONCILIATION_MISMATCH = "RECONCILIATION_MISMATCH"
@@ -322,6 +326,55 @@ def order_filled(
         actor=Actor.BROKER,
         payload=encode_fill(fill),
         correlation_id=correlation_id,
+    )
+
+
+def phase_completed(
+    exchange: str,
+    phase: str,
+    *,
+    occurred_at: datetime,
+    trading_day: date,
+    duration_ms: int | None = None,
+) -> JournalEvent:
+    """One venue finished one phase of one day.
+
+    The journal is the record of what has run, so a restart reads it rather
+    than trusting memory. The reference engine keeps the equivalent flag in a
+    field, and restarting after end-of-day therefore repeats end-of-day.
+    """
+    payload: dict[str, JsonValue] = {"phase": phase}
+    if duration_ms is not None:
+        payload["duration_ms"] = duration_ms
+    return JournalEvent(
+        event_type=EventType.PHASE_COMPLETED,
+        aggregate_type=AggregateType.SYSTEM,
+        aggregate_id=exchange,
+        occurred_at=occurred_at,
+        trading_day=trading_day,
+        actor=Actor.SCHEDULER,
+        payload=payload,
+    )
+
+
+def phase_failed(
+    exchange: str,
+    phase: str,
+    reason: str,
+    *,
+    occurred_at: datetime,
+    trading_day: date,
+) -> JournalEvent:
+    """A phase raised. Recorded, and deliberately not marked complete, so the
+    next reconciliation tries it again."""
+    return JournalEvent(
+        event_type=EventType.PHASE_FAILED,
+        aggregate_type=AggregateType.SYSTEM,
+        aggregate_id=exchange,
+        occurred_at=occurred_at,
+        trading_day=trading_day,
+        actor=Actor.SCHEDULER,
+        payload={"phase": phase, "reason": reason},
     )
 
 

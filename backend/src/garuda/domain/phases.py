@@ -5,6 +5,10 @@ Every phase is derived from that venue's calendar and its own offsets, in its
 own timezone, on its own trading day — so adding a venue in another country
 means adding a row, not an ``if``.
 
+These are pure values about a venue's day, which is why they live in the
+domain: the runner schedules them and the journal records them, and those two
+are siblings that cannot import each other.
+
 There is deliberately no global "the market is open" and no global day
 boundary. Two venues are routinely in different phases at the same moment:
 MCX still trades while NSE is in EOD.

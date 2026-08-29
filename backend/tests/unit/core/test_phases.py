@@ -12,7 +12,8 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from garuda.core.phases import (
+from garuda.domain.errors import DomainError
+from garuda.domain.phases import (
     DayOffsets,
     DayPhase,
     PhaseInstant,
@@ -21,7 +22,6 @@ from garuda.core.phases import (
     offsets_from_exchange_row,
     schedule_for,
 )
-from garuda.domain.errors import DomainError
 
 IST = ZoneInfo("Asia/Kolkata")
 CHICAGO = ZoneInfo("America/Chicago")
