@@ -8,6 +8,11 @@ means adding a row, not an ``if``.
 There is deliberately no global "the market is open" and no global day
 boundary. Two venues are routinely in different phases at the same moment:
 MCX still trades while NSE is in EOD.
+
+There is deliberately no login phase either. The reference engine schedules one
+because it logs in automatically; Garuda's operator clicks Login whenever they
+choose, so a phase named for it would imply a gate that does not exist — and
+sooner or later someone would implement the gate.
 """
 
 from __future__ import annotations
@@ -31,9 +36,6 @@ class DayPhase(StrEnum):
     #: Caches, instrument master, corporate actions — everything the day needs
     #: before anyone logs in.
     DAY_INIT = "DAY_INIT"
-    #: Broker logins become possible. Operator-initiated, so this opens a
-    #: window rather than performing anything.
-    LOGIN_WINDOW = "LOGIN_WINDOW"
     #: Strategy evaluation starts; scheduled entries can now fire.
     ALGO_START = "ALGO_START"
     #: Only where the venue runs an auction before the open. Orders behave
@@ -61,7 +63,6 @@ class DayOffsets:
     """
 
     day_init_lead: timedelta = timedelta(minutes=180)
-    login_lead: timedelta = timedelta(minutes=60)
     algo_start_lead: timedelta = timedelta(minutes=90)
     intraday_square_off_lead: timedelta = timedelta(minutes=20)
     positional_square_off_lead: timedelta = timedelta(minutes=15)
@@ -71,7 +72,6 @@ class DayOffsets:
     def __post_init__(self) -> None:
         for name in (
             "day_init_lead",
-            "login_lead",
             "algo_start_lead",
             "intraday_square_off_lead",
             "positional_square_off_lead",
@@ -106,7 +106,6 @@ def offsets_from_exchange_row(row: object) -> DayOffsets:
 
     return DayOffsets(
         day_init_lead=minutes("day_init_minutes_before_market_open", defaults.day_init_lead),
-        login_lead=minutes("login_minutes_before_market_open", defaults.login_lead),
         algo_start_lead=minutes("algo_start_minutes_before_market_open", defaults.algo_start_lead),
         intraday_square_off_lead=minutes(
             "intraday_squareoff_minutes_before_close", defaults.intraday_square_off_lead
@@ -150,7 +149,6 @@ def schedule_for(
 
     instants: list[PhaseInstant] = [
         _at(exchange, trading_day, DayPhase.DAY_INIT, first_open - offsets.day_init_lead),
-        _at(exchange, trading_day, DayPhase.LOGIN_WINDOW, first_open - offsets.login_lead),
         _at(exchange, trading_day, DayPhase.ALGO_START, first_open - offsets.algo_start_lead),
     ]
 

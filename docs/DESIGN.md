@@ -385,7 +385,6 @@ offsets, in the venue's own timezone, on the venue's own trading day:
 | Phase | When |
 |---|---|
 | `DAY_INIT` | first session open − `day_init_lead` |
-| `LOGIN_WINDOW` | first session open − `login_lead` |
 | `ALGO_START` | first session open − `algo_start_lead` |
 | `PRE_OPEN` | the venue's pre-market start |
 | `SESSION_OPEN` | each session's open |
@@ -393,6 +392,11 @@ offsets, in the venue's own timezone, on the venue's own trading day:
 | `SESSION_CLOSE` | each session's close |
 | `REPORTS` | last session close + `report_lag` |
 | `EOD` | last session close + `post_market_window` |
+
+There is deliberately no login phase. The reference engine schedules one
+because it logs in automatically; here the operator clicks Login whenever they
+choose, so a phase named for it would imply a gate that does not exist — and
+sooner or later someone would build the gate.
 
 The offsets are columns on the exchange, so adding CME means adding a row, not
 an `if`. NSE's day begins at 06:15 IST and MCX's ends after 23:30 IST because

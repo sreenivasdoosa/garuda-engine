@@ -220,7 +220,9 @@ class ExchangesRow(Base):
     #: from its own open or close, so a venue in another timezone needs a row
     #: rather than a code change.
     day_init_minutes_before_market_open: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    login_minutes_before_market_open: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # login_minutes_before_market_open is deliberately absent. It scheduled the
+    # reference engine's automatic login; here login is operator-initiated and
+    # is never gated on the clock.
     algo_start_minutes_before_market_open: Mapped[int | None] = mapped_column(
         Integer, nullable=True
     )

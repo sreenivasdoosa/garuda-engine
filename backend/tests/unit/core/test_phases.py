@@ -166,7 +166,6 @@ class TestOffsetsComeFromTheVenuesRow:
 
     class Row:
         day_init_minutes_before_market_open = 240
-        login_minutes_before_market_open = 45
         algo_start_minutes_before_market_open = 120
         intraday_squareoff_minutes_before_close = 30
         positional_squareoff_minutes_before_close = 10
@@ -176,7 +175,6 @@ class TestOffsetsComeFromTheVenuesRow:
     def test_each_offset_is_read_from_the_row(self):
         offsets = offsets_from_exchange_row(self.Row())
         assert offsets.day_init_lead == timedelta(minutes=240)
-        assert offsets.login_lead == timedelta(minutes=45)
         assert offsets.post_market_window == timedelta(minutes=90)
 
     def test_a_venue_configured_differently_gets_a_different_day(self, nse):
@@ -187,11 +185,9 @@ class TestOffsetsComeFromTheVenuesRow:
     def test_a_null_column_falls_back_rather_than_losing_the_phase(self):
         class Partial:
             day_init_minutes_before_market_open = None
-            login_minutes_before_market_open = 45
 
         offsets = offsets_from_exchange_row(Partial())
         assert offsets.day_init_lead == DayOffsets().day_init_lead
-        assert offsets.login_lead == timedelta(minutes=45)
 
     def test_positional_positions_close_nearer_the_bell_than_intraday(self, nse):
         """There is less to unwind, so they wait longer."""

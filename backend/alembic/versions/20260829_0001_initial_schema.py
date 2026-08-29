@@ -1,8 +1,8 @@
 """initial schema
 
-Revision ID: c58ea94aa251
+Revision ID: 65c995e32fba
 Revises:
-Create Date: 2026-08-29 07:30:51.708467
+Create Date: 2026-08-29 08:14:16.090509
 
 """
 
@@ -300,7 +300,6 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("day_init_minutes_before_market_open", sa.Integer(), nullable=True),
-        sa.Column("login_minutes_before_market_open", sa.Integer(), nullable=True),
         sa.Column("algo_start_minutes_before_market_open", sa.Integer(), nullable=True),
         sa.PrimaryKeyConstraint("exchange_code", name=op.f("pk_exchanges")),
     )
