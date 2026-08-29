@@ -16,6 +16,16 @@ happened two hundred times.
 one is genuinely distinct -- a tick decoder rejecting every packet of a
 malformed stream. A throttled alert is raised at most once per interval, and
 what it suppresses is counted so the next one can say how much was hidden.
+
+Separately from either, an alert may or may not interrupt the operator. Every
+alert is recorded and every alert reaches anything listening; only some raise
+a toast in the Console. Warnings and criticals always do. Informational ones
+do not unless the caller asks, because a restart otherwise fires a toast per
+account for every socket that connected -- which trains the operator to
+dismiss toasts without reading them, and that is worse than having none.
+
+The toast is published after the alert is stored, never before, so the Console
+never shows something that is not yet durable.
 """
 
 from __future__ import annotations
@@ -40,6 +50,20 @@ DEFAULT_THROTTLE = timedelta(seconds=30)
 #: the manager works with no database at all -- during tests, and during the
 #: window at startup before one is connected.
 type AlertSink = Callable[[Alert], Awaitable[None]]
+
+#: Informational alerts whose content is already recorded somewhere better --
+#: the trade store and the log -- and which at scale were most of what the
+#: reference engine's alert table held. Dropped at INFO unless the caller
+#: explicitly wants the operator told; the same operation at WARNING or
+#: CRITICAL is a real signal and is always kept.
+NOT_WORTH_STORING_AT_INFO: frozenset[str] = frozenset(
+    {"trade-entry", "trade-exit", "square-off", "square-off-all"}
+)
+
+#: Occurrence counts at which a recurring problem is worth interrupting the
+#: operator again. Between them the count advances silently and the Alerts
+#: page shows it; a toast per occurrence is how a storm becomes unreadable.
+COUNT_MILESTONES: frozenset[int] = frozenset({10, 100, 1000})
 
 
 @dataclass
@@ -69,9 +93,11 @@ class AlertManager:
         message: str,
         *,
         key: str | None = None,
+        notify_ui: bool = False,
     ) -> Alert | None:
+        """Worth recording. Set ``notify_ui`` for the few worth interrupting for."""
         return await self.raise_alert(
-            AlertLevel.INFO, entity_type, entity, operation, message, key=key
+            AlertLevel.INFO, entity_type, entity, operation, message, key=key, notify_ui=notify_ui
         )
 
     async def warning(
@@ -109,6 +135,7 @@ class AlertManager:
         message: str,
         *,
         key: str | None = None,
+        notify_ui: bool = False,
     ) -> Alert | None:
         """Record and publish one alert, coalescing it if it has a key."""
         now = self.clock.now()
@@ -124,14 +151,22 @@ class AlertManager:
             key=key,
         )
 
+        if not self._worth_storing(alert, notify_ui):
+            # Already in the trade store and the log. Recording it again was
+            # most of what the reference engine's alert table held.
+            _log(alert)
+            return None
+
+        previous: Alert | None = None
         if key is not None:
-            existing = self._open.get((day, key))
-            if existing is not None:
-                alert = existing.merged_with(alert)
+            previous = self._open.get((day, key))
+            if previous is not None:
+                alert = previous.merged_with(alert)
             self._open[(day, key)] = alert
 
         _log(alert)
         await self.bus.publish(Topic.ALERTS, alert)
+
         if self.sink is not None:
             try:
                 await self.sink(alert)
@@ -140,7 +175,34 @@ class AlertManager:
                 # failure here is never allowed to propagate into the code
                 # that was reporting a problem in the first place.
                 logger.error("failed to store an alert: %s: %s", type(error).__name__, error)
+
+        # After the store, never before: the Console must not show a toast for
+        # something that is not yet durable.
+        if self._should_interrupt(alert, previous, notify_ui):
+            await self.bus.publish(Topic.UI, alert)
         return alert
+
+    @staticmethod
+    def _worth_storing(alert: Alert, notify_ui: bool) -> bool:
+        if alert.level is not AlertLevel.INFO or notify_ui:
+            return True
+        return alert.operation not in NOT_WORTH_STORING_AT_INFO
+
+    @staticmethod
+    def _should_interrupt(alert: Alert, previous: Alert | None, notify_ui: bool) -> bool:
+        """Whether this raises a toast rather than only appearing on the page.
+
+        A recurring problem interrupts on its first occurrence, at a
+        milestone, and when it becomes critical having not been. In between,
+        the count advances quietly.
+        """
+        if not (alert.level.demands_attention or notify_ui):
+            return False
+        if previous is None:
+            return True
+        if alert.occurrences in COUNT_MILESTONES:
+            return True
+        return alert.level is AlertLevel.CRITICAL and previous.level is not AlertLevel.CRITICAL
 
     async def throttled(
         self,

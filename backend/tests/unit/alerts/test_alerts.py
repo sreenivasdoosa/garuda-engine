@@ -208,3 +208,119 @@ class TestDelivery:
         await subject.info(EntityType.SYSTEM, "engine", "start", "started", key="a")
         await subject.critical(EntityType.ORDER, "NIFTY", "rejected", "margin", key="b")
         assert subject.open_alerts(DAY)[0].level is AlertLevel.CRITICAL
+
+
+class TestWhatInterruptsTheOperator:
+    """Every alert is recorded; only some raise a toast in the Console."""
+
+    def bus_and_manager(self) -> tuple[InProcessEventBus, AlertManager]:
+        bus = InProcessEventBus()
+        return bus, AlertManager(clock=ReplayClock(T0), bus=bus, trading_day_for=lambda now: DAY)
+
+    async def test_a_warning_interrupts(self) -> None:
+        bus, subject = self.bus_and_manager()
+        toasts = bus.subscribe(Topic.UI, name="console")
+        await subject.warning(EntityType.BROKER, "Appa", "login", "session expired")
+        assert isinstance(await anext(aiter(toasts)), Alert)
+
+    async def test_a_critical_interrupts(self) -> None:
+        bus, subject = self.bus_and_manager()
+        toasts = bus.subscribe(Topic.UI, name="console")
+        await subject.critical(EntityType.ORDER, "NIFTY", "rejected", "margin")
+        assert isinstance(await anext(aiter(toasts)), Alert)
+
+    async def test_an_ordinary_info_does_not(self) -> None:
+        """A restart otherwise fires a toast per account for every socket."""
+        bus, subject = self.bus_and_manager()
+        toasts = bus.subscribe(Topic.UI, name="console")
+        for _ in range(20):
+            await subject.info(EntityType.BROKER, "Appa", "order-stream", "connected")
+        assert toasts.depth == 0
+
+    async def test_an_info_the_caller_asks_for_does(self) -> None:
+        """ "Strategy engine started" is worth one line on the screen."""
+        bus, subject = self.bus_and_manager()
+        toasts = bus.subscribe(Topic.UI, name="console")
+        await subject.info(
+            EntityType.SYSTEM, "engine", "start", "strategy engine started", notify_ui=True
+        )
+        assert toasts.depth == 1
+
+    async def test_everything_still_reaches_the_alerts_stream(self) -> None:
+        """The toast is a separate decision from the record."""
+        bus, subject = self.bus_and_manager()
+        recorded = bus.subscribe(Topic.ALERTS, name="audit")
+        await subject.info(EntityType.BROKER, "Appa", "order-stream", "connected")
+        assert recorded.depth == 1
+
+    async def test_a_storm_does_not_toast_every_time(self) -> None:
+        """Between milestones the count advances quietly on the Alerts page."""
+        bus, subject = self.bus_and_manager()
+        toasts = bus.subscribe(Topic.UI, name="console")
+        for _ in range(9):
+            await subject.warning(EntityType.BROKER, "Appa", "reconnect", "dropped", key="k")
+        assert toasts.depth == 1, "the first occurrence only"
+
+    async def test_a_storm_speaks_up_again_at_a_milestone(self) -> None:
+        bus, subject = self.bus_and_manager()
+        toasts = bus.subscribe(Topic.UI, name="console")
+        for _ in range(10):
+            await subject.warning(EntityType.BROKER, "Appa", "reconnect", "dropped", key="k")
+        assert toasts.depth == 2, "the first, and the tenth"
+
+    async def test_a_problem_turning_critical_interrupts_again(self) -> None:
+        """Escalation is exactly when the operator needs telling twice."""
+        bus, subject = self.bus_and_manager()
+        toasts = bus.subscribe(Topic.UI, name="console")
+        await subject.warning(EntityType.BROKER, "Appa", "login", "retrying", key="k")
+        await subject.warning(EntityType.BROKER, "Appa", "login", "retrying", key="k")
+        await subject.critical(EntityType.BROKER, "Appa", "login", "gave up", key="k")
+        assert toasts.depth == 2, "the first warning, and the escalation"
+
+    async def test_the_toast_never_precedes_the_durable_row(self) -> None:
+        """The Console must not show what is not yet stored."""
+        order: list[str] = []
+
+        async def sink(alert: Alert) -> None:
+            order.append("stored")
+
+        bus = InProcessEventBus()
+        subject = AlertManager(
+            clock=ReplayClock(T0), bus=bus, trading_day_for=lambda now: DAY, sink=sink
+        )
+
+        async def watch() -> None:
+            subscription = bus.subscribe(Topic.UI, name="console")
+            await anext(aiter(subscription))
+            order.append("toasted")
+
+        import asyncio
+
+        watcher = asyncio.create_task(watch())
+        await asyncio.sleep(0)
+        await subject.critical(EntityType.ORDER, "NIFTY", "rejected", "margin")
+        await watcher
+        assert order == ["stored", "toasted"]
+
+
+class TestNoiseThatIsRecordedElsewhere:
+    async def test_routine_trade_lifecycle_info_is_not_stored_twice(self) -> None:
+        """It is already in the trade store and the log."""
+        raised: list[Alert] = []
+        subject = manager(sink=raised)
+        for operation in ("trade-entry", "trade-exit", "square-off", "square-off-all"):
+            assert await subject.info(EntityType.TRADE, "Straddle", operation, "done") is None
+        assert raised == []
+
+    async def test_the_same_operation_going_wrong_is_always_kept(self) -> None:
+        """A square-off that failed is a real signal."""
+        raised: list[Alert] = []
+        subject = manager(sink=raised)
+        await subject.critical(EntityType.TRADE, "Straddle", "square-off", "the broker refused")
+        assert len(raised) == 1
+
+    async def test_a_caller_that_wants_the_operator_told_is_honoured(self) -> None:
+        raised: list[Alert] = []
+        subject = manager(sink=raised)
+        await subject.info(EntityType.TRADE, "Straddle", "trade-entry", "entered", notify_ui=True)
+        assert len(raised) == 1
