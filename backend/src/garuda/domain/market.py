@@ -172,6 +172,29 @@ class Tick:
 
 
 @dataclass(frozen=True, slots=True)
+class PriceBand:
+    """The range an exchange will accept an order inside, for one day.
+
+    Orders priced outside it are rejected. That matters most for a protective
+    order: a stop whose limit sits above the upper circuit can never be
+    accepted, so the position runs unprotected while the engine believes it is
+    covered.
+    """
+
+    lower: Money | None = None
+    upper: Money | None = None
+
+    def contains(self, price: Money) -> bool:
+        if self.lower is not None and price < self.lower:
+            return False
+        return not (self.upper is not None and price > self.upper)
+
+    @property
+    def is_known(self) -> bool:
+        return self.lower is not None or self.upper is not None
+
+
+@dataclass(frozen=True, slots=True)
 class Bar:
     """One OHLC candle.
 
