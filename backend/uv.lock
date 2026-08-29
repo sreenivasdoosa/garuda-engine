@@ -509,6 +509,7 @@ dependencies = [
     { name = "types-pyyaml" },
     { name = "tzdata" },
     { name = "uvicorn", extra = ["standard"] },
+    { name = "websockets" },
 ]
 
 [package.dev-dependencies]
@@ -540,6 +541,7 @@ requires-dist = [
     { name = "types-pyyaml", specifier = ">=6.0.12.20260815" },
     { name = "tzdata", specifier = ">=2024.2" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32" },
+    { name = "websockets", specifier = ">=14" },
 ]
 
 [package.metadata.requires-dev]
