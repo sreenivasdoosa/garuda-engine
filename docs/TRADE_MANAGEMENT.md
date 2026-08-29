@@ -290,8 +290,50 @@ in, and an engine that refuses to start then is an engine nobody can use.
 
 ### What it still cannot produce
 
-A trade. `EntryService.consider` takes a `TradeSignal`, the strategy engine
-emits an `Intent`, and nothing converts one to the other. The engine starts,
-loads its instruments, connects its feed, restores its book, reconciles
-against the broker and squares off on time — and never enters anything,
-because no signal ever arrives. That seam is the next piece of work.
+A trade — but the gap is now one step, not two.
+
+`engine/signals.py` joins the two halves: it takes an evaluator's `Intent`s,
+sizes each leg, and emits the `TradeSignal`s trade management consumes.
+`composition/routing.py` delivers a batch to the account it names. What is
+missing is upstream of both — nothing loads a `StrategySpec` from
+configuration, so no evaluator ever runs and no intent is ever produced. That
+is the strategy engine, and it is the next large piece.
+
+## 10. From intent to signal
+
+Three rules, each the safe direction to be wrong in:
+
+- **A partial entry is worse than none.** If any leg cannot be resolved,
+  priced or sized, the whole combo is refused. A short option whose hedge was
+  dropped for want of one lot is not a smaller version of the position that
+  was designed — it is a different position with a different worst case. The
+  evaluator already stands aside on an unresolvable leg; sizing holds the same
+  line, and delivery withdraws a combo whose leg turns out to be already held.
+- **A position above the freeze limit is several signals.** One signal becomes
+  one trade becomes one order, so the split has to happen at signal time. Each
+  slice carries its own ordinal, its own protection and its own protective
+  order.
+- **Ids are derived from the correlation id, never random.** A replay that
+  renames everything proves nothing about duplicate detection.
+
+**Slicing exposed a defect in duplicate detection.** `_duplicate_option_side`
+refuses a second signal for the same option side in the same group — the shape
+"one leg, sized twice" takes. Two slices of one leg have exactly that shape, so
+every slice after the first was refused, and an account would have ended up
+holding a fraction of the size that was intended with nothing saying so. The
+rule now exempts a candidate that is the same instrument in the same tranche
+with a *different* slice ordinal. Two independent sizings both carry ordinal 1
+and are still caught, which is the case the rule exists for.
+
+### Not decided yet
+
+- **Where stop and target levels come from.** `SignalFactory` takes a
+  protection policy and an entry policy; nothing supplies either, so every
+  signal today enters at market with no stop. `sl_target_policy`,
+  `trailing_sl_policy` and `exit_policy` are all tables in the schema and none
+  is loaded.
+- **Where capital comes from.** `build` takes it as an argument. The
+  allocation model, `client_capital` and the per-subscription split exist as
+  tables and are not read.
+- **Group and tranche.** Both are parameters with defaults. Tranche scheduling
+  is not built.

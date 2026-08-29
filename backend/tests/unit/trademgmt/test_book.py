@@ -219,6 +219,91 @@ class TestOneOptionSidePerGroup:
         assert rejected is not None
         assert rejected.duplicate.rule is DuplicateRule.SAME_OPTION_SIDE
 
+    async def test_the_slices_of_one_leg_are_not_the_same_leg_twice(
+        self, instruments: InstrumentLookup, alerts: AlertManager
+    ) -> None:
+        """A position above the freeze limit is sent as several orders.
+
+        Each piece is its own signal in the same group on the same instrument
+        in the same direction — the exact shape this rule refuses. Without the
+        exemption every slice after the first is dropped and the account holds
+        a fraction of the intended size with nothing saying so.
+        """
+        subject = book(instruments, alerts)
+        await subject.add_signal(a_signal("sig-1", instrument=CALL, slice_=1))
+
+        second = await subject.add_signal(a_signal("sig-2", instrument=CALL, slice_=2))
+
+        assert second is None
+
+    async def test_every_slice_of_a_long_entry_lands(
+        self, instruments: InstrumentLookup, alerts: AlertManager
+    ) -> None:
+        subject = book(instruments, alerts)
+
+        for ordinal in (1, 2, 3):
+            accepted = await subject.add_signal(
+                a_signal(f"sig-{ordinal}", instrument=CALL, slice_=ordinal)
+            )
+            assert accepted is None
+
+        assert len(subject.signals()) == 3
+
+    async def test_the_same_leg_sized_twice_is_still_refused(
+        self, instruments: InstrumentLookup, alerts: AlertManager
+    ) -> None:
+        """Two independent sizings both carry slice 1, which is what catches them."""
+        subject = book(instruments, alerts)
+        await subject.add_signal(a_signal("sig-1", instrument=CALL, slice_=1))
+
+        rejected = await subject.add_signal(a_signal("sig-2", instrument=FAR_CALL, slice_=1))
+
+        assert rejected is not None
+        assert rejected.duplicate.rule is DuplicateRule.SAME_OPTION_SIDE
+
+    async def test_the_same_slice_of_the_same_leg_is_still_the_same_leg(
+        self, instruments: InstrumentLookup, alerts: AlertManager
+    ) -> None:
+        """Only a *different* ordinal makes two signals pieces of one leg.
+
+        Two sizings of the same instrument both carry slice 1, and differ only
+        in quantity — which is the double-size this rule is for.
+        """
+        subject = book(instruments, alerts)
+        await subject.add_signal(a_signal("sig-1", instrument=CALL, slice_=1, quantity=75))
+
+        rejected = await subject.add_signal(
+            a_signal("sig-2", instrument=CALL, slice_=1, quantity=150)
+        )
+
+        assert rejected is not None
+        assert rejected.duplicate.rule is DuplicateRule.SAME_OPTION_SIDE
+
+    async def test_a_slice_in_another_tranche_is_not_a_slice_of_this_leg(
+        self, instruments: InstrumentLookup, alerts: AlertManager
+    ) -> None:
+        """Slicing splits one entry. A second tranche is a second entry, and
+        must use its own group like any other."""
+        subject = book(instruments, alerts)
+        await subject.add_signal(a_signal("sig-1", instrument=CALL, tranche=1, slice_=1))
+
+        rejected = await subject.add_signal(a_signal("sig-2", instrument=CALL, tranche=2, slice_=2))
+
+        assert rejected is not None
+        assert rejected.duplicate.rule is DuplicateRule.SAME_OPTION_SIDE
+
+    async def test_a_slice_of_a_different_strike_is_not_a_slice_of_this_leg(
+        self, instruments: InstrumentLookup, alerts: AlertManager
+    ) -> None:
+        """Slicing splits one instrument. A different strike is a second leg."""
+        subject = book(instruments, alerts)
+        await subject.add_signal(a_signal("sig-1", instrument=CALL, slice_=1))
+
+        rejected = await subject.add_signal(a_signal("sig-2", instrument=FAR_CALL, slice_=2))
+
+        assert rejected is not None
+        assert rejected.duplicate.rule is DuplicateRule.SAME_OPTION_SIDE
+
     async def test_a_put_alongside_a_call_is_a_straddle_not_a_duplicate(
         self, instruments: InstrumentLookup, alerts: AlertManager
     ) -> None:

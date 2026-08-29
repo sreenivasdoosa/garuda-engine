@@ -10,11 +10,13 @@ from garuda.composition.accounts import build_resolver, load_accounts, load_sess
 from garuda.composition.engine import ClientParts, Engine, EngineParts, build_engine
 from garuda.composition.instruments import build_loader, load_symbols
 from garuda.composition.persistence import TradePersistence
+from garuda.composition.routing import Delivery, deliver
 from garuda.composition.runtime import Runtime, start
 from garuda.composition.venues import Venues, load_venues
 
 __all__ = [
     "ClientParts",
+    "Delivery",
     "Engine",
     "EngineParts",
     "Runtime",
@@ -23,6 +25,7 @@ __all__ = [
     "build_engine",
     "build_loader",
     "build_resolver",
+    "deliver",
     "load_accounts",
     "load_sessions",
     "load_symbols",

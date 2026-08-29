@@ -8,6 +8,10 @@ from garuda.engine.context import (
 from garuda.engine.evaluator import LegBasedEvaluator, StrategyEvaluator
 from garuda.engine.pipeline import IntentOutcome, TradingPipeline
 from garuda.engine.selectors import FixedInstrumentSelector, UnderlyingSelector
+from garuda.engine.signals import (
+    SignalBatch,
+    SignalFactory,
+)
 from garuda.engine.spec import (
     DEFAULT_MAX_LEGS,
     MAX_LEGS_CEILING,
@@ -32,6 +36,8 @@ __all__ = [
     "LegBasedEvaluator",
     "LegSpec",
     "SideRule",
+    "SignalBatch",
+    "SignalFactory",
     "StrategyEvaluator",
     "StrategySpec",
     "Subscription",

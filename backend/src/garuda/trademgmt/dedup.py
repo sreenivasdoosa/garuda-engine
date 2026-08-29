@@ -174,6 +174,8 @@ def _duplicate_option_side(
             or candidate.direction is not incoming.direction
         ):
             continue
+        if _is_another_slice_of(incoming, candidate):
+            continue
         if _option_side(candidate, instruments) == side:
             underlying, option_type = side
             return Duplicate(
@@ -183,6 +185,26 @@ def _duplicate_option_side(
                 f"on {underlying}",
             )
     return None
+
+
+def _is_another_slice_of(incoming: TradeSignal, candidate: TradeSignal) -> bool:
+    """Whether these are two pieces of one leg rather than one leg twice.
+
+    A position above the exchange freeze limit is sent as several orders, and
+    each piece is its own signal with its own ordinal. They are the same
+    instrument in the same direction in the same group, which is exactly the
+    shape the option-side rule exists to refuse -- so without this, everything
+    after the first slice is dropped and the account ends up holding a
+    fraction of the size that was intended, with nothing saying so.
+
+    Deliberately narrow. Two independent sizings of the same leg both carry
+    slice 1 and are still caught, which is the case the rule is for.
+    """
+    return (
+        incoming.instrument == candidate.instrument
+        and incoming.tranche == candidate.tranche
+        and incoming.slice != candidate.slice
+    )
 
 
 def _duplicate_hedge_replacement(
