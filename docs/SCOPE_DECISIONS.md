@@ -131,11 +131,16 @@ and multi-leg / combo strategies.
 | Custom-logic strategy templates | the two bespoke evaluators are dropped, not ported (§5a) |
 | 1000-user optimizations | scaling package, sharding, load shedding, fan-out tuning, pool sizing |
 | User portal | admin Console + Terminal only |
+| Bracket / cover order tracking | brokers have withdrawn them (`brokers.bo_co_blocked`); `ProductType.CO`/`BO` stay so data round-trips, second-leg tracking does not |
 
 Kept where it might have looked droppable:
 
 - **Algo-vs-broker comparison / reconciliation** stays as-is (position mismatch reporting).
 - **Excel export/import** of strategy definitions and RMS config stays — operators share strategies.
+- **Re-entry after a stop** (`re_entry_count`, `max_trades_per_stock`) stays.
+- **Order fill escalation** stays — market after N seconds, or stepped through percentage buffer / level-N of the book / best bid-ask.
+- **Hedge replace windows** stay — morning and evening switching of hedge distance, with restart recovery.
+- **Corporate actions on open trades** stay — a split or bonus on a held position must leave P&L correct.
 
 ## 10. Frontend
 

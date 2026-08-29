@@ -164,14 +164,29 @@ Each step ends with something that runs and tests that prove it.
 
 Escalation and operator edits (`alterTradeDetails`) fold into 3 and 7.
 
-## 7. Open questions for the owner
+## 7. Scope, decided
 
-- **Bracket and cover orders.** The reference tracks BO/CO second legs
-  separately. Several brokers have withdrawn them; `brokers.bo_co_blocked`
-  exists for that. Port, or drop until asked for?
-- **Corporate actions.** `Trade` carries `caFactor`, `originalQuantity` and
-  applied-action ids. In scope for v1?
-- **Hedge replace windows.** Morning/evening switching of hedge distance
-  (positional 1% ↔ intraday 4%) with its own recovery state machine. In scope?
-- **Re-entry.** `reEntryCount` and `maxTradesPerStock` — re-entering after a
-  stop. In scope?
+**Bracket and cover orders: dropped until asked for.** Several brokers have
+withdrawn them and `brokers.bo_co_blocked` exists because of it. The second-leg
+tracking, the BO/CO branches in placement, and the separate SL/target order
+lists all go. `ProductType` keeps `CO` and `BO` so configuration and persisted
+data still round-trip, and the Zerodha adapter keeps its variety routing --
+adding the tracking back later is additive.
+
+**In scope for v1**, all four:
+
+- **Re-entry after a stop.** `reEntryCount` and `maxTradesPerStock`: re-enter
+  the same symbol after a stop, up to a cap, optionally reversed.
+- **Order fill escalation.** A limit entry that will not fill escalates -- to
+  market after N seconds, or through configured steps: percentage buffer,
+  level-N of the book, best bid/ask.
+- **Hedge replace windows.** Morning and evening switching of hedge distance
+  (positional 1% to intraday 4% and back), with its own state machine and
+  restart recovery.
+- **Corporate actions on open trades.** `ca_factor`, `original_quantity`,
+  `original_entry` and the applied-action ids, so a split or bonus on a held
+  position leaves P&L correct.
+
+The three optional ones each attach to a stage of the build order rather than
+forming a stage: re-entry and escalation to entry, hedge replace to
+relationships, corporate actions to the book.
