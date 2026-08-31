@@ -198,14 +198,28 @@ things here, and merging them breaks the feature that motivated it.
 | `SyntheticSource` | the series, tick by tick | yes | market data, continuously, from the open |
 | `Rule` | a verdict about the series | no | the rule engine, per strategy, per evaluation |
 
-The killer is the motivating example itself. *Rolling straddle is 10% below
-its open* needs the open. A rule first evaluated at 13:00 has never seen the
-open, and nothing inside the rule can recover it: the series has to have been
-accumulating since the session started, whether or not any strategy was
-watching. Three more follow from the same place — fifty strategies referencing
-one straddle would each recompute it; one-minute candles need every second's
-value rather than the instants some rule happened to run; and a restart at
-13:05 has to rebuild the morning from somewhere.
+Take the motivating example. *Rolling straddle is 10% below its open* needs
+the session's opening value — and a rule first evaluated at 13:00 gets it by
+**reading the day's first candle**, exactly as it would for any instrument.
+Market data already stores candles; the open is a lookup, not something the
+rule has to have witnessed.
+
+That is the whole reason the rule can stay stateless, and it is why the two
+are complements rather than alternatives: **the rule needs no memory because
+the source kept it.** Remove the source and the rule does not become
+stateful — it becomes blind, because there is no history to read.
+
+What the source is actually carrying, then:
+
+- **Which strike is currently held, and when to roll off it.** That is running
+  state, revised tick by tick, and it is the part with no pure formulation.
+- **A series that exists whether or not anyone is looking.** A strategy that
+  starts watching at 13:00 needs the morning to be there already. Nothing can
+  reconstruct it after the fact.
+- **One computation for every reader.** Fifty strategies on one straddle
+  should be one calculation a second, not fifty.
+- **Candles.** A one-minute candle needs every second's value, not the
+  instants at which some rule happened to run.
 
 There is also §2 to answer to. Rules are pure, and purity is what lets a
 recorded day replay identically and lets the engine reorder by cost. A rule
@@ -240,6 +254,32 @@ Writing a new synthetic is therefore the same act as writing a new rule, and
 neither touches the engine. They are simply plugged into different sockets:
 one publishes a price, the other reads one.
 
+### The comparison is against the tick, not the close
+
+One consequence deserves to be explicit, because getting it wrong makes a rule
+look broken in a way that is hard to see.
+
+*Straddle 10% below the 09:15 open* is a comparison between **the latest
+tick** and **a stored candle**. It is satisfied the moment the tick crosses,
+not at the end of the minute in which it crossed. A rule that waited for the
+candle to close would miss a move that reversed inside the minute — and would
+report an entry a minute late on every move that did not.
+
+So the general shape is: **history from candles, present from the tick.**
+
+That forces a small discipline on every rule that mixes the two. The candle
+still forming is not history, and must never be read as though it were: the
+day's first candle is a fact, the current one is a guess that will change. A
+rule comparing against "the previous candle's high" means the last *closed*
+one. A rule comparing against "the price now" means the tick.
+
+Indicators sit on the same fault line, and the convention should be stated
+once rather than decided per rule: **indicator values come from closed
+candles.** An RSI recomputed mid-candle moves as the candle forms and can
+cross a threshold and then uncross it before the minute is out — the classic
+repainting problem, and it turns a backtest into fiction. A rule that
+deliberately wants the forming candle should have to say so by name.
+
 ### Two things it costs
 
 - **A synthetic is never a trigger price and never an entry level.** Nothing
@@ -271,8 +311,7 @@ It does not have to. There are already two stages, and the fast one is built:
 2. **The entry service fires.** It is already watching ticks, and places the
    order the moment the trigger is crossed.
 
-So rule evaluation runs at a modest cadence — a second, configurable — and
-the tick-speed reaction comes from the machinery that already reacts at tick
+The tick-speed reaction comes from the machinery that already reacts at tick
 speed. A breakout rule does not need to see every tick; it needs to decide
 *that we are watching for a break at level X*, and hand X to the thing whose
 job is watching.
@@ -282,8 +321,29 @@ watch carrying the resolved instrument, quantity and entry premium, then fire
 on price. The proposal keeps the behaviour and deletes the bespoke table, the
 bespoke service and the second lifecycle.
 
-Rules that genuinely need faster evaluation can declare it; the default should
-not be to evaluate everything on every tick.
+### What paces evaluation
+
+Not a timer. **A rule set is evaluated when a tick arrives for something it
+depends on**, which is why a rule declares its dependencies (§11).
+
+That gives the right answer without anyone choosing a number. A rule set
+watching only a rolling straddle is evaluated when the straddle ticks — about
+once a second, because that is how often it is published. One watching spot is
+evaluated on spot ticks. One whose rules are purely about the clock is woken
+at the times those rules name, and not otherwise.
+
+Two guards on top:
+
+- **Coalescing.** Ticks arrive in bursts; a rule set is evaluated at most once
+  per burst, against the newest values. The tick hub already coalesces this
+  way for exactly the same reason.
+- **A floor.** A rule set is never evaluated more than N times a second
+  however fast its inputs move, and the floor is one number for the engine
+  rather than a decision per strategy.
+
+A timer-driven cadence would have been simpler to write and wrong in both
+directions at once: too slow for a rule watching a fast instrument, and pure
+waste for the several hundred rule sets whose inputs did not move.
 
 ## 8. Once-ness belongs to the tranche, not the rule
 
@@ -521,8 +581,10 @@ list badly: half-overriding a list is a footgun with no good semantics. So:
    direction rule cannot say "do not trade at all today", only "I have no
    opinion". A separate entry rule can veto. Keeping them separate seems
    cleaner, but the reference lets a direction provider stand a strategy down.
-3. **Cadence.** One second for rule evaluation, with tick-speed left to the
-   trigger price. Faster costs CPU across every strategy; slower delays arming.
+3. **The evaluation floor.** Dependency-driven pacing (§7) needs one number:
+   the most often any single rule set may be re-evaluated. Ten a second is
+   generous for anything publishing once a second and cheap enough across a
+   few hundred rule sets; the question is whether anything needs faster.
 4. **Where the catalogue starts.** The whole list above is not a first
    deliverable. A first cut of `all`/`any`/`not`, `at_or_after`, `before`,
    `indicator`, `breakout` and `price_below` would carry the shapes already
