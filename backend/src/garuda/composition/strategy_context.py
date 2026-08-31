@@ -234,6 +234,9 @@ class ChainOnly:
     def quote(self, instrument: InstrumentId) -> Tick | None:
         return self.market.hub.latest(instrument)
 
+    def today(self) -> date:
+        return self.trading_day
+
 
 def day_conditions_for(
     underlying: InstrumentId,

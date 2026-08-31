@@ -294,3 +294,33 @@ class SuperTrendDirection:
             return None
         # Above the line is an uptrend, which is the whole reading.
         return Direction.LONG if quote.last_price.amount > line else Direction.SHORT
+
+
+@direction("price")
+@dataclass(frozen=True)
+class PriceDirection:
+    """Which way, from an instrument's price against a level.
+
+    One rule for two of the reference engine's direction providers, because
+    both are the same shape once the series they read is an instrument: the
+    put-call ratio is a price against one, and the volatility skew is a price
+    against zero. Neither needs code of its own, which is what publishing them
+    as instruments was for.
+
+    The level is not a band. A series sitting exactly on it answers short
+    under the default reading, for the same reason an indicator does: standing
+    aside at the one value a configured level is most likely to be tested at
+    helps nobody.
+    """
+
+    instrument: InstrumentId
+    level: Decimal = Decimal(0)
+    long_when: LongWhen = LongWhen.GREATER
+
+    def resolve(self, context: RuleContext) -> Direction | None:
+        quote = context.quote(self.instrument)
+        if quote is None:
+            return None
+        higher = quote.last_price.amount > self.level
+        wants_higher = self.long_when is LongWhen.GREATER
+        return Direction.LONG if higher is wants_higher else Direction.SHORT

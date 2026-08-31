@@ -36,6 +36,7 @@ from garuda.domain.market import Tick
 from garuda.domain.money import Currency, Money
 from garuda.engine.plugins import Registration, Registry
 from garuda.engine.strikes import atm_strike
+from garuda.marketdata.pricing import implied_volatility, years_to_expiry
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +64,10 @@ class ChainView(Protocol):
     ) -> InstrumentId | None: ...
 
     def quote(self, instrument: InstrumentId) -> Tick | None: ...
+
+    def today(self) -> date:
+        """The trading day, for anything counting down to an expiry."""
+        ...
 
 
 @runtime_checkable
@@ -259,6 +264,93 @@ class SyntheticFuture(_OverTheChain):
         return Money(middle, currency) + call_tick.last_price - put_tick.last_price
 
 
+@dataclass(frozen=True)
+class _AtTheMoney(_OverTheChain):
+    """Shared shape: something read from the pair at the money."""
+
+    #: The rate the model discounts at. A percentage point either way moves an
+    #: implied volatility by far less than the bid-ask spread does, so this is
+    #: a setting rather than a feed.
+    rate: Decimal = Decimal("0.065")
+
+    def _implied(self, view: ChainView, side: OptionType, today: date) -> Decimal | None:
+        found = self._strikes(view)
+        spot = view.spot(self.underlying)
+        if found is None or spot is None:
+            return None
+        expiry, strikes = found
+        middle = strikes[self.levels]
+
+        listed = view.option(self.underlying, expiry, middle, side)
+        if listed is None:
+            return None
+        quote = view.quote(listed)
+        if quote is None:
+            return None
+
+        # On expiry day there is no time for the model to work with, and the
+        # solver answers None for that — which is the whole reason not to
+        # check it again here.
+        days = Decimal((expiry - today).days)
+        return implied_volatility(
+            option_type=side,
+            price=quote.last_price.amount,
+            spot=spot.amount,
+            strike=middle,
+            years=years_to_expiry(days),
+            rate=self.rate,
+        )
+
+
+@synthetic("implied_volatility")
+@dataclass(frozen=True)
+class ImpliedVolatility(_AtTheMoney):
+    """The volatility the at-the-money options imply, as a percentage.
+
+    Averaged across the call and the put, because either alone carries the
+    skew and this series is meant to carry the level. Published as a
+    percentage rather than a fraction, which is how every screen shows it and
+    therefore how a threshold will be configured.
+    """
+
+    def instrument(self) -> InstrumentId:
+        return InstrumentId(f"{SYNTHETIC}:IV-{_name(self.underlying)}")
+
+    def price(self, view: ChainView) -> Money | None:
+        today = view.today()
+        call = self._implied(view, OptionType.CALL, today)
+        put = self._implied(view, OptionType.PUT, today)
+        readable = [value for value in (call, put) if value is not None]
+        if not readable:
+            return None
+        average = sum(readable, Decimal(0)) / Decimal(len(readable))
+        return Money(average * Decimal(100), Currency.INR)
+
+
+@synthetic("iv_skew")
+@dataclass(frozen=True)
+class ImpliedVolatilitySkew(_AtTheMoney):
+    """Call volatility less put volatility, in percentage points.
+
+    Positive when calls are dearer than puts for the same strike — the market
+    paying up for upside. Negative is the usual state in an index, where puts
+    carry a premium for protection, so a threshold is rarely zero.
+
+    Both sides are required. A skew computed from one leg is not a skew.
+    """
+
+    def instrument(self) -> InstrumentId:
+        return InstrumentId(f"{SYNTHETIC}:IVSKEW-{_name(self.underlying)}")
+
+    def price(self, view: ChainView) -> Money | None:
+        today = view.today()
+        call = self._implied(view, OptionType.CALL, today)
+        put = self._implied(view, OptionType.PUT, today)
+        if call is None or put is None:
+            return None
+        return Money((call - put) * Decimal(100), Currency.INR)
+
+
 # -- publishing -------------------------------------------------------------
 
 
@@ -344,5 +436,7 @@ def for_symbols(symbols: Sequence[InstrumentId], *, levels: int = 10) -> tuple[S
             RollingStraddle(underlying=underlying, levels=levels),
             PutCallRatio(underlying=underlying, levels=levels),
             SyntheticFuture(underlying=underlying, levels=levels),
+            ImpliedVolatility(underlying=underlying, levels=levels),
+            ImpliedVolatilitySkew(underlying=underlying, levels=levels),
         )
     )

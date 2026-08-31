@@ -14,6 +14,7 @@ import pytest
 
 from garuda.domain import Currency, Direction, Money
 from garuda.domain.errors import DomainError
+from garuda.domain.instrument import InstrumentId
 from garuda.domain.market import Bar, BarInterval, Tick
 from garuda.engine.direction import (
     CandleDirection,
@@ -23,6 +24,7 @@ from garuda.engine.direction import (
     IndicatorDirection,
     LongWhen,
     NBarsBreakout,
+    PriceDirection,
     PriceType,
     ReferenceTime,
     SuperTrendDirection,
@@ -465,5 +467,73 @@ def test_an_indicator_direction_builds_from_configuration(
     context.indicators = {"RSI": Decimal(70)}
 
     built = build({"type": "indicator", "indicator": "RSI", "level": 60, "interval": "15m"})
+
+    assert built.resolve(context) is Direction.LONG
+
+
+# -- from a published series ------------------------------------------------
+
+SKEW = InstrumentId("SYNTH:IVSKEW-NIFTY")
+PCR = InstrumentId("SYNTH:PCR-NIFTY")
+
+
+def publishing(context: FakeContext, instrument: InstrumentId, value: str) -> None:
+    context.quotes = dict(context.quotes) | {
+        instrument: Tick(instrument=instrument, last_price=rupees(value), timestamp=NOW)
+    }
+
+
+def test_a_positive_volatility_skew_is_long(context: FakeContext) -> None:
+    """Calls dearer than puts: the market paying up for upside."""
+    publishing(context, SKEW, "1.5")
+
+    assert PriceDirection(instrument=SKEW).resolve(context) is Direction.LONG
+
+
+def test_a_negative_volatility_skew_is_short(context: FakeContext) -> None:
+    publishing(context, SKEW, "-1.5")
+
+    assert PriceDirection(instrument=SKEW).resolve(context) is Direction.SHORT
+
+
+def test_a_put_call_ratio_reads_against_its_own_level(context: FakeContext) -> None:
+    """The same rule as the skew, against one rather than zero — which is what
+    publishing both as instruments bought."""
+    publishing(context, PCR, "1.4")
+
+    rule = PriceDirection(instrument=PCR, level=Decimal(1))
+
+    assert rule.resolve(context) is Direction.LONG
+
+
+def test_a_low_put_call_ratio_is_short(context: FakeContext) -> None:
+    publishing(context, PCR, "0.7")
+
+    assert PriceDirection(instrument=PCR, level=Decimal(1)).resolve(context) is Direction.SHORT
+
+
+def test_a_series_exactly_on_its_level_still_answers(context: FakeContext) -> None:
+    publishing(context, SKEW, "0")
+
+    assert PriceDirection(instrument=SKEW).resolve(context) is Direction.SHORT
+
+
+def test_the_reading_can_be_inverted_for_a_contrarian(context: FakeContext) -> None:
+    """A high put-call ratio read as capitulation rather than as fear."""
+    publishing(context, PCR, "1.4")
+
+    rule = PriceDirection(instrument=PCR, level=Decimal(1), long_when=LongWhen.LESS)
+
+    assert rule.resolve(context) is Direction.SHORT
+
+
+def test_a_series_nobody_is_publishing_has_no_opinion(context: FakeContext) -> None:
+    assert PriceDirection(instrument=SKEW).resolve(context) is None
+
+
+def test_a_price_direction_builds_from_configuration(context: FakeContext) -> None:
+    publishing(context, PCR, "1.4")
+
+    built = build({"type": "price", "instrument": "SYNTH:PCR-NIFTY", "level": 1})
 
     assert built.resolve(context) is Direction.LONG

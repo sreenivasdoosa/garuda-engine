@@ -18,7 +18,10 @@ from garuda.domain.enums import ExpiryKind, OptionType
 from garuda.domain.errors import DomainError
 from garuda.domain.instrument import InstrumentId
 from garuda.domain.market import Tick
+from garuda.marketdata.pricing import black_scholes, years_to_expiry
 from garuda.marketdata.synthetics import (
+    ImpliedVolatility,
+    ImpliedVolatilitySkew,
     PutCallRatio,
     RollingStraddle,
     SyntheticFuture,
@@ -67,6 +70,9 @@ class FakeChain:
     ) -> InstrumentId | None:
         side = "CE" if option_type is OptionType.CALL else "PE"
         return InstrumentId(f"NFO:N{int(strike)}{side}")
+
+    def today(self) -> date:
+        return TODAY
 
     def quote(self, instrument: InstrumentId) -> Tick | None:
         text = instrument.value.removeprefix("NFO:N")
@@ -348,6 +354,8 @@ def test_every_curated_underlying_gets_its_series() -> None:
         "SYNTH:STRADDLE-NIFTY",
         "SYNTH:PCR-NIFTY",
         "SYNTH:SYNFUT-NIFTY",
+        "SYNTH:IV-NIFTY",
+        "SYNTH:IVSKEW-NIFTY",
     }
 
 
@@ -356,3 +364,131 @@ def test_a_synthetic_builds_from_configuration() -> None:
 
     assert isinstance(built, RollingStraddle)
     assert built.levels == 5
+
+
+# -- implied volatility -----------------------------------------------------
+
+
+def priced_by_model(volatility: str, *, days: int = 30) -> FakeChain:
+    """A chain quoted at exactly what the model says, so the solver should
+    recover the volatility it was priced with."""
+    spot = Decimal(25010)
+    chain = FakeChain(price=Money(spot, Currency.INR), expiry_on=TODAY + timedelta(days=days))
+    years = years_to_expiry(Decimal(days))
+    for step in range(-2, 3):
+        strike = Decimal(25000) + step * 50
+        for side, book in ((OptionType.CALL, chain.calls), (OptionType.PUT, chain.puts)):
+            book[int(strike)] = str(
+                black_scholes(
+                    option_type=side,
+                    spot=spot,
+                    strike=strike,
+                    years=years,
+                    volatility=Decimal(volatility),
+                    rate=Decimal("0.065"),
+                )
+            )
+    return chain
+
+
+def test_the_volatility_a_price_implies_is_recovered() -> None:
+    """Priced at 18% and read back as 18%, which is the round trip that says
+    the model and the solver agree."""
+    chain = priced_by_model("0.18")
+
+    value = ImpliedVolatility(underlying=NIFTY, levels=2).price(chain)
+
+    assert value is not None
+    assert abs(value.amount - Decimal(18)) < Decimal("0.01")
+
+
+def test_volatility_is_published_as_a_percentage() -> None:
+    """Which is how every screen shows it, and therefore how a threshold will
+    be configured."""
+    chain = priced_by_model("0.18")
+
+    value = ImpliedVolatility(underlying=NIFTY, levels=2).price(chain)
+
+    assert value is not None
+    assert value.amount > Decimal(1)  # 18, not 0.18
+
+
+def test_a_chain_priced_evenly_has_no_skew() -> None:
+    chain = priced_by_model("0.18")
+
+    skew = ImpliedVolatilitySkew(underlying=NIFTY, levels=2).price(chain)
+
+    assert skew is not None
+    assert abs(skew.amount) < Decimal("0.01")
+
+
+def test_dearer_puts_read_as_a_negative_skew() -> None:
+    """The usual state in an index, where puts carry a protection premium."""
+    chain = priced_by_model("0.18")
+    chain.puts[25000] = str(Decimal(chain.puts[25000]) * Decimal("1.3"))
+
+    skew = ImpliedVolatilitySkew(underlying=NIFTY, levels=2).price(chain)
+
+    assert skew is not None
+    assert skew.amount < 0
+
+
+def test_dearer_calls_read_as_a_positive_skew() -> None:
+    chain = priced_by_model("0.18")
+    chain.calls[25000] = str(Decimal(chain.calls[25000]) * Decimal("1.3"))
+
+    skew = ImpliedVolatilitySkew(underlying=NIFTY, levels=2).price(chain)
+
+    assert skew is not None
+    assert skew.amount > 0
+
+
+def test_a_skew_needs_both_sides() -> None:
+    """A skew computed from one leg is not a skew."""
+    chain = priced_by_model("0.18")
+    del chain.puts[25000]
+
+    assert ImpliedVolatilitySkew(underlying=NIFTY, levels=2).price(chain) is None
+
+
+def test_one_side_is_enough_for_the_level() -> None:
+    """The level is what it is whichever leg carries it; only the skew needs
+    the pair."""
+    chain = priced_by_model("0.18")
+    del chain.puts[25000]
+
+    assert ImpliedVolatility(underlying=NIFTY, levels=2).price(chain) is not None
+
+
+def test_on_expiry_day_there_is_no_volatility_to_imply() -> None:
+    """The model has no time left to work with, and a number computed from
+    none of it has no meaning rather than a large value."""
+    chain = priced_by_model("0.18", days=30)
+    chain.expiry_on = TODAY
+
+    assert ImpliedVolatility(underlying=NIFTY, levels=2).price(chain) is None
+
+
+def test_a_price_at_or_below_intrinsic_implies_nothing() -> None:
+    """There is nothing left for volatility to account for."""
+    chain = priced_by_model("0.18")
+    chain.calls[25000] = "10"  # spot 25010 against strike 25000: all intrinsic
+    del chain.puts[25000]
+
+    assert ImpliedVolatility(underlying=NIFTY, levels=2).price(chain) is None
+
+
+def test_the_level_averages_the_two_sides() -> None:
+    """Either leg alone carries the skew; the level is meant to carry the
+    level, so it is the mean of the pair rather than whichever came first."""
+    chain = priced_by_model("0.18")
+    chain.calls[25000] = str(Decimal(chain.calls[25000]) * Decimal("1.4"))
+
+    skew = ImpliedVolatilitySkew(underlying=NIFTY, levels=2).price(chain)
+    level = ImpliedVolatility(underlying=NIFTY, levels=2).price(chain)
+
+    assert skew is not None
+    assert level is not None
+    # The puts are still at 18 and the calls are dearer by the skew, so the
+    # mean sits half a skew above 18 — not at either leg's own reading.
+    assert abs(level.amount - (Decimal(18) + skew.amount / 2)) < Decimal("0.05")
