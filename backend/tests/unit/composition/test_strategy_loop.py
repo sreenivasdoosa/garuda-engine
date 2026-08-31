@@ -55,6 +55,7 @@ from garuda.engine.tranches import TrancheId, TrancheLedger, TrancheState
 from garuda.marketdata.history import CandleCache, HistorySource
 from garuda.marketdata.hub import TickHub
 from garuda.marketdata.registry import InstrumentRegistry
+from garuda.marketdata.synthetics import RollingStraddle, SyntheticPublisher
 from garuda.protocols.feed import TicksReceived
 
 from .conftest import APPA, EngineBuilder, account, session
@@ -674,3 +675,69 @@ def _a_position() -> Trade:
         entry=rupees("150"),
         started_at=NOW,
     )
+
+
+# -- synthetics -------------------------------------------------------------
+
+
+async def test_a_sweep_publishes_the_synthetic_series(
+    engine: Engine, registry: InstrumentRegistry, nse_calendar: TradingCalendar
+) -> None:
+    """Computed from the chain the watchlist subscribed to, and on the hub a
+    moment before the rules read it."""
+    doorman = Doorman()
+    await prices(engine.parts.hub)
+    loop = loop_over(engine, registry, doorman, nse_calendar)
+    loop.synthetics = SyntheticPublisher(
+        sources=(RollingStraddle(underlying=NIFTY, levels=1, min_strikes_per_side=0),)
+    )
+    loop.market = replace(
+        loop.market,
+        symbols={"NIFTY": SymbolInfo(symbol="NIFTY", exchange_code="NSE", strike_gap=Decimal(50))},
+    )
+
+    await loop.run_once()
+
+    straddle = engine.parts.hub.latest(InstrumentId("SYNTH:STRADDLE-NIFTY"))
+    assert straddle is not None
+    assert straddle.last_price == rupees("270")  # the only quoted pair: 150 + 120
+
+
+async def test_a_broken_synthetic_does_not_stop_the_sweep(
+    engine: Engine, registry: InstrumentRegistry, nse_calendar: TradingCalendar
+) -> None:
+    class Broken:
+        underlying = NIFTY
+
+        def instrument(self) -> InstrumentId:
+            return InstrumentId("SYNTH:BROKEN")
+
+        def price(self, view: object) -> Money | None:
+            raise RuntimeError("broken")
+
+    doorman = Doorman()
+    await prices(engine.parts.hub)
+    loop = loop_over(engine, registry, doorman, nse_calendar)
+    loop.synthetics = SyntheticPublisher(sources=(Broken(),))
+
+    results = await loop.run_once()
+
+    assert [result.fired for result in results] == [True]
+
+
+async def test_no_synthetics_declared_is_quiet(
+    engine: Engine,
+    registry: InstrumentRegistry,
+    nse_calendar: TradingCalendar,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """An engine trading nothing that needs a synthetic declares none, which
+    is a state and not a fault. An error about it once a second buries the
+    real ones."""
+    doorman = Doorman()
+    loop = loop_over(engine, registry, doorman, nse_calendar)
+
+    with caplog.at_level("ERROR"):
+        await loop.run_once()
+
+    assert "synthetic" not in caplog.text

@@ -599,7 +599,10 @@ list badly: half-overriding a list is a footgun with no good semantics. So:
    `before`, `indicator`, `breakout` and `price_below`. Those carry every
    shape configured today. Everything else is additive by construction.
 
-5. **Synthetics are declared per symbol.** The `symbols` table already lists
+5. **Synthetics are declared per symbol.** *(Built: declared per underlying
+   anything is subscribed to, which is narrower and better — a rolling
+   straddle for a symbol nobody trades is a chain subscription and a
+   calculation every second for a series nobody reads.)* The `symbols` table already lists
    the underlyings worth caring about, and it is the natural place to say which
    of them maintain a rolling straddle, an implied-volatility series or a
    put-call ratio. No new table: a synthetic is a property of an underlying,

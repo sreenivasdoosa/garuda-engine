@@ -196,6 +196,45 @@ class LiveContext:
         return info
 
 
+@dataclass(frozen=True)
+class ChainOnly:
+    """The chain, with no strategy attached.
+
+    What a synthetic reads. A rolling straddle belongs to an underlying rather
+    than to whoever happens to be trading it, so pricing one through a
+    strategy's context would mean inventing a strategy — and inventing one
+    means choosing an underlying for it, which is the very thing the caller is
+    iterating over.
+    """
+
+    market: MarketView
+    trading_day: date
+
+    def spot(self, underlying: InstrumentId) -> Money | None:
+        quote = self.quote(underlying)
+        return quote.last_price if quote is not None else None
+
+    def strike_gap(self, underlying: InstrumentId) -> Decimal | None:
+        info = self.market.symbols.get(underlying.value.split(":", 1)[-1])
+        return info.strike_gap if info is not None else None
+
+    def expiry(self, underlying: InstrumentId, kind: ExpiryKind) -> date | None:
+        return self.market.registry().expiry_for(underlying, kind, self.trading_day)
+
+    def option(
+        self,
+        underlying: InstrumentId,
+        expiry: date,
+        strike: Decimal,
+        option_type: OptionType,
+    ) -> InstrumentId | None:
+        listed = self.market.registry().option_at(underlying, expiry, strike, option_type)
+        return listed.id if listed is not None else None
+
+    def quote(self, instrument: InstrumentId) -> Tick | None:
+        return self.market.hub.latest(instrument)
+
+
 def day_conditions_for(
     underlying: InstrumentId,
     trading_day: date,

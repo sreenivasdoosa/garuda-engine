@@ -47,6 +47,7 @@ from garuda.engine.tranches import TrancheLedger
 from garuda.marketdata.history import CandleCache
 from garuda.marketdata.loader import InstrumentLoader
 from garuda.marketdata.registry import InstrumentRegistry
+from garuda.marketdata.synthetics import Synthetic, SyntheticPublisher, for_symbols
 from garuda.persistence.engine import create_engine, create_session_factory
 from garuda.persistence.secrets import SecretBox
 from garuda.persistence.seed import load_seed
@@ -287,7 +288,22 @@ def _strategy_loop(assembled: _Assembled, clock: Clock) -> StrategyLoop | None:
         runner=StrategyRunner(factory=factory, deliver=deliver, ledger=ledger),
         ledger=ledger,
         watchlist=Watchlist(hub=engine.parts.hub, symbols=assembled.symbols),
+        synthetics=SyntheticPublisher(sources=_synthetics(assembled)),
     )
+
+
+def _synthetics(assembled: _Assembled) -> tuple[Synthetic, ...]:
+    """The series maintained, one set per underlying anything trades.
+
+    Declared by what is subscribed rather than by what is curated: a rolling
+    straddle for a symbol nobody trades is a chain subscription and a
+    calculation every second for a series nobody reads.
+    """
+    underlyings = sorted(
+        {subscription.spec.underlying for subscription in assembled.strategies.subscriptions},
+        key=lambda instrument: instrument.value,
+    )
+    return for_symbols(underlyings)
 
 
 async def _run() -> int:

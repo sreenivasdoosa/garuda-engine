@@ -28,7 +28,12 @@ from garuda.alerts.manager import AlertManager
 from garuda.composition.engine import ClientParts, Engine
 from garuda.composition.routing import deliver
 from garuda.composition.strategies import Loaded, Strategy
-from garuda.composition.strategy_context import LiveContext, MarketView, day_conditions_for
+from garuda.composition.strategy_context import (
+    ChainOnly,
+    LiveContext,
+    MarketView,
+    day_conditions_for,
+)
 from garuda.composition.watchlist import Watchlist
 from garuda.domain.alert import EntityType
 from garuda.domain.exchange import Exchange
@@ -37,7 +42,9 @@ from garuda.engine.daycondition import DayCondition
 from garuda.engine.signals import SignalBatch
 from garuda.engine.strategy import Result, StrategyRunner, StrategySubscription
 from garuda.engine.tranches import TrancheLedger
+from garuda.marketdata.synthetics import SyntheticPublisher
 from garuda.protocols.clock import Clock
+from garuda.protocols.feed import TicksReceived
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +69,8 @@ class StrategyLoop:
     #: Keeps the feed quoting what the strategies need. None when nothing is
     #: subscribing, which is a test rather than a running engine.
     watchlist: Watchlist | None = None
+    #: Prices the series nobody publishes. None when none are declared.
+    synthetics: SyntheticPublisher | None = None
     interval: timedelta = DEFAULT_INTERVAL
     _stopping: bool = False
     #: Strategies that raised on the way in, so the alert is raised once and
@@ -81,6 +90,7 @@ class StrategyLoop:
         """
         now = self.clock.now()
         await self._watch()
+        await self._publish_synthetics(now)
         await self._refresh_history()
         self.ledger.expire_due(now)
 
@@ -127,6 +137,25 @@ class StrategyLoop:
             )
         except Exception:
             logger.exception("could not update what the feed is watching")
+
+    async def _publish_synthetics(self, now: datetime) -> None:
+        """Price the series nobody publishes, and put them on the hub.
+
+        After the watchlist and before the sweep: a synthetic is computed from
+        the chain the watchlist just subscribed to, and read by rules a moment
+        later. Never raises — a chain that cannot be priced is a quiet
+        synthetic, not a stopped engine.
+        """
+        if self.synthetics is None:
+            return
+        try:
+            view = ChainOnly(market=self.market, trading_day=self.trading_day)
+            ticks = self.synthetics.ticks(view, now)
+            if ticks:
+                await self.engine.parts.hub.consume([TicksReceived(tuple(ticks))])
+                await self.engine.parts.hub.dispatch_once()
+        except Exception:
+            logger.exception("could not publish the synthetic series")
 
     async def _refresh_history(self) -> None:
         """Bring the candle cache up to date. Never raises."""
