@@ -12,6 +12,7 @@ whole entry down, which the evaluator decides, not the selector.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
@@ -21,6 +22,7 @@ from garuda.domain.enums import ExpiryKind, OptionType
 from garuda.domain.errors import DomainError
 from garuda.domain.instrument import InstrumentId
 from garuda.domain.money import Money
+from garuda.engine.plugins import Registration, Registry
 from garuda.engine.strikes import AT_THE_MONEY, Moneyness, strike_for
 
 
@@ -67,6 +69,27 @@ class InstrumentSelector(Protocol):
     ) -> InstrumentId | None: ...
 
 
+_SELECTORS: Registry[InstrumentSelector] = Registry("selector")
+
+
+def selector(name: str) -> Callable[[type[InstrumentSelector]], type[InstrumentSelector]]:
+    """Register a selector under a configuration name.
+
+    The same mechanism rules use, for the same reason: a leg names what picks
+    its instrument, and adding a way to pick one changes nothing above it.
+    """
+    return _SELECTORS.register(name)
+
+
+def build(config: object) -> InstrumentSelector:
+    return _SELECTORS.build(config)
+
+
+def registered() -> Mapping[str, Registration]:
+    return _SELECTORS.known()
+
+
+@selector("fixed")
 @dataclass(frozen=True, slots=True)
 class FixedInstrumentSelector:
     """Always the same instrument, named up front."""
@@ -78,6 +101,7 @@ class FixedInstrumentSelector:
         return self.instrument
 
 
+@selector("underlying")
 @dataclass(frozen=True, slots=True)
 class UnderlyingSelector:
     """The strategy's own underlying — an equity or index traded directly."""
@@ -89,6 +113,7 @@ class UnderlyingSelector:
         return underlying
 
 
+@selector("option_strike")
 @dataclass(frozen=True, slots=True)
 class OptionStrikeSelector:
     """An option, chosen by how far from the money it sits.
@@ -126,6 +151,7 @@ class OptionStrikeSelector:
         return context.option(underlying, expiry, strike, self.option_type)
 
 
+@selector("hedge_strike")
 @dataclass(frozen=True, slots=True)
 class HedgeStrikeSelector:
     """An option a fixed distance beyond another leg's strike.
@@ -154,6 +180,7 @@ class HedgeStrikeSelector:
         ).select(underlying, context)
 
 
+@selector("future")
 @dataclass(frozen=True, slots=True)
 class NearMonthFutureSelector:
     """The underlying's future, on the expiry the strategy trades."""
