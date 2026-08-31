@@ -15,15 +15,17 @@ import asyncio
 import logging
 import signal
 import sys
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from garuda.brokers.routing import trading_client_factory
-from garuda.brokers.sessions import SessionResolver
+from garuda.brokers.sessions import Credentials, SessionResolver, SessionUnavailableError
 from garuda.brokers.websocket import websocket_connector
+from garuda.brokers.zerodha.history import ZerodhaHistory
+from garuda.brokers.zerodha.rest import KiteClient
 from garuda.capital import CapitalLotAllocator, Sizer
 from garuda.composition.accounts import build_resolver
 from garuda.composition.engine import Engine, build_engine
@@ -41,6 +43,7 @@ from garuda.domain.symbol import SymbolInfo
 from garuda.engine.signals import SignalFactory
 from garuda.engine.strategy import StrategyRunner
 from garuda.engine.tranches import TrancheLedger
+from garuda.marketdata.history import CandleCache
 from garuda.marketdata.loader import InstrumentLoader
 from garuda.marketdata.registry import InstrumentRegistry
 from garuda.persistence.engine import create_engine, create_session_factory
@@ -117,6 +120,11 @@ async def _build(settings: Settings, clock: Clock) -> _Assembled:
     )
     strategies = await load_strategies(sessions)
     _report(strategies)
+    try:
+        market_data = resolver.market_data_credentials(clock.now())
+    except SessionUnavailableError:
+        market_data = None
+
     return _Assembled(
         engine=engine,
         venues=venues,
@@ -124,6 +132,7 @@ async def _build(settings: Settings, clock: Clock) -> _Assembled:
         resolver=resolver,
         symbols=symbols,
         strategies=strategies,
+        market_data=market_data,
     )
 
 
@@ -137,6 +146,8 @@ class _Assembled:
     resolver: SessionResolver
     symbols: Mapping[str, SymbolInfo]
     strategies: Loaded
+    #: Whose session fetches history, when one is nominated.
+    market_data: Credentials | None
 
 
 def _report(strategies: Loaded) -> None:
@@ -206,6 +217,26 @@ async def _seed() -> int:
     return 0
 
 
+def _candles(
+    assembled: _Assembled, registry: Callable[[], InstrumentRegistry], clock: Clock
+) -> CandleCache | None:
+    """History from whichever account provides market data.
+
+    None when no account does: the same account that carries the feed carries
+    the history, because both are its session, and without one there is
+    neither. Every candle rule then reads UNAVAILABLE, which is the truth.
+    """
+    credentials = assembled.market_data
+    if credentials is None:
+        logger.warning("no market data account, so no candle history and no indicators")
+        return None
+    http = trading_client_factory(credentials.static_ip)
+    source = ZerodhaHistory(
+        KiteClient(credentials.api_key, credentials.access_token, http), registry
+    )
+    return CandleCache(source=source, clock=clock)
+
+
 def _strategy_loop(assembled: _Assembled, clock: Clock) -> StrategyLoop | None:
     """The loop that looks for entries, if anything is subscribed.
 
@@ -235,6 +266,7 @@ def _strategy_loop(assembled: _Assembled, clock: Clock) -> StrategyLoop | None:
         registry=registry,
         symbols=assembled.symbols,
         timezone=venue.timezone,
+        candles=_candles(assembled, registry, clock),
     )
 
     async def deliver(batch: object) -> bool:

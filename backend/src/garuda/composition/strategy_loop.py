@@ -67,8 +67,14 @@ class StrategyLoop:
         return self.ledger.trading_day
 
     async def run_once(self) -> list[Result]:
-        """One sweep of everything subscribed."""
+        """One sweep of everything subscribed.
+
+        History first, so a rule reading candles sees what the last sweep asked
+        for. A rule cannot wait on a broker, so this is where the waiting
+        happens.
+        """
         now = self.clock.now()
+        await self._refresh_history()
         self.ledger.expire_due(now)
 
         results: list[Result] = []
@@ -90,6 +96,19 @@ class StrategyLoop:
 
     def stop(self) -> None:
         self._stopping = True
+
+    async def _refresh_history(self) -> None:
+        """Bring the candle cache up to date. Never raises."""
+        cache = self.market.candles
+        if cache is None:
+            return
+        windows = self.venue.calendar.windows_on(self.trading_day)
+        if not windows:
+            return
+        try:
+            await cache.refresh_due(session_start=windows[0].start)
+        except Exception:
+            logger.exception("could not refresh candle history")
 
     async def _sweep(self, subscription: StrategySubscription, now: datetime) -> list[Result]:
         strategy = self.loaded.strategies.get(subscription.spec.name)

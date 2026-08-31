@@ -8,7 +8,7 @@ trade management is still running positions that are already on.
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from zoneinfo import ZoneInfo
@@ -36,7 +36,7 @@ from garuda.domain.enums import (
 )
 from garuda.domain.exchange import Exchange
 from garuda.domain.instrument import Instrument, InstrumentId
-from garuda.domain.market import Tick
+from garuda.domain.market import Bar, BarInterval, Tick
 from garuda.domain.symbol import SymbolInfo
 from garuda.engine.rules.compose import AllOf
 from garuda.engine.rules.outcome import RuleOutcome, failed, passed
@@ -50,6 +50,7 @@ from garuda.engine.strategy import (
     StrategySubscription,
 )
 from garuda.engine.tranches import TrancheId, TrancheLedger, TrancheState
+from garuda.marketdata.history import CandleCache, HistorySource
 from garuda.marketdata.hub import TickHub
 from garuda.marketdata.registry import InstrumentRegistry
 from garuda.protocols.feed import TicksReceived
@@ -471,3 +472,113 @@ async def test_stopping_ends_the_sweep(
     await asyncio.wait_for(running, timeout=1)
 
     assert running.done()
+
+
+# -- history ----------------------------------------------------------------
+
+
+async def test_history_is_refreshed_before_the_rules_read_it(
+    engine: Engine, registry: InstrumentRegistry, nse_calendar: TradingCalendar
+) -> None:
+    """A rule cannot wait on a broker, so the waiting happens here — and it
+    happens first, or every sweep reads what the previous one asked for."""
+    fetched: list[str] = []
+
+    class Source:
+        async def fetch(
+            self,
+            instrument: InstrumentId,
+            interval: BarInterval,
+            start: datetime,
+            end: datetime,
+        ) -> list[Bar]:
+            fetched.append(instrument.value)
+            return []
+
+    doorman = Doorman()
+    loop = loop_over(engine, registry, doorman, nse_calendar)
+    cache = CandleCache(source=Source(), clock=ReplayClock(NOW))
+    cache.wants(NIFTY, BarInterval.ONE_MINUTE)
+    loop.market = replace(loop.market, candles=cache)
+
+    await loop.run_once()
+
+    # Both tiers: the settled days and today's.
+    assert fetched == [NIFTY.value, NIFTY.value]
+
+
+async def test_a_broken_history_source_does_not_stop_the_sweep(
+    engine: Engine, registry: InstrumentRegistry, nse_calendar: TradingCalendar
+) -> None:
+    class Broken:
+        async def fetch(
+            self,
+            instrument: InstrumentId,
+            interval: BarInterval,
+            start: datetime,
+            end: datetime,
+        ) -> list[Bar]:
+            raise RuntimeError("history is down")
+
+    doorman = Doorman()
+    await prices(engine.parts.hub)
+    loop = loop_over(engine, registry, doorman, nse_calendar)
+    cache = CandleCache(source=Broken(), clock=ReplayClock(NOW))
+    cache.wants(NIFTY, BarInterval.ONE_MINUTE)
+    loop.market = replace(loop.market, candles=cache)
+
+    results = await loop.run_once()
+
+    assert [result.fired for result in results] == [True]
+
+
+async def test_no_candle_cache_is_quiet(
+    engine: Engine,
+    registry: InstrumentRegistry,
+    nse_calendar: TradingCalendar,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """An engine with no market-data account has no history, which is a state
+    and not a fault. Logging an error about it once a second is noise that
+    buries the real ones."""
+    doorman = Doorman()
+    loop = loop_over(engine, registry, doorman, nse_calendar)
+
+    with caplog.at_level("ERROR"):
+        await loop.run_once()
+
+    assert "candle history" not in caplog.text
+
+
+async def test_a_day_the_venue_does_not_trade_is_quiet(
+    engine: Engine,
+    registry: InstrumentRegistry,
+    nse_calendar: TradingCalendar,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """There is no session to fetch today's candles from."""
+    doorman = Doorman()
+    loop = loop_over(engine, registry, doorman, nse_calendar)
+    loop.market = replace(
+        loop.market, candles=CandleCache(source=_unused(), clock=ReplayClock(NOW))
+    )
+    loop.ledger = TrancheLedger(date(2026, 9, 5))  # a Saturday
+
+    with caplog.at_level("ERROR"):
+        await loop.run_once()
+
+    assert "candle history" not in caplog.text
+
+
+def _unused() -> HistorySource:
+    class Nothing:
+        async def fetch(
+            self,
+            instrument: InstrumentId,
+            interval: BarInterval,
+            start: datetime,
+            end: datetime,
+        ) -> list[Bar]:
+            raise AssertionError("there is no session to fetch for")
+
+    return Nothing()

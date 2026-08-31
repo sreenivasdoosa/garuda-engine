@@ -28,10 +28,11 @@ from garuda.domain.enums import (
 )
 from garuda.domain.exchange import Exchange
 from garuda.domain.instrument import Instrument, InstrumentId
-from garuda.domain.market import BarInterval, Tick
+from garuda.domain.market import Bar, BarInterval, Tick
 from garuda.domain.symbol import SymbolInfo
 from garuda.engine.config import ResolvedConfig
 from garuda.engine.daycondition import DayCondition
+from garuda.marketdata.history import CandleCache, HistorySource, Want
 from garuda.marketdata.hub import TickHub
 from garuda.marketdata.registry import InstrumentRegistry
 from garuda.protocols.feed import TicksReceived
@@ -192,10 +193,53 @@ def test_no_future_is_listed_here(context: LiveContext) -> None:
 # -- what is not built yet --------------------------------------------------
 
 
-def test_there_are_no_candles_yet(context: LiveContext) -> None:
+def test_no_candle_cache_means_no_candles(context: LiveContext) -> None:
     """Saying so is the point: a rule needing them reads UNAVAILABLE rather
     than looking like a condition that did not hold."""
     assert context.candles(NIFTY, BarInterval.ONE_MINUTE, 20) == ()
+
+
+def test_candles_come_from_the_cache(
+    hub: TickHub, registry: InstrumentRegistry, alerts_book: object
+) -> None:
+    """And asking for a series nobody has fetched registers the demand, so the
+    next refresh brings it."""
+    cache = CandleCache(source=_never_asked(), clock=ReplayClock(NOW))
+    market = MarketView(
+        hub=hub,
+        registry=lambda: registry,
+        symbols={},
+        timezone=IST,
+        candles=cache,
+    )
+    context = LiveContext(
+        market=market,
+        book=alerts_book,  # type: ignore[arg-type]
+        now=NOW,
+        trading_day=TODAY,
+        strategy="straddle",
+        trading_client=CLIENT,
+        tranche=0,
+        config=ResolvedConfig(strategy="straddle"),
+        underlying=NIFTY,
+    )
+
+    assert context.candles(NIFTY, BarInterval.ONE_MINUTE, 20) == ()
+    assert Want(NIFTY, BarInterval.ONE_MINUTE) in cache.wanted
+
+
+def _never_asked() -> HistorySource:
+    class Nothing:
+        async def fetch(
+            self,
+            instrument: InstrumentId,
+            interval: BarInterval,
+            start: datetime,
+            end: datetime,
+        ) -> list[Bar]:
+            raise AssertionError("a rule must not wait on a broker")
+
+    return Nothing()
 
 
 def test_there_are_no_indicators_yet(context: LiveContext) -> None:

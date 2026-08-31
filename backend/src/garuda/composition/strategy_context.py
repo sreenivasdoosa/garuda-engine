@@ -34,6 +34,7 @@ from garuda.domain.symbol import SymbolInfo
 from garuda.domain.trade import Trade
 from garuda.engine.config import ResolvedConfig
 from garuda.engine.daycondition import DayCondition, conditions_on
+from garuda.marketdata.history import CandleCache
 from garuda.marketdata.hub import TickHub
 from garuda.marketdata.registry import InstrumentRegistry
 from garuda.trademgmt.client import TradingClientManager
@@ -49,6 +50,9 @@ class MarketView:
     registry: Callable[[], InstrumentRegistry]
     symbols: Mapping[str, SymbolInfo]
     timezone: ZoneInfo
+    #: Candle history, as far as it has been fetched. None before anything
+    #: supplies one, which makes every candle rule read UNAVAILABLE.
+    candles: CandleCache | None = None
 
 
 @dataclass(frozen=True)
@@ -83,9 +87,15 @@ class LiveContext:
         return self._seen[instrument]
 
     def candles(self, instrument: InstrumentId, interval: BarInterval, count: int) -> Sequence[Bar]:
-        """Nothing yet. There is no candle store, and saying so is the point."""
-        del instrument, interval, count
-        return ()
+        """Closed bars, as far as they have been fetched.
+
+        Empty when nothing has been, which registers the demand rather than
+        waiting on a broker inside a rule.
+        """
+        if self.market.candles is None:
+            return ()
+        fetched: Sequence[Bar] = self.market.candles.get(instrument, interval, count)
+        return fetched
 
     def indicator(
         self,

@@ -132,6 +132,8 @@ and multi-leg / combo strategies.
 | 1000-user optimizations | scaling package, sharding, load shedding, fan-out tuning, pool sizing |
 | User portal | admin Console + Terminal only |
 | Bracket / cover order tracking | brokers have withdrawn them (`brokers.bo_co_blocked`); `ProductType.CO`/`BO` stay so data round-trips, second-leg tracking does not |
+| Candle stores on disk | The reference keeps SQLite databases of day and intraday candles. Garuda fetches history from the broker and caches it **in memory**: closed days once, today refreshed. Nothing is persisted, so there is no store to migrate, corrupt or reconcile |
+| Building candles from ticks | Brokers publish history for every interval; reconstructing it from a tick stream is a second source for one number, wrong exactly across a restart or a dropped connection |
 | Global shared lot allocation | `GLOBAL_SHARED` spread one lot budget across tranches and across days. A lot budget is per day and nothing else; `global_allocation_tranches` and `allocation_start_tranch` go with it |
 | Leverage and max-risk-per-trade | both columns are set on no configured strategy; not ported |
 | External signal trigger | not an external integration at all — the market-data service evaluated conditions on rolling straddles, IV and PCR and pushed a fired signal. Garuda publishes those as synthetic instruments and writes the condition as a rule. See `STRATEGY_RULES.md` §6 |
