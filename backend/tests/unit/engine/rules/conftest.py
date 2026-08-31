@@ -10,6 +10,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from decimal import Decimal
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -21,6 +22,7 @@ from garuda.engine.config import ResolvedConfig
 from garuda.engine.rules.context import RuleContext
 from garuda.engine.rules.outcome import RuleOutcome, failed, passed, unavailable
 
+IST = ZoneInfo("Asia/Kolkata")
 NOW = datetime(2026, 8, 31, 10, 30, tzinfo=UTC)
 TODAY = NOW.date()
 CLIENT = TradingClientId("appa")
@@ -33,6 +35,7 @@ class FakeContext:
 
     now: datetime = NOW
     trading_day: date = TODAY
+    timezone: ZoneInfo = IST
     strategy: str = "straddle"
     trading_client: TradingClientId = CLIENT
     tranche: int = 0
@@ -42,7 +45,9 @@ class FakeContext:
 
     quotes: dict[InstrumentId, Tick] = field(default_factory=dict)
     bars: dict[tuple[InstrumentId, BarInterval], list[Bar]] = field(default_factory=dict)
-    indicators: dict[str, Decimal] = field(default_factory=dict)
+    #: Keyed by name, or by (name, interval) when a test cares which interval
+    #: was asked for.
+    indicators: dict[str | tuple[str, str], Decimal] = field(default_factory=dict)
     held: list[Trade] = field(default_factory=list)
     #: What was asked for, so a test can prove laziness.
     asked: list[str] = field(default_factory=list)
@@ -58,7 +63,9 @@ class FakeContext:
     def indicator(
         self, name: str, instrument: InstrumentId, interval: BarInterval, **params: object
     ) -> Decimal | None:
-        self.asked.append(f"indicator:{name}")
+        self.asked.append(f"indicator:{name}:{interval.value}")
+        if (name, interval.value) in self.indicators:
+            return self.indicators[(name, interval.value)]
         return self.indicators.get(name)
 
     def positions(self) -> Sequence[Trade]:

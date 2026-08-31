@@ -213,5 +213,18 @@ def test_a_missing_required_parameter_is_refused() -> None:
         build({"type": "test_wrapper"})
 
 
+def test_an_enum_parameter_becomes_the_enum_not_the_string() -> None:
+    """Every module here uses postponed annotations, so a field's declared type
+    arrives as text. Coercing against text leaves the value a plain string, and
+    an `is` comparison against the enum member is then quietly False for a
+    perfectly valid configuration — the rule takes its other branch and nothing
+    looks wrong."""
+    built = build({"type": "test_everything", "interval": "5m"})
+
+    assert isinstance(built, Everything)
+    assert built.interval is BarInterval.FIVE_MINUTES
+    assert not isinstance(built.interval, str) or type(built.interval) is not str
+
+
 def test_a_cost_hint_is_recorded() -> None:
     assert registered()["test_everything"].cost is Cost.CHEAP

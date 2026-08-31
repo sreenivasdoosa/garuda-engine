@@ -25,6 +25,7 @@ from collections.abc import Sequence
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Protocol, runtime_checkable
+from zoneinfo import ZoneInfo
 
 from garuda.domain.client import TradingClientId
 from garuda.domain.instrument import InstrumentId
@@ -44,6 +45,15 @@ class RuleContext(Protocol):
 
     @property
     def trading_day(self) -> date: ...
+
+    @property
+    def timezone(self) -> ZoneInfo:
+        """The venue's own clock.
+
+        A rule configured for 13:00 means the venue's one o'clock, not the
+        server's. A strategy runs on one venue, so there is one answer.
+        """
+        ...
 
     @property
     def strategy(self) -> str: ...

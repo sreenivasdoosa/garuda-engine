@@ -20,7 +20,15 @@ from datetime import time
 from decimal import Decimal, InvalidOperation
 from enum import StrEnum
 from types import UnionType
-from typing import Any, Protocol, Union, get_args, get_origin, runtime_checkable
+from typing import (
+    Any,
+    Protocol,
+    Union,
+    get_args,
+    get_origin,
+    get_type_hints,
+    runtime_checkable,
+)
 
 from garuda.domain.errors import DomainError
 from garuda.domain.instrument import InstrumentId
@@ -59,6 +67,14 @@ class Registration:
     name: str
     factory: type[Rule]
     cost: Cost
+    #: Field annotations resolved to real types.
+    #:
+    #: Every module here uses ``from __future__ import annotations``, so
+    #: ``dataclasses.fields`` reports the *text* of an annotation rather than
+    #: the type. Coercing against text silently leaves an enum as the string it
+    #: arrived as, and ``self.way is Way.UP`` is then quietly False for a
+    #: perfectly valid configuration. Resolved once, here, where it is cheap.
+    types: Mapping[str, object] = dataclasses.field(default_factory=dict)
 
 
 _REGISTRY: dict[str, Registration] = {}
@@ -79,10 +95,21 @@ def rule(name: str, *, cost: Cost = Cost.CHEAP) -> Callable[[type[Rule]], type[R
             # Parameters are read off the dataclass fields, so a rule that is
             # not one cannot be configured at all.
             raise DomainError(f"{factory.__name__} must be a dataclass to be configurable")
-        _REGISTRY[name] = Registration(name=name, factory=factory, cost=cost)
+        _REGISTRY[name] = Registration(
+            name=name, factory=factory, cost=cost, types=_resolved_types(factory)
+        )
         return factory
 
     return register
+
+
+def _resolved_types(factory: type[Rule]) -> Mapping[str, object]:
+    try:
+        return get_type_hints(factory)
+    except Exception as error:  # a forward reference nothing can resolve
+        raise DomainError(
+            f"{factory.__name__}: its parameter types cannot be resolved ({error})"
+        ) from None
 
 
 def registered() -> Mapping[str, Registration]:
@@ -138,7 +165,8 @@ def _construct(registration: Registration, params: Mapping[str, object]) -> Rule
 
     arguments: dict[str, object] = {}
     for name, value in params.items():
-        arguments[name] = _coerce(registration.name, name, fields[name].type, value)
+        annotation = registration.types.get(name, fields[name].type)
+        arguments[name] = _coerce(registration.name, name, annotation, value)
 
     try:
         return registration.factory(**arguments)
