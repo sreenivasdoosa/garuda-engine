@@ -19,9 +19,10 @@ disagree with one.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date, time
+from decimal import Decimal
 from enum import StrEnum
 
 from garuda.domain.enums import Direction
@@ -226,3 +227,70 @@ def _day_back(bars: Sequence[Bar], back: int, context: RuleContext) -> date | No
     if back >= len(days):
         return None
     return days[-1 - back]
+
+
+@direction("indicator")
+@dataclass(frozen=True)
+class IndicatorDirection:
+    """Which way, from an indicator against a level.
+
+    Long above the level and short below it, or the reverse. The commonest
+    shape is a momentum reading either side of its midpoint; the least common
+    is anything that needs a second indicator, which is a comparison rather
+    than a direction and belongs in an entry rule.
+
+    **The level is not a threshold with a gap in it.** An indicator sitting
+    exactly on the level answers short under the default reading, because
+    something has to break the tie and silently having no opinion at the one
+    value a configured level is most likely to be tested at is worse.
+    """
+
+    indicator: str = "RSI"
+    level: Decimal = Decimal(50)
+    interval: BarInterval = BarInterval.FIVE_MINUTES
+    params: Mapping[str, object] = field(default_factory=dict)
+    long_when: LongWhen = LongWhen.GREATER
+    instrument: InstrumentId | None = None
+
+    def resolve(self, context: RuleContext) -> Direction | None:
+        subject = self.instrument or context.underlying
+        value = context.indicator(self.indicator, subject, self.interval, **dict(self.params))
+        if value is None:
+            return None
+
+        higher = value > self.level
+        wants_higher = self.long_when is LongWhen.GREATER
+        return Direction.LONG if higher is wants_higher else Direction.SHORT
+
+
+@direction("supertrend")
+@dataclass(frozen=True)
+class SuperTrendDirection:
+    """Which way the Supertrend line says.
+
+    Its own rule rather than a level comparison, because the answer is a side
+    of the line and not a number: the line moves with price, so comparing it
+    against a fixed level says nothing.
+    """
+
+    period: int = 10
+    multiplier: Decimal = Decimal(3)
+    interval: BarInterval = BarInterval.FIVE_MINUTES
+    instrument: InstrumentId | None = None
+
+    def resolve(self, context: RuleContext) -> Direction | None:
+        subject = self.instrument or context.underlying
+        line = context.indicator(
+            "supertrend",
+            subject,
+            self.interval,
+            period=self.period,
+            multiplier=self.multiplier,
+        )
+        if line is None:
+            return None
+        quote = context.quote(subject)
+        if quote is None:
+            return None
+        # Above the line is an uptrend, which is the whole reading.
+        return Direction.LONG if quote.last_price.amount > line else Direction.SHORT

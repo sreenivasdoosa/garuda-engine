@@ -14,11 +14,13 @@ from garuda.engine.indicators import compute as compute_indicator
 from garuda.engine.pipeline import IntentOutcome, TradingPipeline
 from garuda.engine.protection import configured_protection, protection_from
 from garuda.engine.selectors import (
+    MAX_STRIKES_SEARCHED,
     FixedInstrumentSelector,
     HedgeStrikeSelector,
     InstrumentSelector,
     NearMonthFutureSelector,
     OptionStrikeSelector,
+    PremiumSelector,
     SelectionContext,
     UnderlyingSelector,
 )
@@ -54,6 +56,7 @@ __all__ = [
     "AT_THE_MONEY",
     "DEFAULT_MAX_LEGS",
     "MAX_LEGS_CEILING",
+    "MAX_STRIKES_SEARCHED",
     "ConfigLayer",
     "DayCondition",
     "DirectionProvider",
@@ -70,6 +73,7 @@ __all__ = [
     "Moneyness",
     "NearMonthFutureSelector",
     "OptionStrikeSelector",
+    "PremiumSelector",
     "ResolvedConfig",
     "Result",
     "SelectionContext",

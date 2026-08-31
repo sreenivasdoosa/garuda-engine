@@ -12,7 +12,7 @@ whole entry down, which the evaluator decides, not the selector.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal
@@ -58,6 +58,25 @@ class SelectionContext(Protocol):
         ...
 
     def future(self, underlying: InstrumentId, expiry: date) -> InstrumentId | None: ...
+
+    def strikes(self, underlying: InstrumentId, expiry: date) -> Sequence[Decimal]:
+        """Every strike the exchange lists for that series, ascending.
+
+        Needed by anything choosing on premium rather than distance: the
+        strikes either side of the money are not evenly spaced everywhere, and
+        the wings are often missing entirely.
+        """
+        ...
+
+    def premium(self, instrument: InstrumentId) -> Money | None:
+        """What an option is trading at.
+
+        None when nothing is subscribed to it, which is the ordinary state for
+        a strike outside the chain the engine watches — and the reason a
+        premium-based selector searches outward from the money rather than
+        over every listed strike.
+        """
+        ...
 
 
 @runtime_checkable
@@ -192,3 +211,80 @@ class NearMonthFutureSelector:
         if expiry is None:
             return None
         return context.future(underlying, expiry)
+
+
+#: How far either side of the money a premium search will walk before giving
+#: up. Beyond this the premium asked for is not on the board, and walking
+#: further only finds strikes nobody is quoting.
+MAX_STRIKES_SEARCHED = 40
+
+
+@selector("premium")
+@dataclass(frozen=True, slots=True)
+class PremiumSelector:
+    """The strike trading nearest a target premium.
+
+    What an operator means by "sell the 100-rupee call": not a distance from
+    the money, which moves with volatility, but a price. The same strategy on
+    a quiet day is far out and on a busy one is close in, which is the point.
+
+    Searched outward from the money rather than over every listed strike,
+    because only the strikes the engine subscribes to have a price at all —
+    and because the answer is always near the money for a sane target.
+    """
+
+    option_type: OptionType
+    target: Decimal = Decimal(100)
+    #: The widest acceptable miss. Without one, a target nobody is near is
+    #: answered by whichever strike happened to be least wrong.
+    tolerance: Decimal | None = None
+    expiry_kind: ExpiryKind = ExpiryKind.WEEKLY
+    #: Prefer a strike further out than the money when two are equally near,
+    #: which is the safer side for a seller.
+    prefer_further_out: bool = True
+
+    def __post_init__(self) -> None:
+        if self.target <= 0:
+            raise DomainError(f"a target premium of {self.target} is not a premium")
+        if self.tolerance is not None and self.tolerance < 0:
+            raise DomainError(f"a tolerance of {self.tolerance} is not a tolerance")
+
+    def select(self, underlying: InstrumentId, context: SelectionContext) -> InstrumentId | None:
+        expiry = context.expiry(underlying, self.expiry_kind)
+        if expiry is None:
+            return None
+
+        best: tuple[Decimal, bool, InstrumentId] | None = None
+        for strike in self._candidates(underlying, expiry, context):
+            listed = context.option(underlying, expiry, strike, self.option_type)
+            if listed is None:
+                continue
+            premium = context.premium(listed)
+            if premium is None:
+                continue
+            miss = abs(premium.amount - self.target)
+            if self.tolerance is not None and miss > self.tolerance:
+                continue
+            # Further out breaks a tie: for a seller it is the safer strike,
+            # and without a tie-break the answer depends on iteration order.
+            further = premium.amount < self.target
+            candidate = (miss, further is not self.prefer_further_out, listed)
+            if best is None or candidate[:2] < best[:2]:
+                best = candidate
+
+        return best[2] if best is not None else None
+
+    def _candidates(
+        self, underlying: InstrumentId, expiry: date, context: SelectionContext
+    ) -> Sequence[Decimal]:
+        """Listed strikes, nearest the money first.
+
+        Ordered so the search can stop being interesting early and so a tie is
+        broken by distance rather than by however the exchange listed them.
+        """
+        spot = context.spot(underlying)
+        listed = context.strikes(underlying, expiry)
+        if spot is None or not listed:
+            return ()
+        nearest = sorted(listed, key=lambda strike: abs(strike - spot.amount))
+        return nearest[:MAX_STRIKES_SEARCHED]

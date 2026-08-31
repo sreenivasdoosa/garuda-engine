@@ -20,10 +20,12 @@ from garuda.engine.direction import (
     CandleReference,
     Compare,
     Fixed,
+    IndicatorDirection,
     LongWhen,
     NBarsBreakout,
     PriceType,
     ReferenceTime,
+    SuperTrendDirection,
     build,
     first_answer,
 )
@@ -374,3 +376,94 @@ def test_a_candle_rule_builds_with_its_references(context: FakeContext) -> None:
 
     assert isinstance(built, CandleDirection)
     assert built.reference.day_offset == -2
+
+
+# -- from an indicator ------------------------------------------------------
+
+
+def test_momentum_above_its_midpoint_is_long(context: FakeContext) -> None:
+    context.indicators = {"RSI": Decimal(62)}
+
+    assert IndicatorDirection().resolve(context) is Direction.LONG
+
+
+def test_momentum_below_its_midpoint_is_short(context: FakeContext) -> None:
+    context.indicators = {"RSI": Decimal(38)}
+
+    assert IndicatorDirection().resolve(context) is Direction.SHORT
+
+
+def test_an_indicator_exactly_on_the_level_still_answers(
+    context: FakeContext,
+) -> None:
+    """Something has to break the tie, and having no opinion at the one value
+    a configured level is most likely to be tested at is worse."""
+    context.indicators = {"RSI": Decimal(50)}
+
+    assert IndicatorDirection().resolve(context) is Direction.SHORT
+
+
+def test_the_reading_can_be_inverted(context: FakeContext) -> None:
+    """A mean-reversion strategy fades momentum rather than following it."""
+    context.indicators = {"RSI": Decimal(62)}
+
+    inverted = IndicatorDirection(long_when=LongWhen.LESS)
+
+    assert inverted.resolve(context) is Direction.SHORT
+
+
+def test_an_indicator_that_cannot_be_computed_has_no_opinion(
+    context: FakeContext,
+) -> None:
+    assert IndicatorDirection().resolve(context) is None
+
+
+def test_the_level_and_the_indicator_are_both_configurable(
+    context: FakeContext,
+) -> None:
+    context.indicators = {"CCI": Decimal(120)}
+
+    rule = IndicatorDirection(indicator="CCI", level=Decimal(100))
+
+    assert rule.resolve(context) is Direction.LONG
+
+
+# -- supertrend -------------------------------------------------------------
+
+
+def test_price_above_the_supertrend_line_is_an_uptrend(context: FakeContext) -> None:
+    context.indicators = {"supertrend": Decimal(95)}
+    quoting(context, "100")
+
+    assert SuperTrendDirection().resolve(context) is Direction.LONG
+
+
+def test_price_below_the_supertrend_line_is_a_downtrend(context: FakeContext) -> None:
+    context.indicators = {"supertrend": Decimal(105)}
+    quoting(context, "100")
+
+    assert SuperTrendDirection().resolve(context) is Direction.SHORT
+
+
+def test_no_line_means_no_opinion(context: FakeContext) -> None:
+    quoting(context, "100")
+
+    assert SuperTrendDirection().resolve(context) is None
+
+
+def test_no_price_means_no_opinion_either(context: FakeContext) -> None:
+    """The reading is a side of the line, and without a price there is no
+    side."""
+    context.indicators = {"supertrend": Decimal(95)}
+
+    assert SuperTrendDirection().resolve(context) is None
+
+
+def test_an_indicator_direction_builds_from_configuration(
+    context: FakeContext,
+) -> None:
+    context.indicators = {"RSI": Decimal(70)}
+
+    built = build({"type": "indicator", "indicator": "RSI", "level": 60, "interval": "15m"})
+
+    assert built.resolve(context) is Direction.LONG

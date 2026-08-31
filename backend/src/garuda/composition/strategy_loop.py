@@ -29,6 +29,7 @@ from garuda.composition.engine import ClientParts, Engine
 from garuda.composition.routing import deliver
 from garuda.composition.strategies import Loaded, Strategy
 from garuda.composition.strategy_context import LiveContext, MarketView, day_conditions_for
+from garuda.composition.watchlist import Watchlist
 from garuda.domain.alert import EntityType
 from garuda.domain.exchange import Exchange
 from garuda.domain.trade import Trade
@@ -58,6 +59,9 @@ class StrategyLoop:
     alerts: AlertManager
     runner: StrategyRunner
     ledger: TrancheLedger
+    #: Keeps the feed quoting what the strategies need. None when nothing is
+    #: subscribing, which is a test rather than a running engine.
+    watchlist: Watchlist | None = None
     interval: timedelta = DEFAULT_INTERVAL
     _stopping: bool = False
     #: Strategies that raised on the way in, so the alert is raised once and
@@ -76,6 +80,7 @@ class StrategyLoop:
         happens.
         """
         now = self.clock.now()
+        await self._watch()
         await self._refresh_history()
         self.ledger.expire_due(now)
 
@@ -98,6 +103,30 @@ class StrategyLoop:
 
     def stop(self) -> None:
         self._stopping = True
+
+    async def _watch(self) -> None:
+        """Keep the feed quoting what the strategies need. Never raises.
+
+        Before the history refresh and the sweep, because a chain subscribed
+        this second is quoted for the next one — and a selector choosing on
+        premium can only see what is quoted.
+        """
+        if self.watchlist is None:
+            return
+        held = {
+            trade.instrument
+            for client in self.engine.parts.clients.values()
+            for trade in client.book.live_trades()
+        }
+        try:
+            await self.watchlist.ensure(
+                self.loaded.subscriptions,
+                self.market.registry(),
+                self.trading_day,
+                held=held,
+            )
+        except Exception:
+            logger.exception("could not update what the feed is watching")
 
     async def _refresh_history(self) -> None:
         """Bring the candle cache up to date. Never raises."""

@@ -159,6 +159,20 @@ class LiveContext:
         listed = self.market.registry().option_at(underlying, expiry, strike, option_type)
         return listed.id if listed is not None else None
 
+    def strikes(self, underlying: InstrumentId, expiry: date) -> Sequence[Decimal]:
+        return self.market.registry().strikes_for(underlying, expiry)
+
+    def premium(self, instrument: InstrumentId) -> Money | None:
+        """What an option is trading at, if anything is subscribed to it.
+
+        The same read as any other quote — an option is an instrument — but
+        named apart because a selector asking for one means something
+        specific, and a selector reaching for the general quote would be a
+        selector that could reach for anything.
+        """
+        quote = self.quote(instrument)
+        return quote.last_price if quote is not None else None
+
     def future(self, underlying: InstrumentId, expiry: date) -> InstrumentId | None:
         for candidate in self.market.registry().futures_for(underlying):
             if candidate.expiry == expiry:

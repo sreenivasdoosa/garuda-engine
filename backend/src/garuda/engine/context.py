@@ -11,7 +11,7 @@ the engine sizes, risk-gates and routes them.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
@@ -92,6 +92,14 @@ class EvaluationContext:
     def future(self, underlying: InstrumentId, expiry: date) -> InstrumentId | None:
         del underlying, expiry
         return None
+
+    def strikes(self, underlying: InstrumentId, expiry: date) -> Sequence[Decimal]:
+        del underlying, expiry
+        return ()
+
+    def premium(self, instrument: InstrumentId) -> Money | None:
+        quote = self.quote(instrument)
+        return quote.last_price if quote is not None else None
 
     def has_open_position(self, instrument: InstrumentId) -> bool:
         position = self.positions.get(instrument)

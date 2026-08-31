@@ -138,6 +138,13 @@ class World:
     def future(self, underlying: InstrumentId, expiry: date) -> InstrumentId | None:
         return None
 
+    def strikes(self, underlying: InstrumentId, expiry: date) -> list[Decimal]:
+        return sorted(self.listed_strikes) if hasattr(self, "listed_strikes") else []
+
+    def premium(self, instrument: InstrumentId) -> Money | None:
+        quote = self.quote(instrument)
+        return quote.last_price if quote is not None else None
+
 
 @dataclass(frozen=True)
 class Says:

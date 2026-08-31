@@ -35,6 +35,7 @@ from garuda.composition.strategies import Loaded, load_strategies
 from garuda.composition.strategy_context import MarketView
 from garuda.composition.strategy_loop import StrategyLoop, deliver_for
 from garuda.composition.venues import Venues, load_venues
+from garuda.composition.watchlist import Watchlist
 from garuda.config.settings import Settings, load_settings
 from garuda.core.clock import LiveClock
 from garuda.domain.errors import DomainError
@@ -285,6 +286,7 @@ def _strategy_loop(assembled: _Assembled, clock: Clock) -> StrategyLoop | None:
         alerts=engine.parts.alerts,
         runner=StrategyRunner(factory=factory, deliver=deliver, ledger=ledger),
         ledger=ledger,
+        watchlist=Watchlist(hub=engine.parts.hub, symbols=assembled.symbols),
     )
 
 
