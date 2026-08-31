@@ -239,6 +239,11 @@ class ExchangesRow(Base):
     exchange_code: Mapped[str] = mapped_column(String(10), primary_key=True)
     exchange_name: Mapped[str] = mapped_column(String(100))
     timezone: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    #: Which segments the venue lists, comma separated. Nullable rather than
+    #: NOT NULL: a venue that does not say is refused at load with its name in
+    #: the message, which is a better answer than a default that quietly tells
+    #: a strategy a commodity exchange lists equities.
+    segments: Mapped[str | None] = mapped_column(String(100), nullable=True)
     #: What the venue settles in. Absent from the reference engine, which is
     #: single-market. Here the venue is data, so a P&L figure with no currency
     #: on it is a number without a unit — and NOT NULL, so a venue added later

@@ -5,10 +5,10 @@ day sits from its own open and close. Everything here reads those rows and
 returns the value objects the runner and the square-off services work in, so
 that adding a venue is an insert and not a code change.
 
-One thing the rows do not carry yet is filled in from a table below: which
-segments a venue trades. It belongs in a column on ``exchanges``; until it is
-there, a venue nobody has listed gets every segment rather than none, because
-an exchange with no segments cannot be constructed at all.
+Everything a venue is comes from its row. Nothing here is filled in from a
+table of known codes: a venue that does not say what it trades or what it
+settles in is refused by name, because a default would tell a strategy that a
+commodity exchange lists equities.
 """
 
 from __future__ import annotations
@@ -35,16 +35,6 @@ logger = logging.getLogger(__name__)
 
 #: Saturday and Sunday, as ``date.weekday()`` numbers.
 DEFAULT_WEEKEND = frozenset({5, 6})
-
-#: What each venue trades. Belongs in a column on ``exchanges``; kept here
-#: until there is one, because ``Exchange`` refuses to exist without segments
-#: and defaulting to "all of them" would tell a strategy that MCX lists
-#: equities.
-SEGMENTS: Mapping[str, frozenset[Segment]] = {
-    "NSE": frozenset({Segment.EQUITY, Segment.FNO, Segment.CURRENCY}),
-    "BSE": frozenset({Segment.EQUITY, Segment.FNO}),
-    "MCX": frozenset({Segment.COMMODITY}),
-}
 
 #: Used where a venue's row does not say. Indian equities settle T+1.
 DEFAULT_SETTLEMENT = SettlementCycle.T1
@@ -160,7 +150,7 @@ def _exchange_from(row: ExchangesRow, holidays: frozenset[date]) -> Exchange:
         currency=_currency(row),
         calendar=calendar,
         settlement=DEFAULT_SETTLEMENT,
-        segments=SEGMENTS.get(code, frozenset(Segment)),
+        segments=_segments(row),
     )
 
 
@@ -178,6 +168,26 @@ def _currency(row: ExchangesRow) -> Currency:
             f"{row.exchange_code} settles in {row.currency!r}, which is not a currency "
             "the engine knows"
         ) from None
+
+
+def _segments(row: ExchangesRow) -> frozenset[Segment]:
+    """Which segments the venue lists, from its own row.
+
+    Refused rather than defaulted. "All of them" would have a strategy believe
+    a commodity exchange lists equities, and an empty set cannot build an
+    exchange at all -- so a venue that does not say is a venue that does not
+    load.
+    """
+    named = [part.strip().upper() for part in (row.segments or "").split(",") if part.strip()]
+    if not named:
+        raise DomainError(
+            f"{row.exchange_code} does not say which segments it trades; "
+            f"expected some of {', '.join(sorted(s.value for s in Segment))}"
+        )
+    try:
+        return frozenset(Segment(name) for name in named)
+    except ValueError as error:
+        raise DomainError(f"{row.exchange_code} lists a segment that is not one: {error}") from None
 
 
 def _pre_open(row: ExchangesRow) -> Session | None:

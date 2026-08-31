@@ -132,6 +132,11 @@ and multi-leg / combo strategies.
 | 1000-user optimizations | scaling package, sharding, load shedding, fan-out tuning, pool sizing |
 | User portal | admin Console + Terminal only |
 | Bracket / cover order tracking | brokers have withdrawn them (`brokers.bo_co_blocked`); `ProductType.CO`/`BO` stay so data round-trips, second-leg tracking does not |
+| Global shared lot allocation | `GLOBAL_SHARED` spread one lot budget across tranches and across days. A lot budget is per day and nothing else; `global_allocation_tranches` and `allocation_start_tranch` go with it |
+| Leverage and max-risk-per-trade | both columns are set on no configured strategy; not ported |
+| External signal trigger | not an external integration at all — the market-data service evaluated conditions on rolling straddles, IV and PCR and pushed a fired signal. Garuda publishes those as synthetic instruments and writes the condition as a rule. See `STRATEGY_RULES.md` §6 |
+| Trigger types | tick / scheduled / signal / periodic collapse into rules over time and price (`STRATEGY_RULES.md` §1) |
+| Breakout watch table and service | a breakout is a rule on the ordinary tranche lifecycle (`STRATEGY_RULES.md` §7) |
 
 Kept where it might have looked droppable:
 

@@ -227,11 +227,13 @@ be discovered as a gap.
   since the first fill is what triggers it.
 - **Strategy subscriptions.** `EntryService` takes an `is_subscribed` check
   and nothing feeds it, so subscription state is not enforced at entry.
-- **A hedge exiting first does not close the main it protected.** The
-  reference engine reserves an exit reason for that direction and never wires
-  one, so the position runs unhedged. Ours alerts loudly and closes nothing,
-  because whether to replace the hedge or exit the position is a strategy
-  decision the owner has not made. Worth deciding.
+- **A hedge exiting first does not close the main it protected.** Settled: by
+  design this cannot happen. Legs enter protection-first and exit in the
+  reverse order, so the main always leaves before its hedge — `exit_order` is
+  the reverse of `entry_order`, and `LegCoordinator` pulls the hedge when the
+  main goes. The alert stays as it is: reaching that branch means an invariant
+  has broken, not that a business case needs designing. Nothing to decide, and
+  nothing more to build.
 - **Indicator-based trailing modes.** ATR, EMA, SuperTrend and Heikin Ashi
   all need candle history and indicators the engine does not have. A strategy
   configured for one is refused with an alert rather than trailed some other
@@ -325,15 +327,45 @@ rule now exempts a candidate that is the same instrument in the same tranche
 with a *different* slice ordinal. Two independent sizings both carry ordinal 1
 and are still caught, which is the case the rule exists for.
 
+### Combined stop-loss and target
+
+Settled, and specified here because the arithmetic is easy to get subtly wrong.
+
+A combined level is measured against the **net premium of the group**, not
+against any one leg. Net premium is what the position took in less what it
+paid out:
+
+```
+net = Σ over legs of  entry_price × quantity × (+1 if short, −1 if long)
+```
+
+A short call at 150 and a short put at 120, equal quantities, is 270 taken in.
+A 10% combined stop is 27 against that — the position comes out when closing
+it would cost 297. A 10% combined target is the mirror: out at 243.
+
+Two things this settles:
+
+- **Hedges count.** A bought hedge reduces the net premium and so moves both
+  levels. It matters when the hedge sits near the sold strike and is
+  negligible when it is far out — which is an argument for always including it
+  rather than for a rule about when to.
+- **Quantities are weighted in, not assumed equal.** The example above works
+  in premium points because a straddle's two legs are the same size. A hedge
+  at half the main leg's ratio is not, and points would silently misweight it.
+
+Each leg keeps its own stop as well. The combined level is an additional exit
+for the group, in the same way an exit rule set is (`STRATEGY_RULES.md` §5):
+whichever comes first.
+
 ### Not decided yet
 
-- **Where stop and target levels come from.** `SignalFactory` takes a
-  protection policy and an entry policy; nothing supplies either, so every
-  signal today enters at market with no stop. `sl_target_policy`,
+- **Where stop and target levels come from.** Settled and built for the
+  per-leg case: `engine/protection.py` converts configured percentages into
+  levels. The combined levels above are specified but not yet built. `sl_target_policy`,
   `trailing_sl_policy` and `exit_policy` are all tables in the schema and none
   is loaded.
-- **Where capital comes from.** `build` takes it as an argument. The
-  allocation model, `client_capital` and the per-subscription split exist as
-  tables and are not read.
+- **Where capital comes from.** Settled — see `STRATEGY_ENGINE.md` §5 for the
+  chain. `build` still takes it as an argument and nothing reads the tables
+  yet.
 - **Group and tranche.** Both are parameters with defaults. Tranche scheduling
   is not built.

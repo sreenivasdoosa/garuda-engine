@@ -142,6 +142,12 @@ the broker. Exit rules are the discretionary layer above them: conditions that
 should take a position off early. A rule set that never fires must never be
 the reason a position had no stop.
 
+A position therefore leaves when **the stop fires, or the target fires, or the
+square-off time arrives, or every exit rule passes** — the hard exits in
+parallel with the rule set, not downstream of it. That is what makes `all` the
+right combinator inside the exit rule set (§15): it is one more reason to
+leave, not the only one.
+
 ## 6. There is no external signal
 
 The reference engine's external-signal trigger sounds like an integration with
@@ -568,32 +574,33 @@ list badly: half-overriding a list is a footgun with no good semantics. So:
   that wants the base filters plus one more writes
   `{"type": "all", "rules": [{"type": "ref", "name": "morning-filters"}, ...]}`.
 
-## 15. What this asks the owner to decide
+## 15. Decided
 
-1. **Exit rules: all, or any?** The description says all must pass, same as
-   entry. For entry that is clearly right. For exits, "get out if *any* of
-   these fires" is the more usual reading, and an `all` exit that needs four
-   conditions at once may never fire. Both are expressible — the question is
-   which the default should be. My inclination: default `any` for exits,
-   because the failure mode of the wrong default is a position that will not
-   come out.
-2. **Should direction rules be able to veto?** First-answer-wins means a
-   direction rule cannot say "do not trade at all today", only "I have no
-   opinion". A separate entry rule can veto. Keeping them separate seems
-   cleaner, but the reference lets a direction provider stand a strategy down.
-3. **The evaluation floor.** Dependency-driven pacing (§7) needs one number:
-   the most often any single rule set may be re-evaluated. Ten a second is
-   generous for anything publishing once a second and cheap enough across a
-   few hundred rule sets; the question is whether anything needs faster.
-4. **Where the catalogue starts.** The whole list above is not a first
-   deliverable. A first cut of `all`/`any`/`not`, `at_or_after`, `before`,
-   `indicator`, `breakout` and `price_below` would carry the shapes already
-   configured today, and everything else is additive by construction. Note
-   that `vix_below` is not on that list and does not need to be: VIX is an
-   instrument, so `price_below` is the VIX rule.
-5. **Who defines a synthetic.** A `SyntheticSource` says *how* one is
-   computed (§6), but something has to say *which* ones exist — "the rolling at-the-money straddle
-   of this underlying on the nearest weekly expiry, rolled when spot moves half
-   a strike". That is configuration, it needs a table, and its roll rule is
-   what makes the resulting series explicable. Worth settling before the first
-   synthetic is built, because every rule written against one inherits it.
+1. **Exit rules are `all`, like entry.** The worry that an `all` exit might
+   never fire was misplaced, because exit rules are not the only way out. The
+   stop, the target and the square-off deadline are all still live and any of
+   them fires on its own. An exit rule set is an *additional* reason to leave,
+   evaluated before any of those trigger — a way to get out early on
+   conditions, not the mechanism that gets a position out at all.
+
+   So a position exits when **the stop fires, or the target fires, or the
+   square-off time arrives, or every exit rule passes.** Entry and exit rule
+   sets are configured separately per strategy, and neither has to resemble the
+   other.
+
+2. **Direction rules do not veto.** They answer a direction or decline to have
+   an opinion; standing a strategy down is an entry rule's job. Keeping the
+   two apart means "which way" and "whether at all" stay separately testable.
+
+3. **The evaluation floor is ten a second** per rule set. Generous for inputs
+   published once a second, and cheap across a few hundred sets.
+
+4. **The catalogue starts** with `all` / `any` / `not`, `at_or_after`,
+   `before`, `indicator`, `breakout` and `price_below`. Those carry every
+   shape configured today. Everything else is additive by construction.
+
+5. **Synthetics are declared per symbol.** The `symbols` table already lists
+   the underlyings worth caring about, and it is the natural place to say which
+   of them maintain a rolling straddle, an implied-volatility series or a
+   put-call ratio. No new table: a synthetic is a property of an underlying,
+   and the roll rule belongs beside the strike gap that determines it.

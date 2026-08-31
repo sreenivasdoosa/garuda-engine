@@ -79,6 +79,7 @@ def venues() -> Venues:
                 market_open=time(9, 15),
                 market_close=time(15, 30),
                 currency="INR",
+                segments="EQUITY,FNO",
                 is_active=True,
                 intraday_squareoff_minutes_before_close=20,
             )

@@ -142,13 +142,61 @@ that trades.
   and trailing — not the decision to trade.
 - **Null means "not set at this scope".** Never "set to nothing".
 
-## 4. Open
+## 5. Where capital comes from
 
-- **A hedge that sizes to zero refuses the whole entry** (`engine/signals.py`).
-  The reference's `combo_leg_count` comment implies it skips such a leg and
-  carries on. Refusing is the safe reading; the owner should confirm it.
-- **Where capital per subscription comes from.** `subscriptions.capital`,
-  `allocation_models` and `client_capital` all exist and none is read.
-- **`lot_allocation_mode`.** `GLOBAL_SHARED` spreads a lot budget across
-  tranches; `DAY_LOCAL` resets it daily. Neither is implemented, and which one
-  a strategy gets changes how much it trades.
+Settled. Three tables can supply a number and only one of them is read at
+trading time.
+
+**`subscriptions.capital` is the answer.** A subscription is one trading
+client running one strategy, and its capital column is what the sizer uses.
+Nothing else is consulted while trading.
+
+The other two are how that number gets *set*, which is a different activity
+happening at a different time:
+
+- **An allocation model is a plan, not a runtime input.** It names a total
+  capital, splits it intraday versus positional, and lists how many lots of
+  each strategy it wants. Choosing a model for a trading client is what
+  derives each subscription's capital; after that the model has done its job.
+- **Capital per lot** lives on the strategy definition, because how much
+  capital one lot of a strategy needs is a property of the strategy, not of
+  whoever runs it. It is the bridge: a model asking for four lots of a
+  strategy whose capital per lot is one figure produces a subscription capital
+  of four times it.
+
+So the chain is `model → lots × capital-per-lot → subscription capital →
+sizer`, and only the last arrow happens while the market is open.
+
+**Overlap.** Both the model's strategy map and the strategy definition carry an
+overlap flag, and roughly a fifth of configured strategies set it. It exists
+because strategies that cannot be open at once do not each need their own
+capital reserved. The exact arithmetic — whether overlapping strategies sum,
+or take the largest, or something between — is not settled and matters only
+when a model is being *applied*, not when a trade is being sized.
+
+**Equity sizes differently.** Options size from capital per lot; equity sizes
+from a fixed amount per stock with a cap on how many positions may be open at
+once. That is the only equity sizing model in use, and it is a different
+formula rather than a variation of the same one.
+
+**Risk-based sizing is also real.** A meaningful minority of strategies set a
+risk percentage, sizing so that being stopped out costs a fixed fraction of
+capital. `RiskAwareLotAllocator` already implements it; what is missing is
+reading the configured percentage.
+
+**Two columns are dead.** Leverage and maximum-risk-per-trade are set on no
+configured strategy at all. They are not ported.
+
+## 6. Open
+
+- ~~A hedge that sizes to zero~~ **Settled: refuse the whole entry.** A short
+  option whose hedge was dropped for want of a lot is a different position
+  from the one that was designed, not a smaller one. Already what
+  `engine/signals.py` does.
+- **Reading the capital.** The chain is settled (§5); nothing reads
+  `subscriptions.capital` yet, and `SignalFactory.build` still takes capital
+  as an argument.
+- ~~`lot_allocation_mode`~~ **Settled: only the daily mode.** `GLOBAL_SHARED`
+  spread a lot budget across tranches and is deliberately dropped — see
+  `SCOPE_DECISIONS.md`. A lot budget is per day, and `global_allocation_tranches`
+  and `allocation_start_tranch` go with it.

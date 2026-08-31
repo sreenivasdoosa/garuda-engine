@@ -24,6 +24,7 @@ def exchange_row(**overrides: object) -> ExchangesRow:
         "market_open": time(9, 15),
         "market_close": time(15, 30),
         "currency": "INR",
+        "segments": "EQUITY,FNO",
         "is_active": True,
     }
     return ExchangesRow(**{**defaults, **overrides})
@@ -252,3 +253,55 @@ def test_a_venue_with_no_currency_is_not_traded() -> None:
     venues = venues_from([exchange_row(currency=None)], [])
 
     assert venues.exchanges == {}
+
+
+def test_a_venue_lists_the_segments_its_row_names() -> None:
+    row = exchange_row(exchange_code="MCX", exchange_name="Commodities", segments="COMMODITY")
+
+    venues = venues_from([row], [])
+
+    assert venues.exchanges["MCX"].segments == frozenset({Segment.COMMODITY})
+
+
+def test_a_venue_that_does_not_say_what_it_trades_is_not_traded() -> None:
+    """A default of "all of them" tells a strategy a commodity exchange lists
+    equities, which is worse than a venue that will not load."""
+    venues = venues_from(
+        [exchange_row(segments=None), exchange_row(exchange_code="BSE", exchange_name="BSE")], []
+    )
+
+    assert "NSE" not in venues.exchanges
+    assert "BSE" in venues.exchanges
+
+
+def test_a_venue_with_no_segments_says_what_it_should_have_said(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The domain would refuse an empty segment set anyway. The reason for
+    catching it here is the message: "expected some of ..." is something an
+    operator can act on, and "trades no segments" is not."""
+    with caplog.at_level("ERROR"):
+        venues_from([exchange_row(segments="")], [])
+
+    assert "does not say which segments" in caplog.text
+    assert "EQUITY" in caplog.text
+
+
+def test_a_segment_that_is_not_one_takes_only_that_venue_down() -> None:
+    rows = [
+        exchange_row(exchange_code="XXX", exchange_name="Nowhere", segments="BULLION"),
+        exchange_row(),
+    ]
+
+    venues = venues_from(rows, [])
+
+    assert "XXX" not in venues.exchanges
+    assert "NSE" in venues.exchanges
+
+
+def test_segments_are_read_however_they_are_spaced() -> None:
+    row = exchange_row(segments=" equity , fno ")
+
+    venues = venues_from([row], [])
+
+    assert venues.exchanges["NSE"].segments == frozenset({Segment.EQUITY, Segment.FNO})
