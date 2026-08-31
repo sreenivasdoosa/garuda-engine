@@ -27,6 +27,8 @@ from garuda.domain.intent import Intent, IntentKind, LegRole
 from garuda.domain.market import Tick
 from garuda.domain.trade import Protection
 from garuda.domain.trade_signal import EntryRules, SignalType
+from garuda.engine.config import ConfigLayer, resolve
+from garuda.engine.protection import configured_protection
 from garuda.engine.signals import SignalBatch, SignalFactory
 
 NOW = datetime(2026, 8, 31, 9, 20, tzinfo=UTC)
@@ -427,7 +429,7 @@ def test_a_limit_intent_enters_on_its_own_price_not_at_market(
 def test_a_protection_policy_decides_the_levels(
     catalogue: dict[InstrumentId, Instrument], prices: dict[InstrumentId, Tick]
 ) -> None:
-    def stop_at_double(placed: Intent, price: Money) -> Protection:
+    def stop_at_double(placed: Intent, held: Instrument, price: Money) -> Protection:
         return Protection(stop_loss=price * Decimal(2))
 
     factory = SignalFactory(
@@ -442,7 +444,7 @@ def test_a_protection_policy_decides_the_levels(
 def test_an_entry_policy_decides_how_the_order_is_placed(
     catalogue: dict[InstrumentId, Instrument], prices: dict[InstrumentId, Tick]
 ) -> None:
-    def on_a_trigger(placed: Intent, price: Money) -> EntryRules:
+    def on_a_trigger(placed: Intent, held: Instrument, price: Money) -> EntryRules:
         return EntryRules(trigger=price)
 
     factory = SignalFactory(
@@ -461,7 +463,7 @@ def test_the_policy_sees_the_price_the_leg_was_sized_at(
     """A percentage stop means nothing without the price it is a percentage of."""
     seen: list[tuple[InstrumentId, Money]] = []
 
-    def record(placed: Intent, price: Money) -> Protection:
+    def record(placed: Intent, held: Instrument, price: Money) -> Protection:
         seen.append((placed.instrument, price))
         return Protection()
 
@@ -475,3 +477,86 @@ def test_the_policy_sees_the_price_the_leg_was_sized_at(
     )
 
     assert seen == [(SOLD_CALL, rupees("120")), (HEDGE_CALL, rupees("30"))]
+
+
+# -- configuration all the way through --------------------------------------
+
+
+def test_a_configured_strategy_produces_a_protected_signal(
+    catalogue: dict[InstrumentId, Instrument], prices: dict[InstrumentId, Tick]
+) -> None:
+    """The whole point of the seam: configuration in, a tradable signal out.
+
+    Until the protection policy existed, every signal entered at market with
+    no stop, whatever the strategy had been configured with.
+    """
+    config = resolve(
+        "short-strangle",
+        [
+            ConfigLayer(
+                values={
+                    "sl_percentage": Decimal(30),
+                    "target_percentage": Decimal(60),
+                    "trail_sl": True,
+                }
+            )
+        ],
+    )
+    factory = SignalFactory(
+        Sizer(FixedLotAllocator(2)),
+        catalogue.get,
+        prices.get,
+        protection=configured_protection(config),
+    )
+
+    batch = factory.build([intent()], capital=rupees("500000"), now=NOW)
+
+    signal = batch.signals[0]
+    assert signal.protection.stop_loss == rupees("156")  # 120 sold, stopped 30% up
+    assert signal.protection.target == rupees("48")
+    assert signal.protection.is_trailing
+
+
+def test_each_leg_of_a_combo_is_protected_on_its_own_side(
+    catalogue: dict[InstrumentId, Instrument], prices: dict[InstrumentId, Tick]
+) -> None:
+    """One configuration, two directions. The sold leg is stopped above its
+    entry and the bought hedge below its own."""
+    config = resolve("short-strangle", [ConfigLayer(values={"sl_percentage": Decimal(50)})])
+    factory = SignalFactory(
+        Sizer(FixedLotAllocator(2)),
+        catalogue.get,
+        prices.get,
+        protection=configured_protection(config),
+    )
+
+    batch = factory.build(
+        [intent(), intent(HEDGE_CALL, role=LegRole.HEDGE, direction=Direction.LONG)],
+        capital=rupees("500000"),
+        now=NOW,
+    )
+
+    sold = next(s for s in batch.signals if s.instrument == SOLD_CALL)
+    bought = next(s for s in batch.signals if s.instrument == HEDGE_CALL)
+    assert sold.protection.stop_loss == rupees("180")  # 120 + 50%
+    assert bought.protection.stop_loss == rupees("15")  # 30 - 50%
+
+
+def test_every_slice_of_a_leg_carries_the_same_levels(
+    nse: Exchange, prices: dict[InstrumentId, Tick]
+) -> None:
+    """Each slice is its own trade with its own protective order, and they are
+    all protected at the price the leg was sized at."""
+    catalogue = {SOLD_CALL: option(SOLD_CALL, nse, "25000", freeze=1800)}
+    config = resolve("s", [ConfigLayer(values={"sl_percentage": Decimal(25)})])
+    factory = SignalFactory(
+        Sizer(FixedLotAllocator(48)),
+        catalogue.get,
+        prices.get,
+        protection=configured_protection(config),
+    )
+
+    batch = factory.build([intent()], capital=rupees("5000000"), now=NOW)
+
+    assert len(batch.signals) == 2
+    assert {s.protection.stop_loss for s in batch.signals} == {rupees("150")}

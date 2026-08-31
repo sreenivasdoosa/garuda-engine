@@ -48,12 +48,13 @@ logger = logging.getLogger(__name__)
 type InstrumentLookup = Callable[[InstrumentId], Instrument | None]
 type QuoteLookup = Callable[[InstrumentId], Tick | None]
 
-#: Where a leg's stop and target come from. Given the leg and the price it is
-#: expected to enter at, because a percentage stop means nothing without one.
-type ProtectionPolicy = Callable[[Intent, Money], Protection]
+#: Where a leg's stop and target come from. Given the leg, its instrument and
+#: the price it expects to enter at: a percentage stop means nothing without a
+#: price, and a level that is not on a tick is a level the exchange refuses.
+type ProtectionPolicy = Callable[[Intent, Instrument, Money], Protection]
 
 #: How the entry order is placed: at market, on a trigger, with escalation.
-type EntryPolicy = Callable[[Intent, Money], EntryRules]
+type EntryPolicy = Callable[[Intent, Instrument, Money], EntryRules]
 
 #: The stored signal id column is 50 characters, and an id that will not
 #: persist is an id that vanishes on restart.
@@ -189,8 +190,8 @@ class SignalFactory:
     ) -> list[TradeSignal]:
         """One signal per slice, because one signal becomes one order."""
         relationships = _relationships_for(leg, combo_id)
-        protection = self._protection(leg.intent, leg.price)
-        entry = self._entry(leg.intent, leg.price)
+        protection = self._protection(leg.intent, leg.instrument, leg.price)
+        entry = self._entry(leg.intent, leg.instrument, leg.price)
 
         return [
             TradeSignal(
@@ -264,7 +265,7 @@ def _signal_type(direction: Direction) -> SignalType:
     return SignalType.LONG_ENTRY if direction is Direction.LONG else SignalType.SHORT_ENTRY
 
 
-def _no_protection(intent: Intent, price: Money) -> Protection:  # noqa: ARG001
+def _no_protection(intent: Intent, instrument: Instrument, price: Money) -> Protection:  # noqa: ARG001
     """No stop and no target until a policy says otherwise.
 
     Distinct from ``no_stop_loss``, which is a strategy deliberately trading
@@ -275,7 +276,7 @@ def _no_protection(intent: Intent, price: Money) -> Protection:  # noqa: ARG001
     return Protection()
 
 
-def _at_market(intent: Intent, price: Money) -> EntryRules:  # noqa: ARG001
+def _at_market(intent: Intent, instrument: Instrument, price: Money) -> EntryRules:  # noqa: ARG001
     """Enter immediately, unless the intent asked for a limit."""
     if intent.limit_price is not None:
         return EntryRules(trigger=intent.limit_price)
