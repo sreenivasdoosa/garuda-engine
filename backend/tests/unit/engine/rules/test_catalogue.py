@@ -626,6 +626,27 @@ def test_a_crossing_with_no_previous_bar_blocks(context: FakeContext) -> None:
     assert outcome.verdict is Verdict.UNAVAILABLE
 
 
+def test_an_indicator_nobody_registered_is_refused_when_the_rule_is_read(
+    context: FakeContext,
+) -> None:
+    """Not at evaluation time. A typo left to then throws on every tick of
+    every day instead of once when the strategy is read."""
+    with pytest.raises(DomainError, match="vibes"):
+        IndicatorCompare("vibes", value=Decimal(50))
+
+
+def test_a_parameter_the_indicator_does_not_take_is_refused_too(
+    context: FakeContext,
+) -> None:
+    with pytest.raises(DomainError):
+        IndicatorCompare("rsi", value=Decimal(50), params={"perid": 14})
+
+
+def test_a_reference_indicator_is_checked_as_well(context: FakeContext) -> None:
+    with pytest.raises(DomainError, match="vibes"):
+        IndicatorCompare("rsi", reference="vibes")
+
+
 def test_staying_below_is_not_a_crossing_down(context: FakeContext) -> None:
     context.indicators = {
         ("ema", "5m", 0): Decimal(98),

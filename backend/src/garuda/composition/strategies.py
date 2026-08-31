@@ -42,6 +42,12 @@ from garuda.engine.direction import build_all as build_directions
 from garuda.engine.rules.compose import AllOf
 from garuda.engine.rules.registry import Rule
 from garuda.engine.rules.registry import build as build_rule
+from garuda.engine.rules.translate import (
+    is_console_directions,
+    is_console_shape,
+    translate,
+    translate_directions,
+)
 from garuda.engine.selectors import build as build_selector
 from garuda.engine.spec import (
     DirectionProvider,
@@ -300,6 +306,11 @@ def _direction_json(
             f"{strategy}: its direction rules are not readable JSON ({error})"
         ) from None
     try:
+        if is_console_directions(parsed):
+            # The frontend is the reference engine's Console with its rule
+            # builder kept, so what it writes has to be read rather than
+            # rewritten. See `engine/rules/translate.py`.
+            return build_directions(translate_directions(parsed))
         return build_directions(parsed if isinstance(parsed, list) else [parsed])
     except DomainError as error:
         raise DomainError(f"{strategy}: its direction rules are not usable — {error}") from None
@@ -373,7 +384,8 @@ def _optional_rules(
     if not raw:
         return None
     try:
-        return build_rule(json.loads(raw))
+        parsed = json.loads(raw)
+        return build_rule(translate(parsed) if is_console_shape(parsed) else parsed)
     except json.JSONDecodeError as error:
         raise DomainError(
             f"{strategy}: its {which} rules are not readable JSON ({error})"

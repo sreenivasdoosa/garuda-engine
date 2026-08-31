@@ -65,9 +65,17 @@ class Registration:
 class Registry[T]:
     """Everything of one kind that can be configured by name."""
 
-    def __init__(self, kind: str) -> None:
+    def __init__(self, kind: str, protocol: type[Any] | None = None) -> None:
         self._kind = kind
+        #: What this registry builds. Needed because one kind of plug-in may
+        #: hold another -- a direction rule made of two entry rules -- and
+        #: without it a field annotated with any protocol at all is claimed by
+        #: whichever registry is doing the building, which then refuses the
+        #: parameters as unknown.
+        self._protocol = protocol
         self._entries: dict[str, Registration] = {}
+        if protocol is not None:
+            _BY_PROTOCOL[protocol] = self
 
     def register(self, name: str, *, cost: Cost = Cost.CHEAP) -> Callable[[type[T]], type[T]]:
         def add(factory: type[T]) -> type[T]:
@@ -190,6 +198,15 @@ class Registry[T]:
             return self.build(value)
         if self._is_sequence_of_mine(wanted):
             return self.build_all(value)
+
+        # One kind of plug-in holding another: a direction rule made of two
+        # entry rules. Built by whichever registry owns that protocol, so the
+        # parameters are checked against the right catalogue. Without this the
+        # field stays the dict it arrived as, which is the failure the value
+        # object branch above exists to prevent.
+        owner = _owner_of(wanted)
+        if owner is not None:
+            return owner.build(value)
         return value
 
     def _value_object(
@@ -221,9 +238,14 @@ class Registry[T]:
             raise DomainError(f"{entry.name}: {field} — {error}") from None
 
     def _is_mine(self, wanted: object) -> bool:
-        return any(wanted is entry.factory for entry in self._entries.values()) or (
-            isinstance(wanted, type) and getattr(wanted, "_is_protocol", False)
-        )
+        if any(wanted is entry.factory for entry in self._entries.values()):
+            return True
+        if self._protocol is not None:
+            return wanted is self._protocol
+        # No protocol declared, so fall back to "any protocol". Correct while
+        # a registry is the only one in play and wrong the moment two meet,
+        # which is why every registry in the engine declares one.
+        return isinstance(wanted, type) and getattr(wanted, "_is_protocol", False)
 
     def _is_sequence_of_mine(self, wanted: object) -> bool:
         if get_origin(wanted) not in (tuple, list):
@@ -308,3 +330,13 @@ def _member(kind: str, field: str, enum: type[Any], value: object) -> object:
     except ValueError:
         allowed = ", ".join(sorted(member.value for member in enum))
         raise DomainError(f"{kind}: {field} is {value!r}; expected one of {allowed}") from None
+
+
+#: Which registry builds which protocol, so a plug-in field annotated with
+#: another kind's protocol is built by that kind rather than claimed by
+#: whichever registry happens to be constructing.
+_BY_PROTOCOL: dict[type[Any], Registry[Any]] = {}
+
+
+def _owner_of(wanted: object) -> Registry[Any] | None:
+    return _BY_PROTOCOL.get(wanted) if isinstance(wanted, type) else None

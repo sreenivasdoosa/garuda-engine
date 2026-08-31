@@ -86,7 +86,7 @@ class Synthetic(Protocol):
         ...
 
 
-_SYNTHETICS: Registry[Synthetic] = Registry("synthetic")
+_SYNTHETICS: Registry[Synthetic] = Registry("synthetic", Synthetic)
 
 
 def synthetic(name: str) -> Callable[[type[Synthetic]], type[Synthetic]]:

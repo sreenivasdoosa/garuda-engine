@@ -88,7 +88,7 @@ class InstrumentSelector(Protocol):
     ) -> InstrumentId | None: ...
 
 
-_SELECTORS: Registry[InstrumentSelector] = Registry("selector")
+_SELECTORS: Registry[InstrumentSelector] = Registry("selector", InstrumentSelector)
 
 
 def selector(name: str) -> Callable[[type[InstrumentSelector]], type[InstrumentSelector]]:

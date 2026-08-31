@@ -27,6 +27,7 @@ from garuda.engine.direction.candles import (
     ReferenceTime,
     SuperTrendDirection,
 )
+from garuda.engine.direction.predicates import RulesDirection
 from garuda.engine.direction.registry import (
     DirectionRule,
     build,
@@ -49,6 +50,7 @@ __all__ = [
     "PriceDirection",
     "PriceType",
     "ReferenceTime",
+    "RulesDirection",
     "SuperTrendDirection",
     "build",
     "build_all",

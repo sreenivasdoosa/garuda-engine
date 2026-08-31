@@ -27,11 +27,13 @@ from garuda.engine.direction import (
     PriceDirection,
     PriceType,
     ReferenceTime,
+    RulesDirection,
     SuperTrendDirection,
     build,
     first_answer,
 )
 from garuda.engine.direction.registry import DirectionRule
+from garuda.engine.rules.indicator import IndicatorCompare
 
 from .conftest import IST, UNDERLYING, FakeContext
 
@@ -537,3 +539,81 @@ def test_a_price_direction_builds_from_configuration(context: FakeContext) -> No
     built = build({"type": "price", "instrument": "SYNTH:PCR-NIFTY", "level": 1})
 
     assert built.resolve(context) is Direction.LONG
+
+
+# -- which way, from two rule sets -----------------------------------------
+
+
+class TestRulesDirection:
+    """The reference engine's own model: a tree for long and one for short."""
+
+    def _built(self, **trees: object) -> RulesDirection:
+        rule = build({"type": "rules", **trees})
+        assert isinstance(rule, RulesDirection)
+        return rule
+
+    def test_the_trees_are_built_into_rules_not_left_as_dictionaries(self) -> None:
+        """One kind of plug-in holding another. Without the registry knowing
+        which one owns `Rule`, the field stays the dict it arrived as."""
+        rule = self._built(
+            long_rules={"type": "indicator", "indicator": "rsi", "comparator": "gt", "value": 50}
+        )
+
+        assert isinstance(rule.long_rules, IndicatorCompare)
+
+    def test_the_long_tree_passing_means_long(self, context: FakeContext) -> None:
+        context.indicators = {"rsi": Decimal(60)}
+        rule = self._built(
+            long_rules={"type": "indicator", "indicator": "rsi", "comparator": "gt", "value": 50},
+            short_rules={"type": "indicator", "indicator": "rsi", "comparator": "lt", "value": 50},
+        )
+
+        assert rule.resolve(context) is Direction.LONG
+
+    def test_the_short_tree_passing_means_short(self, context: FakeContext) -> None:
+        context.indicators = {"rsi": Decimal(40)}
+        rule = self._built(
+            long_rules={"type": "indicator", "indicator": "rsi", "comparator": "gt", "value": 50},
+            short_rules={"type": "indicator", "indicator": "rsi", "comparator": "lt", "value": 50},
+        )
+
+        assert rule.resolve(context) is Direction.SHORT
+
+    def test_neither_passing_is_no_opinion(self, context: FakeContext) -> None:
+        """The gap is the point: the strategy is saying it has no view, which
+        is what a direction rule is for."""
+        context.indicators = {"rsi": Decimal(50)}
+        rule = self._built(
+            long_rules={"type": "indicator", "indicator": "rsi", "comparator": "gt", "value": 50},
+            short_rules={"type": "indicator", "indicator": "rsi", "comparator": "lt", "value": 50},
+        )
+
+        assert rule.resolve(context) is None
+
+    def test_both_passing_is_no_opinion_rather_than_a_coin_toss(self, context: FakeContext) -> None:
+        """Contradicting trees are a configuration error, and answering either
+        way would hide it behind a position."""
+        context.indicators = {"rsi": Decimal(60)}
+        rule = self._built(
+            long_rules={"type": "indicator", "indicator": "rsi", "comparator": "gt", "value": 50},
+            short_rules={"type": "indicator", "indicator": "rsi", "comparator": "gt", "value": 50},
+        )
+
+        assert rule.resolve(context) is None
+
+    def test_a_side_with_no_tree_is_never_chosen(self, context: FakeContext) -> None:
+        context.indicators = {"rsi": Decimal(40)}
+        rule = self._built(
+            long_rules={"type": "indicator", "indicator": "rsi", "comparator": "gt", "value": 50}
+        )
+
+        assert rule.resolve(context) is None
+
+    def test_a_tree_that_cannot_be_evaluated_is_not_a_pass(self, context: FakeContext) -> None:
+        """An UNAVAILABLE tree gives no direction, the same as a failing one:
+        not knowing is not a view."""
+        rule = self._built(
+            long_rules={"type": "indicator", "indicator": "rsi", "comparator": "gt", "value": 50}
+        )
+
+        assert rule.resolve(context) is None

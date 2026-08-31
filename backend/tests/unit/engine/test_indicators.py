@@ -173,7 +173,7 @@ def test_the_first_bar_is_not_averaged_into_the_true_range() -> None:
 
 
 def test_a_standard_deviation_of_a_flat_series_is_nothing() -> None:
-    assert compute("STDDEV", flat(["10"] * 10), period=5) == Decimal(0)
+    assert compute("STDDEV", flat(["10"] * 10), period=4) == Decimal(0)
 
 
 def test_a_standard_deviation_measures_the_spread() -> None:
@@ -399,3 +399,57 @@ def test_a_price_field_nobody_recognises_is_refused() -> None:
 
 def test_the_price_is_in_the_catalogue() -> None:
     assert "price" in registered()
+
+
+# -- the Bollinger bands ----------------------------------------------------
+
+#: Four closes whose mean is 12 and whose population standard deviation is
+#: exactly 2, so the bands land on whole numbers.
+BANDED = ["10", "10", "14", "14"]
+
+
+def test_the_middle_band_is_the_mean() -> None:
+    assert compute("bollinger_middle", flat(BANDED), period=4) == Decimal(12)
+
+
+def test_the_upper_band_is_the_mean_plus_two_deviations() -> None:
+    assert compute("bollinger_upper", flat(BANDED), period=4) == Decimal(16)
+
+
+def test_the_lower_band_is_the_mean_less_two_deviations() -> None:
+    assert compute("bollinger_lower", flat(BANDED), period=4) == Decimal(8)
+
+
+def test_the_band_width_is_configurable() -> None:
+    assert compute("bollinger_upper", flat(BANDED), period=4, deviations=1) == Decimal(14)
+
+
+def test_a_flat_window_has_no_band() -> None:
+    """Nothing moved, so the deviation is nothing and all three bands sit on
+    the mean. Worth pinning: a zero width is not a missing value."""
+    flat_five = flat(["11", "11", "11", "11", "11"])
+
+    assert compute("bollinger_upper", flat_five, period=4) == Decimal(11)
+    assert compute("bollinger_lower", flat_five, period=4) == Decimal(11)
+
+
+def test_the_middle_band_is_the_same_number_as_the_simple_mean() -> None:
+    """It is the mean, and a rule comparing one against the other must not
+    find them disagreeing."""
+    bars = flat(BANDED)
+
+    assert compute("bollinger_middle", bars, period=4) == compute("sma", bars, period=4)
+
+
+def test_a_band_with_too_little_history_answers_nothing() -> None:
+    assert compute("bollinger_upper", flat(["10", "12"]), period=4) is None
+
+
+def test_a_negative_band_width_is_refused() -> None:
+    with pytest.raises(DomainError):
+        build("bollinger_upper", period=20, deviations=-2)
+
+
+def test_the_bands_are_in_the_catalogue() -> None:
+    """The reference engine's indicator vocabulary, complete."""
+    assert {"bollinger_upper", "bollinger_middle", "bollinger_lower"} <= set(registered())

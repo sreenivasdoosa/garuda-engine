@@ -56,7 +56,7 @@ class Indicator(Protocol):
         ...
 
 
-_INDICATORS: Registry[Indicator] = Registry("indicator")
+_INDICATORS: Registry[Indicator] = Registry("indicator", Indicator)
 
 
 def indicator(name: str) -> Callable[[type[Indicator]], type[Indicator]]:
@@ -263,6 +263,66 @@ class StandardDeviation(_Periodic):
         mean = _mean(window)
         variance = _mean([(close - mean) ** 2 for close in window])
         return variance.sqrt()
+
+
+@dataclass(frozen=True)
+class _Bollinger(_Periodic):
+    """The shared arithmetic of the three bands.
+
+    Standard deviation of the closes over the same window as the mean, which
+    is what every chart draws. The band is the mean plus or minus a multiple
+    of it, and the middle band *is* the mean -- kept as a band of its own
+    rather than as an alias for the average, because a rule configured against
+    BOLLINGER_MIDDLE should read as a band in the log.
+    """
+
+    period: int = 20
+    #: How many standard deviations out. Two is the convention.
+    deviations: Decimal = TWO
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        if self.deviations < 0:
+            raise DomainError(f"{self.deviations} standard deviations is not a band width")
+
+    def _mean_and_spread(self, bars: Sequence[Bar]) -> tuple[Decimal, Decimal] | None:
+        closes = _closes(bars)
+        if len(closes) < self.period:
+            return None
+        window = closes[-self.period :]
+        mean = _mean(window)
+        variance = _mean([(close - mean) ** 2 for close in window])
+        return mean, variance.sqrt() * self.deviations
+
+
+@indicator("bollinger_upper")
+@dataclass(frozen=True)
+class BollingerUpper(_Bollinger):
+    """The mean plus the band width."""
+
+    def compute(self, bars: Sequence[Bar]) -> Decimal | None:
+        both = self._mean_and_spread(bars)
+        return None if both is None else both[0] + both[1]
+
+
+@indicator("bollinger_middle")
+@dataclass(frozen=True)
+class BollingerMiddle(_Bollinger):
+    """The mean itself."""
+
+    def compute(self, bars: Sequence[Bar]) -> Decimal | None:
+        both = self._mean_and_spread(bars)
+        return None if both is None else both[0]
+
+
+@indicator("bollinger_lower")
+@dataclass(frozen=True)
+class BollingerLower(_Bollinger):
+    """The mean less the band width."""
+
+    def compute(self, bars: Sequence[Bar]) -> Decimal | None:
+        both = self._mean_and_spread(bars)
+        return None if both is None else both[0] - both[1]
 
 
 @indicator("vwap")

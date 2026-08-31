@@ -108,11 +108,31 @@ feed is down, provided ATR answers.
 
 The reference already stores rule trees as JSON with `operator`/`condition`
 nodes. The shape above is a mechanical translation of that, so the Console's
-existing rule builder survives with a thin adapter. **The adapter is not
-built** — the vocabularies it has to map are `AND`/`OR` to `all`/`any`,
+existing rule builder survives with a thin adapter. That adapter is
+`engine/rules/translate.py`: it maps `AND`/`OR` to `all`/`any`,
 `GREATER_THAN` and friends to the comparator names, `referenceIndicator` and
 its camelCase siblings to `reference`, and `5minute`/`60minute` to `5m`/`1h`.
-Until it exists the reference's own rule rows cannot be loaded.
+The two shapes are told apart by the node's `type` and the vocabularies do not
+overlap, so detection is exact rather than a guess and a tree in either shape
+loads.
+
+Three things it refuses rather than translates:
+
+- **An operator node with no children.** The Console's evaluator logs a
+  warning and treats it as false; `all` here treats an empty set as "no
+  conditions", which passes. Mapping it either way silently flips a strategy
+  between never entering and always entering.
+- **An interval or comparator with no equivalent.** `2minute`, `10minute` and
+  `month` are intervals the engine does not carry, and `FLIP` is a comparator
+  it does not implement. Rounding to the nearest is not a smaller version of
+  the strategy, it is a different one.
+- **An operator that is neither AND nor OR.** The Console's evaluator treats
+  anything that is not AND as OR, so a third would silently become one there.
+
+Direction rules come as `longRules` and `shortRules`, two ordinary predicate
+trees, and translate to one `rules` direction rule holding both — one rather
+than two, because either passing alone is an answer and both passing is a
+contradiction, which only a rule holding both can tell.
 
 One note from reading those rows: every real one is an *indicator against
 another indicator*, not against a number. Two shapes cover all of them —

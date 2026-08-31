@@ -29,6 +29,7 @@ from enum import StrEnum
 from garuda.domain.errors import DomainError
 from garuda.domain.instrument import InstrumentId
 from garuda.domain.market import BarInterval
+from garuda.engine.indicators import build as build_indicator
 from garuda.engine.rules.context import RuleContext
 from garuda.engine.rules.outcome import RuleOutcome, failed, passed, unavailable
 from garuda.engine.rules.registry import Cost, rule
@@ -118,6 +119,13 @@ class IndicatorCompare:
                 f"{self.indicator}: compare against a value or another indicator, not "
                 "both and not neither"
             )
+        # Built and thrown away, for the refusal. An indicator name or a
+        # parameter the catalogue does not know is a configuration error, and
+        # left to evaluation time it is one that throws on every tick of every
+        # day instead of once when the strategy is read.
+        build_indicator(self.indicator, **dict(self.params))
+        if self.reference is not None:
+            build_indicator(self.reference, **dict(self.reference_params))
 
     def evaluate(self, context: RuleContext) -> RuleOutcome:
         subject = self.instrument or context.underlying

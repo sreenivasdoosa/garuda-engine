@@ -38,7 +38,7 @@ class Rule(Protocol):
     def evaluate(self, context: RuleContext) -> RuleOutcome: ...
 
 
-_RULES: Registry[Rule] = Registry("rule")
+_RULES: Registry[Rule] = Registry("rule", Rule)
 
 
 def rule(name: str, *, cost: Cost = Cost.CHEAP) -> Callable[[type[Rule]], type[Rule]]:

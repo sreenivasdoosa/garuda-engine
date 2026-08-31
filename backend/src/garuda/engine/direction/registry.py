@@ -25,7 +25,7 @@ class DirectionRule(Protocol):
     def resolve(self, context: RuleContext) -> Direction | None: ...
 
 
-_DIRECTIONS: Registry[DirectionRule] = Registry("direction rule")
+_DIRECTIONS: Registry[DirectionRule] = Registry("direction rule", DirectionRule)
 
 
 def direction(name: str) -> Callable[[type[DirectionRule]], type[DirectionRule]]:
