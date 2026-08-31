@@ -43,6 +43,7 @@ from garuda.domain.trade_signal import (
     TradeSignal,
 )
 from garuda.domain.trade_state import TradeExitReason, TradeState
+from garuda.domain.trailing import GapUnit, TrailConfig, TrailingMode
 
 #: Bumped when a payload's shape changes in a way a reader must know about.
 #: Written on every record so an unreadable one can be told from an old one.
@@ -125,6 +126,7 @@ def encode_trade(trade: Trade) -> str:
                 "no_target": protection.no_target,
                 "dont_place_stop_loss_order": protection.dont_place_stop_loss_order,
                 "is_trailing": protection.is_trailing,
+                "trail": _trail(protection.trail),
                 "trail_to_cost": protection.trail_to_cost,
                 "exit_with_trail": protection.exit_with_trail,
                 "trigger_to_limit_gap_percent": _decimal(protection.trigger_to_limit_gap_percent),
@@ -213,6 +215,7 @@ def decode_trade(payload: str) -> Trade:
             no_target=protection.get("no_target", False),
             dont_place_stop_loss_order=protection.get("dont_place_stop_loss_order", False),
             is_trailing=protection.get("is_trailing", False),
+            trail=_read_trail(protection.get("trail")),
             trail_to_cost=protection.get("trail_to_cost", False),
             exit_with_trail=protection.get("exit_with_trail", False),
             trigger_to_limit_gap_percent=_read_decimal(
@@ -421,3 +424,32 @@ __all__ = [
     "encode_signal",
     "encode_trade",
 ]
+
+
+def _trail(config: TrailConfig | None) -> dict[str, object] | None:
+    """How the stop follows the price. Written out whole rather than flattened
+    onto the protection: it is one thing a strategy configured, and reading
+    half of it back would trail a position a way nobody asked for."""
+    if config is None:
+        return None
+    return {
+        "mode": config.mode.value,
+        "profit_gap": _decimal(config.profit_gap),
+        "stop_move_gap": _decimal(config.stop_move_gap),
+        "gap_unit": config.gap_unit.value,
+        "trail_to_cost_gap": _decimal(config.trail_to_cost_gap),
+        "trail_to_cost_unit": config.trail_to_cost_unit.value,
+    }
+
+
+def _read_trail(raw: object) -> TrailConfig | None:
+    if not isinstance(raw, dict):
+        return None
+    return TrailConfig(
+        mode=TrailingMode(raw.get("mode", TrailingMode.RISK_MULTIPLE)),
+        profit_gap=_read_decimal(raw.get("profit_gap")),
+        stop_move_gap=_read_decimal(raw.get("stop_move_gap")),
+        gap_unit=GapUnit(raw.get("gap_unit", GapUnit.ABSOLUTE)),
+        trail_to_cost_gap=_read_decimal(raw.get("trail_to_cost_gap")),
+        trail_to_cost_unit=GapUnit(raw.get("trail_to_cost_unit", GapUnit.RISK_MULTIPLE)),
+    )

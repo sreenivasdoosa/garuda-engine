@@ -18,11 +18,11 @@ from garuda.domain.instrument import InstrumentId
 from garuda.domain.market import Tick
 from garuda.domain.trade import Protection, Trade
 from garuda.domain.trade_state import TradeExitReason
+from garuda.domain.trailing import TrailConfig
 from garuda.trademgmt.client import TradingClientManager
 from garuda.trademgmt.dedup import InstrumentLookup
 from garuda.trademgmt.positions import PositionWatch
 from garuda.trademgmt.trailing import TrailingService
-from garuda.trademgmt.trailing_rules import TrailConfig
 
 from .conftest import CALL, PUT, TODAY, a_trade, rupees
 
@@ -70,7 +70,6 @@ def watch(
     prices: dict[InstrumentId, str],
     square_off: RecordingSquareOff,
     instruments: InstrumentLookup,
-    trail: TrailConfig | None = None,
 ) -> PositionWatch:
     trailing = TrailingService(
         book,
@@ -78,7 +77,6 @@ def watch(
         _unused_cancel,
         _unused_place,
         instruments,
-        lambda trade: trail,
         alerts,
     )
     quotes = {
@@ -359,13 +357,14 @@ async def test_a_stop_that_has_earned_a_step_is_trailed(
             stop_loss=rupees("110"),
             initial_stop_loss=rupees("110"),
             is_trailing=True,
+            trail=TrailConfig(),
             dont_place_stop_loss_order=True,
         ),
         signal_id="sig-t",
     ).with_entry_fill(75, rupees("100"), TODAY)
     book.add_trade(trailed)
     square_off = RecordingSquareOff()
-    subject = watch(book, alerts, {CALL: "90"}, square_off, instruments, trail=TrailConfig())
+    subject = watch(book, alerts, {CALL: "90"}, square_off, instruments)
 
     report = await subject.on_tick(a_tick(CALL, "90"))
 

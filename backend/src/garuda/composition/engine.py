@@ -74,7 +74,6 @@ from garuda.trademgmt.squareoff import SquareOffService
 from garuda.trademgmt.squareoff_rules import ExitWindow
 from garuda.trademgmt.tracking import TradeTracker
 from garuda.trademgmt.trailing import TrailingService
-from garuda.trademgmt.trailing_rules import TrailConfig
 
 logger = logging.getLogger(__name__)
 
@@ -82,8 +81,6 @@ logger = logging.getLogger(__name__)
 #: configures the venue's own. Belongs beside the other per-segment limits;
 #: a number here is better than no cap at all, which is what None would mean.
 DEFAULT_SEGMENT_GAP = Decimal(18)
-
-type TrailConfigLookup = Callable[[Trade], TrailConfig | None]
 
 
 @dataclass
@@ -167,7 +164,6 @@ def build_engine(
     now: datetime,
     connector: Connector,
     limits: LimitBook | None = None,
-    trail_config: TrailConfigLookup | None = None,
 ) -> Engine:
     """Build every part the current configuration allows.
 
@@ -208,7 +204,6 @@ def build_engine(
             venues,
             alerts,
             clock,
-            trail_config,
             limits or NO_LIMITS,
         )
 
@@ -301,7 +296,6 @@ def _build_client(
     venues: Venues,
     alerts: AlertManager,
     clock: Clock,
-    trail_config: TrailConfigLookup | None,
     limits: LimitBook,
 ) -> ClientParts:
     """One account's broker, its book, and everything that acts on them."""
@@ -412,7 +406,6 @@ def _build_client(
         broker.cancel,
         place_replacement_stop,
         instrument,
-        trail_config or _no_trailing,
         alerts,
     )
     coordinator = LegCoordinator(book, square_off.request, alerts)
@@ -451,15 +444,6 @@ def _build_client(
 def _segment_gap(trade: Trade) -> Decimal:  # noqa: ARG001
     """The venue's widest permitted stop gap. One number until there are rows."""
     return DEFAULT_SEGMENT_GAP
-
-
-def _no_trailing(trade: Trade) -> TrailConfig | None:  # noqa: ARG001
-    """No trailing until a strategy's configuration says otherwise.
-
-    A stop that never moves is the conservative answer: trailing one on a
-    guess would tighten a stop nobody asked to tighten.
-    """
-    return None
 
 
 def _registry_for(

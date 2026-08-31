@@ -12,59 +12,12 @@ everything the position had earned.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from decimal import ROUND_DOWN, ROUND_UP, Decimal
-from enum import StrEnum
 
 from garuda.domain.enums import Direction
 from garuda.domain.instrument import Instrument
 from garuda.domain.money import Money
-
-
-class TrailingMode(StrEnum):
-    """How a stop follows the price.
-
-    Only ``RISK_MULTIPLE`` is implemented: it needs nothing but the price, and
-    the rest need candle history and indicators the engine does not have yet.
-    They are named here so a configuration carrying one is refused loudly
-    rather than silently trailing some other way.
-    """
-
-    RISK_MULTIPLE = "RISK_MULTIPLE"
-    ATR = "ATR"
-    EMA = "EMA"
-    SUPER_TREND = "SUPER_TREND"
-    HEIKIN_ASHI = "HEIKIN_ASHI"
-    CUSTOM = "CUSTOM"
-
-    @property
-    def needs_candles(self) -> bool:
-        return self is not TrailingMode.RISK_MULTIPLE
-
-
-class GapUnit(StrEnum):
-    """Whether a configured gap is in points or in per cent of the entry."""
-
-    ABSOLUTE = "ABSOLUTE"
-    PERCENTAGE = "PERCENTAGE"
-    #: Multiples of the initial risk -- the distance from entry to first stop.
-    RISK_MULTIPLE = "RISK_MULTIPLE"
-
-
-@dataclass(frozen=True, slots=True)
-class TrailConfig:
-    """What a strategy asked for when it turned trailing on."""
-
-    mode: TrailingMode = TrailingMode.RISK_MULTIPLE
-    #: How much profit earns one step of trailing. Defaults to one unit of
-    #: initial risk, which is what "R-multiple" means.
-    profit_gap: Decimal | None = None
-    #: How far the stop moves per step. Defaults to the same.
-    stop_move_gap: Decimal | None = None
-    gap_unit: GapUnit = GapUnit.ABSOLUTE
-    #: Profit at which the stop moves to break even, once.
-    trail_to_cost_gap: Decimal | None = None
-    trail_to_cost_unit: GapUnit = GapUnit.RISK_MULTIPLE
+from garuda.domain.trailing import GapUnit, TrailConfig
 
 
 def initial_risk(entry: Money, initial_stop: Money) -> Decimal:

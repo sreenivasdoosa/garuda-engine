@@ -29,6 +29,7 @@ from garuda.domain.trade_serde import (
 )
 from garuda.domain.trade_signal import EntryRules, EscalationMode, ReEntryRules, TradeSignal
 from garuda.domain.trade_state import TradeExitReason
+from garuda.domain.trailing import GapUnit, TrailConfig, TrailingMode
 from tests.unit.trademgmt.conftest import PUT, TODAY, a_signal, a_trade, rupees
 
 
@@ -45,6 +46,18 @@ def a_rich_trade() -> Trade:
             combined_stop_loss_percent=Decimal(10),
             combined_target_percent=Decimal("12.5"),
             is_trailing=True,
+            # How the stop follows: a restart that forgot this would leave a
+            # position marked as trailing with nothing telling it how far.
+            # Every field away from its default on purpose: a round trip that
+            # only ever carries defaults proves nothing about the fields.
+            trail=TrailConfig(
+                mode=TrailingMode.SUPER_TREND,
+                profit_gap=Decimal(10),
+                stop_move_gap=Decimal(5),
+                gap_unit=GapUnit.PERCENTAGE,
+                trail_to_cost_gap=Decimal(2),
+                trail_to_cost_unit=GapUnit.PERCENTAGE,
+            ),
             trigger_to_limit_gap_percent=Decimal("2.5"),
         ),
         relationships=Relationships(

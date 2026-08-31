@@ -34,11 +34,11 @@ from garuda.domain.money import Money
 from garuda.domain.order import BrokerOrderId
 from garuda.domain.trade import Trade
 from garuda.domain.trade_orders import OrderRole
+from garuda.domain.trailing import TrailConfig
 from garuda.protocols.broker import OrderChanges
 from garuda.trademgmt.client import TradingClientManager
 from garuda.trademgmt.protective_rules import stop_order_shape, trigger_to_limit_gap
 from garuda.trademgmt.trailing_rules import (
-    TrailConfig,
     improves,
     risk_multiple_stop,
     trail_to_cost_stop,
@@ -58,7 +58,6 @@ type ModifyOrder = Callable[[BrokerOrderId, OrderChanges], Awaitable[None]]
 type PlaceStop = Callable[[Trade], Awaitable[BrokerOrderId | None]]
 type CancelOrder = Callable[[BrokerOrderId], Awaitable[None]]
 type InstrumentLookup = Callable[[InstrumentId], Instrument | None]
-type ConfigLookup = Callable[[Trade], TrailConfig | None]
 
 
 class TrailOutcome(StrEnum):
@@ -101,7 +100,6 @@ class TrailingService:
         cancel_order: CancelOrder,
         place_stop: PlaceStop,
         instruments: InstrumentLookup,
-        trail_config: ConfigLookup,
         alerts: AlertManager,
         *,
         max_modifications: int = MAX_ORDER_MODIFICATIONS,
@@ -111,7 +109,6 @@ class TrailingService:
         self._cancel = cancel_order
         self._place_stop = place_stop
         self._instruments = instruments
-        self._config = trail_config
         self._alerts = alerts
         self._max_modifications = max_modifications
         #: Modifications sent per order. Reset by a restart, which at worst
@@ -128,8 +125,12 @@ class TrailingService:
             self._book.replace_trade(watched)
             trade = watched
 
-        config = self._config(trade)
+        config = trade.protection.trail
         if config is None or not trade.protection.is_trailing:
+            # Read from the leg rather than looked up. What a strategy asked
+            # for is resolved when the signal is built, with the day
+            # conditions in hand, and it has to survive a restart the same way
+            # the stop level itself does.
             return TrailResult(TrailOutcome.HELD, trade, detail="not trailing")
 
         instrument = self._instruments(trade.instrument)

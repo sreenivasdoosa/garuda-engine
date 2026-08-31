@@ -32,6 +32,7 @@ from garuda.domain.trade_state import (
     TradeState,
     more_urgent,
 )
+from garuda.domain.trailing import TrailConfig
 
 
 class IllegalTradeTransitionError(DomainError):
@@ -81,6 +82,12 @@ class Protection:
     #: when the level is crossed instead.
     dont_place_stop_loss_order: bool = False
     is_trailing: bool = False
+    #: How the stop follows the price, when it does. Carried on the leg for
+    #: the same reason the combined percentages are: it is resolved when the
+    #: signal is built, with the day conditions in hand, and a restart that
+    #: forgot it would leave a position marked as trailing with nothing
+    #: telling it how far.
+    trail: TrailConfig | None = None
     trail_to_cost: bool = False
     exit_with_trail: bool = False
     #: How far a stop-loss limit sits from its trigger, when the strategy

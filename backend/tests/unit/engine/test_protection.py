@@ -22,6 +22,7 @@ from garuda.domain.enums import (
 from garuda.domain.exchange import Exchange
 from garuda.domain.instrument import Instrument, InstrumentId
 from garuda.domain.trade import Protection
+from garuda.domain.trailing import GapUnit, TrailConfig, TrailingMode
 from garuda.engine.config import ConfigLayer, ResolvedConfig, resolve
 from garuda.engine.protection import protection_from
 
@@ -296,3 +297,165 @@ class TestTheGroupsLevels:
 
         assert protection.stop_loss == rupees("195")
         assert protection.combined_stop_loss_percent == Decimal(10)
+
+
+class TestHowTheStopFollows:
+    """`trail_sl_type` names the mode and `trail_config` is free JSON holding
+    the gaps. The reference's Console writes both from a named policy in
+    `trailing_sl_policy`, which is a template rather than a reference: there is
+    no key from a strategy to a policy, so what a strategy trails on is
+    whatever was copied into its own row.
+    """
+
+    def test_trailing_off_carries_no_configuration(self, option: Instrument) -> None:
+        """Distinguishable from a leg marked as trailing without a mode."""
+        protection = protection_from(
+            configured(sl_percentage=Decimal(30)),
+            direction=Direction.SHORT,
+            instrument=option,
+            entry=rupees("150"),
+        )
+
+        assert protection.trail is None
+
+    def test_trailing_on_without_a_mode_is_the_risk_multiple(self, option: Instrument) -> None:
+        protection = protection_from(
+            configured(trail_sl=True),
+            direction=Direction.SHORT,
+            instrument=option,
+            entry=rupees("150"),
+        )
+
+        assert protection.trail == TrailConfig()
+
+    def test_gaps_are_in_points_unless_the_row_says_otherwise(self, option: Instrument) -> None:
+        """A row that names gaps and not their unit means points, which is
+        what the reference's own absolute rows are."""
+        protection = protection_from(
+            configured(trail_sl=True, trail_config='{"profitGap": 10}'),
+            direction=Direction.SHORT,
+            instrument=option,
+            entry=rupees("150"),
+        )
+
+        assert protection.trail is not None
+        assert protection.trail.gap_unit is GapUnit.ABSOLUTE
+
+    def test_the_break_even_gap_is_read_too(self, option: Instrument) -> None:
+        """Trail-to-cost is a separate gap with a separate unit: profit at
+        which the stop moves to break even, once."""
+        protection = protection_from(
+            configured(trail_sl=True, trail_config='{"trailToCostGap": 2}'),
+            direction=Direction.SHORT,
+            instrument=option,
+            entry=rupees("150"),
+        )
+
+        assert protection.trail is not None
+        assert protection.trail.trail_to_cost_gap == Decimal(2)
+
+    def test_the_gaps_are_read_from_the_json_column(self, option: Instrument) -> None:
+        """The spellings are the reference engine's own, camelCase and all."""
+        protection = protection_from(
+            configured(
+                trail_sl=True,
+                trail_sl_type="RISK_MULTIPLE",
+                trail_config='{"profitGap": 10, "slMoveGap": 5, "trailMode": "absolute"}',
+            ),
+            direction=Direction.SHORT,
+            instrument=option,
+            entry=rupees("150"),
+        )
+
+        assert protection.trail == TrailConfig(
+            mode=TrailingMode.RISK_MULTIPLE,
+            profit_gap=Decimal(10),
+            stop_move_gap=Decimal(5),
+            gap_unit=GapUnit.ABSOLUTE,
+        )
+
+    def test_a_percentage_gap_unit_is_read(self, option: Instrument) -> None:
+        protection = protection_from(
+            configured(
+                trail_sl=True,
+                trail_config='{"profitGap": 2, "trailMode": "percentage"}',
+            ),
+            direction=Direction.SHORT,
+            instrument=option,
+            entry=rupees("150"),
+        )
+
+        assert protection.trail is not None
+        assert protection.trail.gap_unit is GapUnit.PERCENTAGE
+
+    def test_a_mode_this_engine_cannot_compute_is_kept_not_dropped(
+        self, option: Instrument
+    ) -> None:
+        """Falling back to the risk-multiple arithmetic would trail a position
+        a way nobody configured. The trailing pass refuses it by name."""
+        protection = protection_from(
+            configured(trail_sl=True, trail_sl_type="SUPER_TREND"),
+            direction=Direction.SHORT,
+            instrument=option,
+            entry=rupees("150"),
+        )
+
+        assert protection.trail is not None
+        assert protection.trail.mode is TrailingMode.SUPER_TREND
+
+    def test_a_mode_nobody_recognises_is_refused(self, option: Instrument) -> None:
+        with pytest.raises(DomainError, match="not a trailing mode"):
+            protection_from(
+                configured(trail_sl=True, trail_sl_type="PARABOLIC"),
+                direction=Direction.SHORT,
+                instrument=option,
+                entry=rupees("150"),
+            )
+
+    def test_unreadable_json_is_refused_rather_than_ignored(self, option: Instrument) -> None:
+        """A strategy whose gaps could not be parsed would trail on the
+        defaults, which is a different strategy, silently."""
+        with pytest.raises(DomainError, match="not readable JSON"):
+            protection_from(
+                configured(trail_sl=True, trail_config="{profitGap: 10}"),
+                direction=Direction.SHORT,
+                instrument=option,
+                entry=rupees("150"),
+            )
+
+    def test_json_that_is_not_an_object_is_refused(self, option: Instrument) -> None:
+        with pytest.raises(DomainError, match="not an object"):
+            protection_from(
+                configured(trail_sl=True, trail_config="[10, 5]"),
+                direction=Direction.SHORT,
+                instrument=option,
+                entry=rupees("150"),
+            )
+
+    def test_a_gap_of_zero_is_refused(self, option: Instrument) -> None:
+        """A zero step would move the stop on every tick and never anywhere."""
+        with pytest.raises(DomainError, match="above zero"):
+            protection_from(
+                configured(trail_sl=True, trail_config='{"profitGap": 0}'),
+                direction=Direction.SHORT,
+                instrument=option,
+                entry=rupees("150"),
+            )
+
+    def test_a_gap_that_is_not_a_number_is_refused(self, option: Instrument) -> None:
+        with pytest.raises(DomainError, match="not a number"):
+            protection_from(
+                configured(trail_sl=True, trail_config='{"profitGap": "wide"}'),
+                direction=Direction.SHORT,
+                instrument=option,
+                entry=rupees("150"),
+            )
+
+    def test_a_gap_unit_nobody_recognises_is_refused(self, option: Instrument) -> None:
+        with pytest.raises(DomainError, match="not a gap unit"):
+            protection_from(
+                configured(trail_sl=True, trail_config='{"trailMode": "sideways"}'),
+                direction=Direction.SHORT,
+                instrument=option,
+                entry=rupees("150"),
+            )

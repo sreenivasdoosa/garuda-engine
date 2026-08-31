@@ -15,14 +15,12 @@ from garuda.domain.order import BrokerOrderId
 from garuda.domain.trade import Protection, Trade
 from garuda.domain.trade_orders import OrderRole
 from garuda.domain.trade_state import TradeExitReason
+from garuda.domain.trailing import GapUnit, TrailConfig, TrailingMode
 from garuda.protocols.broker import OrderChanges
 from garuda.trademgmt.client import TradingClientManager
 from garuda.trademgmt.dedup import InstrumentLookup
 from garuda.trademgmt.trailing import TrailingService, TrailOutcome
 from garuda.trademgmt.trailing_rules import (
-    GapUnit,
-    TrailConfig,
-    TrailingMode,
     improves,
     risk_multiple_stop,
     trail_to_cost_stop,
@@ -60,7 +58,6 @@ def build(
     instruments: InstrumentLookup,
     alerts: AlertManager,
     orders: FakeOrders,
-    config: TrailConfig | None,
     *,
     max_modifications: int = 20,
 ) -> tuple[TrailingService, TradingClientManager]:
@@ -71,7 +68,6 @@ def build(
         orders.cancel,
         orders.place,
         instruments,
-        lambda trade: config,
         alerts,
         max_modifications=max_modifications,
     )
@@ -85,6 +81,7 @@ def trailing_trade(
     stop: str = "90",
     with_order: bool = True,
     track_only: bool = False,
+    trail: TrailConfig | None = None,
 ) -> Trade:
     trade = a_trade(direction=direction)
     trade = replace(
@@ -93,6 +90,7 @@ def trailing_trade(
             stop_loss=rupees(stop),
             initial_stop_loss=rupees(stop),
             is_trailing=True,
+            trail=trail if trail is not None else TrailConfig(),
             dont_place_stop_loss_order=track_only,
         ),
     )
@@ -308,7 +306,7 @@ class TestAStopOnlyTightens:
     ) -> None:
         """The failure this rule exists for: giving back everything earned."""
         orders = FakeOrders()
-        service, book = build(instruments, alerts, orders, TrailConfig())
+        service, book = build(instruments, alerts, orders)
         trade = trailing_trade()
         book.add_trade(trade)
         book.link_order(STOP_ORDER, trade.id, OrderRole.STOP)
@@ -330,7 +328,7 @@ class TestMovingTheOrder:
         self, instruments: InstrumentLookup, alerts: AlertManager
     ) -> None:
         orders = FakeOrders()
-        service, book = build(instruments, alerts, orders, TrailConfig())
+        service, book = build(instruments, alerts, orders)
         trade = trailing_trade()
         book.add_trade(trade)
         book.link_order(STOP_ORDER, trade.id, OrderRole.STOP)
@@ -346,7 +344,7 @@ class TestMovingTheOrder:
         """It is what the risk was sized against, and what says the stop has
         been trailed at all."""
         orders = FakeOrders()
-        service, book = build(instruments, alerts, orders, TrailConfig())
+        service, book = build(instruments, alerts, orders)
         trade = trailing_trade()
         book.add_trade(trade)
         book.link_order(STOP_ORDER, trade.id, OrderRole.STOP)
@@ -362,7 +360,7 @@ class TestMovingTheOrder:
     ) -> None:
         orders = FakeOrders()
         orders.modify_fails = RuntimeError("the broker refused")
-        service, book = build(instruments, alerts, orders, TrailConfig())
+        service, book = build(instruments, alerts, orders)
         trade = trailing_trade()
         book.add_trade(trade)
         book.link_order(STOP_ORDER, trade.id, OrderRole.STOP)
@@ -379,7 +377,7 @@ class TestMovingTheOrder:
         """Moving the level alone would leave the engine believing in
         protection the broker does not have."""
         orders = FakeOrders()
-        service, book = build(instruments, alerts, orders, TrailConfig())
+        service, book = build(instruments, alerts, orders)
         trade = trailing_trade()
         book.add_trade(trade)
 
@@ -393,7 +391,7 @@ class TestTheModificationCap:
         self, instruments: InstrumentLookup, alerts: AlertManager
     ) -> None:
         orders = FakeOrders()
-        service, book = build(instruments, alerts, orders, TrailConfig(), max_modifications=1)
+        service, book = build(instruments, alerts, orders, max_modifications=1)
         trade = trailing_trade()
         book.add_trade(trade)
         book.link_order(STOP_ORDER, trade.id, OrderRole.STOP)
@@ -411,7 +409,7 @@ class TestTheModificationCap:
     ) -> None:
         """Two live stops on one position reverse it when both fire."""
         orders = FakeOrders()
-        service, book = build(instruments, alerts, orders, TrailConfig(), max_modifications=0)
+        service, book = build(instruments, alerts, orders, max_modifications=0)
         trade = trailing_trade()
         book.add_trade(trade)
         book.link_order(STOP_ORDER, trade.id, OrderRole.STOP)
@@ -429,7 +427,7 @@ class TestTheModificationCap:
 
         orders = FakeOrders()
         orders.place_returns = None
-        service, book = build(instruments, alerts, orders, TrailConfig(), max_modifications=0)
+        service, book = build(instruments, alerts, orders, max_modifications=0)
         trade = trailing_trade()
         book.add_trade(trade)
         book.link_order(STOP_ORDER, trade.id, OrderRole.STOP)
@@ -449,7 +447,7 @@ class TestTrackedWithoutAnOrder:
     ) -> None:
         """Trailing has to keep working, or the tracked level goes stale."""
         orders = FakeOrders()
-        service, book = build(instruments, alerts, orders, TrailConfig())
+        service, book = build(instruments, alerts, orders)
         trade = trailing_trade(track_only=True)
         book.add_trade(trade)
 
@@ -466,8 +464,8 @@ class TestModesWeCannotComputeYet:
         self, instruments: InstrumentLookup, alerts: AlertManager
     ) -> None:
         orders = FakeOrders()
-        service, book = build(instruments, alerts, orders, TrailConfig(mode=TrailingMode.ATR))
-        trade = trailing_trade()
+        service, book = build(instruments, alerts, orders)
+        trade = trailing_trade(trail=TrailConfig(mode=TrailingMode.ATR))
         book.add_trade(trade)
         book.link_order(STOP_ORDER, trade.id, OrderRole.STOP)
 
@@ -488,7 +486,7 @@ class TestWhatIsWatched:
         """A restart that forgot it would trail from the price at restart,
         giving back everything the position had earned."""
         orders = FakeOrders()
-        service, book = build(instruments, alerts, orders, TrailConfig())
+        service, book = build(instruments, alerts, orders)
         trade = trailing_trade()
         book.add_trade(trade)
         book.link_order(STOP_ORDER, trade.id, OrderRole.STOP)
@@ -503,7 +501,7 @@ class TestWhatIsWatched:
         self, instruments: InstrumentLookup, alerts: AlertManager
     ) -> None:
         orders = FakeOrders()
-        service, book = build(instruments, alerts, orders, TrailConfig())
+        service, book = build(instruments, alerts, orders)
         trade = trailing_trade().exiting(TradeExitReason.SQUARE_OFF)
         book.add_trade(trade)
         book.link_order(STOP_ORDER, trade.id, OrderRole.STOP)
@@ -524,7 +522,7 @@ class TestWhatEachRuleMeasuresFrom:
         in lower, the stop must still go to the level the position earned --
         measuring from the current price would forget it."""
         orders = FakeOrders()
-        service, book = build(instruments, alerts, orders, TrailConfig())
+        service, book = build(instruments, alerts, orders)
         trade = trailing_trade()
         book.add_trade(trade)
         book.link_order(STOP_ORDER, trade.id, OrderRole.STOP)
@@ -549,8 +547,8 @@ class TestWhatEachRuleMeasuresFrom:
         orders = FakeOrders()
         # Only trail-to-cost can fire: the step gap is far out of reach.
         config = TrailConfig(profit_gap=Decimal(10_000), trail_to_cost_gap=Decimal(1))
-        service, book = build(instruments, alerts, orders, config)
-        trade = trailing_trade()
+        service, book = build(instruments, alerts, orders)
+        trade = trailing_trade(trail=config)
         book.add_trade(trade)
         book.link_order(STOP_ORDER, trade.id, OrderRole.STOP)
 

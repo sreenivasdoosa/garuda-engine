@@ -442,11 +442,22 @@ exchange, and it will not place again.
 
 ### Not decided yet
 
-- **Where stop and target levels come from.** Settled and built for the
-  per-leg case: `engine/protection.py` converts configured percentages into
-  levels. The combined levels above are specified but not yet built. `sl_target_policy`,
-  `trailing_sl_policy` and `exit_policy` are all tables in the schema and none
-  is loaded.
+- **Where stop and target levels come from.** Settled and built: per-leg
+  levels, combined levels and trailing all come from the strategy's own
+  resolved configuration through `engine/protection.py`, and ride on the leg.
+
+  The `*_policy` tables are not loaded, and that is not a gap. In the
+  reference engine they are Console-side *templates*: `trailing_sl_policy`
+  has a unique `policy_name` and nothing keys to it, and what a strategy
+  actually trails on is whatever the Console copied into its own
+  `trail_sl_type` and `trail_config` columns. Reading the policy table at run
+  time would be reading a menu rather than an order. `sl_target_policy` and
+  `exit_policy` are the same shape; they become real when the Console does.
+
+  One thing to know before offering those templates in a Console: two of the
+  reference's own rows are unusable as data. `TRAIL_0.5_BUFFER` and
+  `TRAIL_1_BUFFER` are typed `PERCENTAGE` with an empty `trail_config`, so the
+  buffer each is named for exists only in the name and the description.
 - **Where capital comes from.** Settled — see `STRATEGY_ENGINE.md` §5 for the
   chain. `build` still takes it as an argument and nothing reads the tables
   yet.
