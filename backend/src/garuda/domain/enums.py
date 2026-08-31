@@ -32,6 +32,18 @@ class InstrumentKind(StrEnum):
     SYNTHETIC = "SYNTHETIC"
 
 
+class ExpiryKind(StrEnum):
+    """Which series of a derivative a strategy trades.
+
+    Not a property of a contract — a contract has one expiry date and that is
+    that. This is how a strategy *chooses* one: the same date is the weekly
+    expiry all month and also the monthly expiry in the week it falls last.
+    """
+
+    WEEKLY = "WEEKLY"
+    MONTHLY = "MONTHLY"
+
+
 class OptionType(StrEnum):
     CALL = "CALL"
     PUT = "PUT"

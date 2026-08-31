@@ -18,9 +18,18 @@ from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
 
-from garuda.domain.enums import InstrumentKind, OptionType
+from garuda.domain.enums import ExpiryKind, InstrumentKind, OptionType
 from garuda.domain.errors import DomainError
 from garuda.domain.instrument import BrokerToken, Instrument, InstrumentId
+
+#: How far out the first upcoming weekly expiry may be before the master is
+#: judged incomplete. A weekly series always has one within the week; further
+#: than that means the immediate expiry is missing from the file, and trading
+#: the one after it is trading the wrong series.
+MAX_DAYS_TO_FIRST_WEEKLY = 8
+
+#: The same guard for monthlies, which are at most five weeks apart.
+MAX_DAYS_TO_FIRST_MONTHLY = 35
 
 
 @dataclass(frozen=True)
@@ -46,6 +55,10 @@ class InstrumentRegistry:
     _options: dict[tuple[InstrumentId, date], list[Instrument]] = field(default_factory=dict)
     _futures: dict[InstrumentId, list[Instrument]] = field(default_factory=dict)
     _expiries: dict[InstrumentId, list[date]] = field(default_factory=dict)
+    #: The last expiry of each calendar month, which is what "monthly" means.
+    #: Derived from the master rather than from a rule about last Thursdays:
+    #: venues move expiry days, and a rule would be wrong the week they do.
+    _monthly: dict[InstrumentId, list[date]] = field(default_factory=dict)
 
     @classmethod
     def build(
@@ -91,6 +104,7 @@ class InstrumentRegistry:
             _options=dict(options),
             _futures=dict(futures),
             _expiries={key: sorted(value) for key, value in expiries.items()},
+            _monthly={key: _last_of_each_month(sorted(value)) for key, value in expiries.items()},
         )
 
     # -- lookups ------------------------------------------------------------
@@ -124,6 +138,49 @@ class InstrumentRegistry:
         expiries = self._expiries.get(underlying, [])
         index = bisect_left(expiries, on)
         return expiries[index] if index < len(expiries) else None
+
+    def monthly_expiries_for(self, underlying: InstrumentId) -> Sequence[date]:
+        """The last listed expiry of each month, soonest first."""
+        return self._monthly.get(underlying, [])
+
+    def expiry_for(
+        self,
+        underlying: InstrumentId,
+        kind: ExpiryKind,
+        on: date,
+        *,
+        offset: int = 0,
+    ) -> date | None:
+        """The expiry a strategy means by "weekly" or "monthly", ``offset`` out.
+
+        ``offset`` 0 is the immediate one, 1 the next, and so on.
+
+        None when the master cannot answer, and it says so rather than guessing
+        in three separate ways: no expiries listed at all, an offset past the
+        end of what is listed, or a first expiry so far away that the immediate
+        one is plainly missing from the file. That last check is the one that
+        matters -- a master that lost this week's expiry would otherwise have a
+        strategy quietly trade next week's, at quite different premiums.
+        """
+        if offset < 0:
+            raise DomainError(f"{underlying}: expiry offset {offset} is negative")
+
+        listed = (
+            self._monthly.get(underlying, [])
+            if kind is ExpiryKind.MONTHLY
+            else self._expiries.get(underlying, [])
+        )
+        upcoming = listed[bisect_left(listed, on) :]
+        if not upcoming:
+            return None
+
+        limit = (
+            MAX_DAYS_TO_FIRST_MONTHLY if kind is ExpiryKind.MONTHLY else MAX_DAYS_TO_FIRST_WEEKLY
+        )
+        if (upcoming[0] - on).days > limit:
+            return None
+
+        return upcoming[offset] if offset < len(upcoming) else None
 
     def option_chain(self, underlying: InstrumentId, expiry: date) -> Sequence[Instrument]:
         return self._options.get((underlying, expiry), [])
@@ -168,6 +225,18 @@ class InstrumentRegistry:
     @property
     def is_empty(self) -> bool:
         return not self.by_id
+
+
+def _last_of_each_month(expiries: Sequence[date]) -> list[date]:
+    """One expiry per calendar month: the last one listed in it.
+
+    That is what a monthly series is, and taking it from the master means a
+    venue moving its expiry day costs nothing here.
+    """
+    by_month: dict[tuple[int, int], date] = {}
+    for expiry in expiries:
+        by_month[(expiry.year, expiry.month)] = expiry
+    return sorted(by_month.values())
 
 
 #: What the engine holds before the first successful load. Deliberately empty
