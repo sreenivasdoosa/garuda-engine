@@ -12,6 +12,8 @@ framing in `STRATEGY_ENGINE.md` §1 and extends `DESIGN.md` §10.2.
 
 The reference engine has four trigger types on a strategy — tick, scheduled,
 signal, periodic — as separate boolean columns with separate dispatch paths.
+The "signal" one is not what its name suggests, and §6 deals with it
+separately: nothing external is involved.
 It also has a `direction_provider_type` naming one of six providers, and a
 dedicated table *and* service for exactly one kind of condition (breakout
 watches), which carries its own `is_triggered` / `valid_till` / `is_expired`
@@ -27,7 +29,7 @@ Under this proposal:
 | `scheduled_trigger` + tranche time | an `at_or_after` rule |
 | `tick_trigger` | nothing — every rule set is live |
 | `periodic_trigger` | an `every` rule |
-| `signal_trigger` | an `external_signal` rule |
+| `signal_trigger` | nothing — see §6 |
 | breakout watch table + service | a `breakout` rule, on the ordinary lifecycle |
 | `direction_provider_type` | an ordered list of direction rules |
 | `use_indicator_exit` | an exit rule list that happens to contain indicators |
@@ -88,7 +90,7 @@ a signal today".
 {"type": "all", "rules": [
   {"type": "at_or_after", "time": "13:00"},
   {"type": "any", "rules": [
-    {"type": "vix_below", "value": 14},
+    {"type": "price_below", "instrument": "SYNTH:VIX", "value": 14},
     {"type": "indicator", "indicator": "ATR", "interval": "5m",
      "params": {"period": 20}, "comparator": "lt",
      "reference": {"indicator": "ATR", "params": {"period": 100}}}
@@ -140,7 +142,69 @@ the broker. Exit rules are the discretionary layer above them: conditions that
 should take a position off early. A rule set that never fires must never be
 the reason a position had no stop.
 
-## 6. Rules arm; the trigger price fires
+## 6. There is no external signal
+
+The reference engine's external-signal trigger sounds like an integration with
+something outside the system. It is not. The market-data service maintains
+rolling straddle prices, implied volatility and put-call ratios; it evaluates
+conditions on them — *rolling straddle is 10% below its open* — and pushes a
+fired "signal" to the trading core, which enters on it.
+
+So the rule already exists. It simply lives in the wrong process, in a
+component whose job is to publish prices.
+
+**Garuda moves the arithmetic and keeps the data.** Market data computes
+rolling straddles, IV and PCR the same way, publishes them as ordinary ticks
+about once a second, and builds their one-minute candles. It evaluates
+nothing and decides nothing. The condition that used to fire a signal is
+written as a rule here, alongside every other rule, against a price series
+like any other.
+
+There is therefore **no external-signal rule, and no external-signal trigger.**
+The feature disappears rather than being ported, because what it did is what
+this whole document is about.
+
+### Synthetics are instruments
+
+This works because a rolling straddle *is* an instrument. The domain already
+says so: `InstrumentKind.SYNTHETIC` is documented as "IV, PCR, straddle price,
+synthetic future — priced by the engine, never traded directly. A strategy may
+subscribe to one exactly like a real instrument; no order is ever routed for
+it." `Instrument.is_tradable` already excludes it, and `synthetic_candles` and
+`iv_candles` already exist as tables.
+
+The consequence is the point:
+
+> **Every price, candle and indicator rule works on a synthetic for free.**
+
+"Rolling straddle down 10% from its open" is `percent_from_reference` on the
+straddle instrument — the same rule that says "spot down 1% from its open".
+NR7 on a straddle series, RSI on a PCR series, a Bollinger squeeze on ATM IV:
+all of them already work, and none of them needs a rule written for it. A
+family of a dozen bespoke volatility rules collapses into the price and
+candle families that were going to exist anyway.
+
+That collapse is the strongest evidence the boundary is in the right place.
+
+### Two things it costs
+
+- **A synthetic is never a trigger price and never an entry level.** Nothing
+  can be bought at a rolling straddle's price; it is an indicator wearing a
+  price's clothes. `is_tradable` keeps orders away, and rules that hand a level
+  to the entry service must hand a level on a *tradable* instrument.
+- **A rolling series is discontinuous.** When the underlying moves enough, the
+  straddle rolls to a new strike and the series steps. "Down 10% from the
+  open" compares this afternoon's at-the-money straddle with this morning's,
+  which is the intended meaning — but it is not a path anything could have
+  held. Rules over rolling synthetics should be written knowing that, and the
+  definition of each synthetic should record its roll rule so the step is
+  explicable rather than mysterious.
+
+**Market data publishes; it does not decide.** That is now a one-line rule,
+and the layer contract already enforces its shape: `marketdata` may not import
+`engine` or `trademgmt`.
+
+## 7. Rules arm; the trigger price fires
 
 The obvious worry with "everything is continuously evaluated" is latency:
 a breakout wants to be acted on in milliseconds, and re-running a rule tree
@@ -167,7 +231,7 @@ bespoke service and the second lifecycle.
 Rules that genuinely need faster evaluation can declare it; the default should
 not be to evaluate everything on every tick.
 
-## 7. Once-ness belongs to the tranche, not the rule
+## 8. Once-ness belongs to the tranche, not the rule
 
 A continuously-evaluated rule set that passes at 13:00:01 also passes at
 13:00:02. Something must make an entry happen once.
@@ -194,7 +258,7 @@ that fired at 13:00. Duplicate detection in trade management is the backstop,
 not the mechanism — a position must not depend on dedup to avoid being taken
 twice.
 
-## 8. What a rule can see
+## 9. What a rule can see
 
 `RuleContext` is the whole surface a rule gets, and getting it right matters
 more than any individual rule, because every future rule is limited by it.
@@ -233,7 +297,7 @@ Three properties it must have:
 Everything returns `None` rather than raising when data is absent, and the
 rule turns that into `UNAVAILABLE` with a sentence naming what was missing.
 
-## 9. Most rules must not remember anything
+## 10. Most rules must not remember anything
 
 State across evaluations is where replay and restart break. The default is
 that a rule derives everything from history: "three consecutive green
@@ -245,32 +309,39 @@ the day", "we already retested" — and is opt-in, keyed by
 restart does not lose it. A rule using memory should say so in its
 registration, because it is the thing that makes a replay diverge.
 
-## 10. Plugging in a new rule
+## 11. Plugging in a new rule
 
 Registration by name, not by inheritance:
 
 ```python
-@rule("vix_below")
+@rule("narrow_range", cost=Cost.CHEAP)
 @dataclass(frozen=True)
-class VixBelow:
-    value: Decimal
+class NarrowRange:
+    """NR7 and its family: today's range the narrowest of the last n."""
+
+    lookback: int = 7
+    interval: str = "1d"
 
     def evaluate(self, context: RuleContext) -> RuleOutcome:
-        vix = context.derived("VIX", context.underlying)
-        if vix is None:
-            return unavailable("VIX is not being published")
-        return passed(f"VIX {vix} is below {self.value}") if vix < self.value \
-            else failed(f"VIX {vix} is not below {self.value}")
+        candles = context.candles(context.underlying, self.interval, self.lookback)
+        if len(candles) < self.lookback:
+            return unavailable(
+                f"only {len(candles)} of {self.lookback} {self.interval} candles"
+            )
+        today, before = candles[-1], candles[:-1]
+        if today.range < min(candle.range for candle in before):
+            return passed(f"range {today.range} is the narrowest of {self.lookback}")
+        return failed(f"range {today.range} is not the narrowest of {self.lookback}")
 ```
 
 - The decorator registers a **name** and a schema derived from the dataclass
-  fields. Configuration stores `{"type": "vix_below", "value": 14}`.
+  fields. Configuration stores `{"type": "narrow_range", "lookback": 7}`.
 - Out-of-tree rules register through a `garuda.rules` entry point, the same
   mechanism `DESIGN.md` already reserves for third-party evaluators. Installing
   a package makes its rules configurable; nothing in core changes.
 - **An unknown rule type is refused at save time and at load time**, never
-  ignored. A rule silently dropped turns "enter only if VIX is low" into
-  "enter", which is the most expensive possible failure mode for this feature.
+  ignored. A rule silently dropped turns "enter only if volatility is low"
+  into "enter", which is the most expensive failure mode this feature has.
 - Parameters are validated against the schema when the strategy is saved, so a
   typo is a form error rather than a 13:00 surprise.
 
@@ -284,7 +355,7 @@ A rule declares two hints, neither affecting its result:
   if the flat cadence ever becomes too slow. Optional; an undeclared
   dependency costs performance, never correctness.
 
-## 11. Safety
+## 12. Safety
 
 A third-party rule is untrusted code inside the trading loop.
 
@@ -298,7 +369,7 @@ A third-party rule is untrusted code inside the trading loop.
   *transition* is journalled. Not every tick — the blocking rule changing is
   the event worth keeping.
 
-## 12. A catalogue
+## 13. A catalogue
 
 What the engine could ship. None of it is engine code — each is a small class
 with a name, and the list is meant to grow.
@@ -334,13 +405,21 @@ comparisons: `supertrend_direction` · `bollinger_squeeze` ·
 `bollinger_break` · `heikin_ashi_colour` · `renko_direction` ·
 `choppiness_below` (a trend-versus-range filter)
 
-**Volatility and option structure**
-`vix_above` / `vix_below` / `vix_change_percent` · `iv_above` / `iv_below`
-(ATM or a named strike) · `iv_percentile(lookback)` · `iv_rank` ·
-`iv_skew` (call minus put) · `pcr_above` / `pcr_below` (OI or volume) ·
-`max_pain_distance` · `straddle_price_change_percent` — the rolling-straddle
-rule · `synthetic_future_basis` · `option_premium_between` ·
-`theta_decay_rate`
+**Statistics over history** — any instrument, synthetic or real
+`percentile_of_history(lookback)` · `rank_in_history(lookback)` ·
+`zscore_from_mean(lookback)` · `at_extreme_of(lookback)`
+
+These are where the volatility family went. "IV percentile" is not an IV idea,
+it is a history idea applied to an IV series, so one rule covers IV percentile,
+PCR percentile and straddle-price percentile at once.
+
+**Volatility and option structure** — what is left after §6
+Almost nothing, and that is the point. VIX, ATM IV, IV skew, PCR, the rolling
+straddle and the synthetic-future basis are all **instruments**, so
+`price_above`, `price_below`, `percent_from_reference`, `indicator` and the
+statistics above already cover them. What genuinely remains needs the whole
+option chain at once rather than one series:
+`max_pain_distance` · `option_premium_between` · `chain_skew_shape`
 
 **Liquidity and microstructure**
 `min_volume` · `min_open_interest` · `oi_change_percent` ·
@@ -352,16 +431,18 @@ rule · `synthetic_future_basis` · `option_premium_between` ·
 `unrealised_pnl_percent` · `time_since_entry` · `breakeven_reached` ·
 `hedge_present` (refuse a naked short if its hedge is gone)
 
-**External and calendar**
-`external_signal(name)` · `event_day` / `not_event_day` · `news_blackout` ·
-`market_regime` (a named classification, once something publishes one)
+**Calendar and regime**
+`event_day` / `not_event_day` · `news_blackout` · `market_regime` (a named
+classification, once something publishes one — as an instrument, naturally)
+
+There is no `external_signal`. See §6.
 
 **Composition**
 `all` · `any` · `not` · `at_least(n, rules)` · `ref(name)` — a named,
 reusable rule set, so common filters are written once and referenced from many
 strategies rather than copied into each.
 
-## 13. Configuration
+## 14. Configuration
 
 Rules are list-valued, and the per-field merge in `engine/config.py` handles a
 list badly: half-overriding a list is a footgun with no good semantics. So:
@@ -373,7 +454,7 @@ list badly: half-overriding a list is a footgun with no good semantics. So:
   that wants the base filters plus one more writes
   `{"type": "all", "rules": [{"type": "ref", "name": "morning-filters"}, ...]}`.
 
-## 14. What this asks the owner to decide
+## 15. What this asks the owner to decide
 
 1. **Exit rules: all, or any?** The description says all must pass, same as
    entry. For entry that is clearly right. For exits, "get out if *any* of
@@ -390,5 +471,13 @@ list badly: half-overriding a list is a footgun with no good semantics. So:
    trigger price. Faster costs CPU across every strategy; slower delays arming.
 4. **Where the catalogue starts.** The whole list above is not a first
    deliverable. A first cut of `all`/`any`/`not`, `at_or_after`, `before`,
-   `indicator`, `breakout` and `vix_below` would carry the shapes already
-   configured today, and everything else is additive by construction.
+   `indicator`, `breakout` and `price_below` would carry the shapes already
+   configured today, and everything else is additive by construction. Note
+   that `vix_below` is not on that list and does not need to be: VIX is an
+   instrument, so `price_below` is the VIX rule.
+5. **Who defines a synthetic.** Market data computes and publishes them, but
+   something has to say *which* ones exist — "the rolling at-the-money straddle
+   of this underlying on the nearest weekly expiry, rolled when spot moves half
+   a strike". That is configuration, it needs a table, and its roll rule is
+   what makes the resulting series explicable. Worth settling before the first
+   synthetic is built, because every rule written against one inherits it.
