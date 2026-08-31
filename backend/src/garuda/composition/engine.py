@@ -22,6 +22,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
+from functools import partial
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -349,9 +350,27 @@ def _build_client(
 
     book = TradingClientManager(account.id, account.label, instrument, alerts)
     tracker = TradeTracker(book, broker.cancel, clock, alerts)
+
+    gate = RiskGate(default_checks())
+    watching = partial(
+        gated,
+        gate=gate,
+        limits=limits,
+        instruments=instrument,
+        quotes=last_tick,
+        clock=clock,
+        label=account.label,
+        realized_today=realised_today(book.trades),
+    )
+    # Both are gated; they differ in which checks have any business stopping
+    # them. A stop-loss must go out on the day a loss limit was reached, and a
+    # square-off must go out whatever the spread has done.
+    entry_placement = watching(broker.place)
+    exit_placement = watching(broker.place, is_exit=True)
+
     protection = ProtectiveOrderService(
         book,
-        broker.place,
+        exit_placement,
         instrument,
         last_tick,
         price_band,
@@ -376,20 +395,6 @@ def _build_client(
         result = await protection.place_stop(trade)
         return result.order_id
 
-    # The gate stands in front of entries and nowhere else. An account past a
-    # limit must stop taking risk, and must never be stopped from leaving the
-    # risk it has -- so the protective and square-off services above were
-    # given the plain placement deliberately.
-    entry_placement = gated(
-        broker.place,
-        gate=RiskGate(default_checks()),
-        limits=limits,
-        instruments=instrument,
-        quotes=last_tick,
-        clock=clock,
-        label=account.label,
-        realized_today=realised_today(book.trades),
-    )
     coordinator = LegCoordinator(book, square_off.request, alerts)
     return ClientParts(
         account=account,

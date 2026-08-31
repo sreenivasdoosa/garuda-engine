@@ -10,6 +10,9 @@ Two refusals carry the weight, and they are the same for every kind:
   dropped turns "enter only if volatility is low" into "enter".
 * **A parameter nobody recognises** is refused too. A typo must be a
   configuration error, not a condition that quietly stopped applying.
+
+It sits in the core rather than in the engine because market data builds its
+synthetics the same way, and an adapter may not reach up into the engine.
 """
 
 from __future__ import annotations

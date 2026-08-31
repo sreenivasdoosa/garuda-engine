@@ -8,6 +8,10 @@ listed is a real and ordinary outcome, especially in the wings.
 
 The only vocabulary in use is moneyness: at the money, or a number of strikes
 either side of it.
+
+The arithmetic half is here in the domain, on nothing but a price and a gap,
+so that market data can locate the money for a synthetic straddle without
+reaching up into the engine.
 """
 
 from __future__ import annotations

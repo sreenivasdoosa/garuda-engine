@@ -24,6 +24,13 @@ class KillSwitchCheck:
 
     breach_type: BreachType = BreachType.KILL_SWITCH_ACTIVE
 
+    @property
+    def guards_exits(self) -> bool:
+        """A kill switch stops an operator taking risk. Leaving risk already
+        taken is the one thing it must never prevent, and the reference
+        engine says so in as many words: always allow closing positions."""
+        return False
+
     def __call__(self, context: RiskContext) -> Breach | None:
         if context.kill_switch_reason is None:
             return None
@@ -35,6 +42,12 @@ class MarketOpenCheck:
     """An order outside market hours is a bug, not an opportunity."""
 
     breach_type: BreachType = BreachType.MARKET_CLOSED
+
+    @property
+    def guards_exits(self) -> bool:
+        """The exchange refuses it either way, so refusing here costs one
+        rejection and gives a clearer reason."""
+        return True
 
     def __call__(self, context: RiskContext) -> Breach | None:
         if context.market_open:
@@ -51,6 +64,12 @@ class QuoteAvailableCheck:
 
     breach_type: BreachType = BreachType.QUOTE_UNAVAILABLE
 
+    @property
+    def guards_exits(self) -> bool:
+        """Not knowing the price is a reason not to open a position, and never
+        a reason to keep one."""
+        return False
+
     def __call__(self, context: RiskContext) -> Breach | None:
         if context.quote is not None:
             return None
@@ -62,6 +81,11 @@ class PriceNonZeroCheck:
     """A zero price is a feed defect that reads as a free trade."""
 
     breach_type: BreachType = BreachType.PRICE_ZERO
+
+    @property
+    def guards_exits(self) -> bool:
+        """As above: a bad price stops an entry, never an exit."""
+        return False
 
     def __call__(self, context: RiskContext) -> Breach | None:
         quote = context.quote
@@ -78,6 +102,11 @@ class StaleQuoteCheck:
     """A quote older than the limit is not a price, it is a memory."""
 
     breach_type: BreachType = BreachType.PRICE_STALE
+
+    @property
+    def guards_exits(self) -> bool:
+        """As above."""
+        return False
 
     def __call__(self, context: RiskContext) -> Breach | None:
         quote = context.quote
@@ -98,6 +127,11 @@ class StaleQuoteCheck:
 class OrderQuantityCheck:
     breach_type: BreachType = BreachType.ORDER_QTY_EXCEEDED
 
+    @property
+    def guards_exits(self) -> bool:
+        """A size cap is about how much risk may be taken on."""
+        return False
+
     def __call__(self, context: RiskContext) -> Breach | None:
         limit = context.limits.max_order_quantity
         if limit is None or context.request.quantity <= limit:
@@ -113,6 +147,11 @@ class OrderValueCheck:
     """Guards against a sizing bug turning a lot into a hundred."""
 
     breach_type: BreachType = BreachType.ORDER_VALUE_EXCEEDED
+
+    @property
+    def guards_exits(self) -> bool:
+        """As above."""
+        return False
 
     def __call__(self, context: RiskContext) -> Breach | None:
         limit = context.limits.max_order_value
@@ -134,6 +173,12 @@ class FreezeQuantityCheck:
     """
 
     breach_type: BreachType = BreachType.FREEZE_QTY_EXCEEDED
+
+    @property
+    def guards_exits(self) -> bool:
+        """The exchange refuses anything above its freeze limit whichever way
+        the order points, so an exit above it has to be sliced too."""
+        return True
 
     def __call__(self, context: RiskContext) -> Breach | None:
         if not context.instrument.exceeds_freeze_limit(context.request.quantity):
@@ -161,6 +206,12 @@ class DailyLossCheck:
 
     breach_type: BreachType = BreachType.DAILY_LOSS_EXCEEDED
 
+    @property
+    def guards_exits(self) -> bool:
+        """The point of a loss limit is to stop taking more risk. Blocking an
+        exit at the limit would turn a bad day into an uncapped one."""
+        return False
+
     def __call__(self, context: RiskContext) -> Breach | None:
         limit = context.limits.max_daily_loss
         realized = context.realized_pnl_today
@@ -180,6 +231,11 @@ class SpreadCheck:
     """A wide spread means the exit will cost more than the model assumes."""
 
     breach_type: BreachType = BreachType.SPREAD_WIDE
+
+    @property
+    def guards_exits(self) -> bool:
+        """A wide spread makes an exit expensive. Staying in is more expensive."""
+        return False
 
     def __call__(self, context: RiskContext) -> Breach | None:
         limit = context.limits.max_spread_fraction
@@ -202,6 +258,11 @@ class SpreadCheck:
 @dataclass(frozen=True, slots=True)
 class VolumeCheck:
     breach_type: BreachType = BreachType.VOLUME_LOW
+
+    @property
+    def guards_exits(self) -> bool:
+        """Thin volume is a reason not to arrive, not a reason to stay."""
+        return False
 
     def __call__(self, context: RiskContext) -> Breach | None:
         limit = context.limits.min_volume

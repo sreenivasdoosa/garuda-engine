@@ -4,14 +4,18 @@ The checks existed and nothing ran them: `RiskGate` was constructed only in
 tests, so every entry and every protective order went to the broker unchecked.
 This is the wiring that makes them count.
 
-**Entries are gated. Exits never are.** A risk breach must stop an account
-taking *more* risk and must never stop it getting out of the risk it already
-has — a limit that blocked a stop-loss would turn a bad day into an uncapped
-one. The request itself cannot tell the two apart, so the distinction is made
-where it is known: the entry service gets the gated placement and the
-protective and square-off services get the plain one. The reference engine
-reaches the same conclusion by a different route, with a
-`skip_price_validation_for_exit` flag on its configuration.
+**Everything is gated, and an exit is gated differently.** A breach must stop
+an account taking *more* risk and must never stop it leaving the risk it has,
+so the checks that would prevent closing stand down for an exit — each check
+answers that for itself. What survives on the exit path is what the exchange
+would refuse anyway.
+
+The request cannot tell an entry from an exit, so the distinction is made
+where it is known: the entry service is wired with one placement and the
+protective and square-off services with another. The reference engine draws
+the same line from the other side, with `skip_price_validation_for_exit` on
+its configuration and an explicit "always allow closing positions" on the
+checks it bypasses.
 
 **A refusal is definitive.** Nothing left the engine, so it is raised as an
 `OrderRejectedError` — which the entry service already treats as "no order
@@ -63,10 +67,13 @@ def gated(
     clock: Clock,
     label: str,
     realized_today: DayResult | None = None,
+    is_exit: bool = False,
 ) -> PlaceOrder:
     """Wrap a placement so the risk gate sees it first.
 
-    Only ever used for entries. See the module docstring.
+    ``is_exit`` is set where it is known — by whoever wires the service, since
+    the request itself cannot tell. It does not turn the gate off: it tells the
+    gate which checks have any business stopping this order.
     """
 
     async def place_if_allowed(request: OrderRequest) -> BrokerOrderId:
@@ -80,14 +87,20 @@ def gated(
                 "about this order can be checked"
             )
 
+        now = clock.now()
         decision = gate.evaluate(
             RiskContext(
                 request=request,
                 instrument=instrument,
-                now=clock.now(),
+                now=now,
                 limits=limits,
+                # From the venue's own calendar. Left to its default it reads
+                # as "always open", which is how a check can look configured
+                # and never once fire.
+                market_open=instrument.exchange.is_open(now),
                 quote=quotes(request.instrument),
                 realized_pnl_today=realized_today() if realized_today is not None else None,
+                is_exit=is_exit,
             )
         )
         if not decision.allowed:

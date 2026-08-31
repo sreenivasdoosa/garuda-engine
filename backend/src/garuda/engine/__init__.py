@@ -1,5 +1,6 @@
 """The strategy engine: specs, selectors, the evaluator, and the pipeline."""
 
+from garuda.domain.strikes import AT_THE_MONEY, Moneyness, atm_strike, strike_for
 from garuda.engine.config import ConfigLayer, ResolvedConfig, resolve
 from garuda.engine.context import (
     EvaluationContext,
@@ -43,7 +44,6 @@ from garuda.engine.strategy import (
     StrategyRunner,
     StrategySubscription,
 )
-from garuda.engine.strikes import AT_THE_MONEY, Moneyness, atm_strike, strike_for
 from garuda.engine.tranches import (
     Tranche,
     TrancheId,

@@ -62,6 +62,13 @@ class RiskContext:
     #: rather than left open: it was `object` and nothing read it, which is
     #: how the daily loss limit came to be configurable and unenforced.
     realized_pnl_today: Money | None = None
+    #: Whether this order is leaving a position rather than taking one.
+    #:
+    #: An exit is checked, but not by everything: a limit that stops an
+    #: account taking more risk must not stop it leaving the risk it has, so
+    #: the checks that would prevent closing stand down. Which ones is each
+    #: check's own answer, not this flag's.
+    is_exit: bool = False
 
 
 @runtime_checkable
@@ -70,6 +77,18 @@ class RiskCheck(Protocol):
 
     @property
     def breach_type(self) -> BreachType: ...
+
+    @property
+    def guards_exits(self) -> bool:
+        """Whether this check has any business stopping an exit.
+
+        Most do not. A check that caps how much risk an account may take is
+        about entries by definition, and running it against an exit would trap
+        a position on exactly the day the cap was reached. The few that answer
+        True are the ones a broker would refuse anyway, or that protect the
+        exit itself.
+        """
+        ...
 
     def __call__(self, context: RiskContext) -> Breach | None: ...
 
@@ -105,6 +124,8 @@ class RiskGate:
     def evaluate(self, context: RiskContext) -> RiskDecision:
         breaches: list[Breach] = []
         for check in self._checks:
+            if context.is_exit and not check.guards_exits:
+                continue
             try:
                 breach = check(context)
             except Exception as error:

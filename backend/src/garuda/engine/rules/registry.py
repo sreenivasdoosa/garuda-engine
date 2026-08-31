@@ -5,7 +5,7 @@ stores ``{"type": "price_below", "value": 14}`` and the engine knows nothing
 about what any particular rule means. A new rule is a new class with a
 decorator; nothing here changes, and nothing above here changes either.
 
-The machinery is :mod:`garuda.engine.plugins`, shared with selectors so that a
+The machinery is :mod:`garuda.core.plugins`, shared with selectors so that a
 second kind of pluggable thing cost nothing and a third will not either.
 """
 
@@ -14,7 +14,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from typing import Protocol, runtime_checkable
 
-from garuda.engine.plugins import TYPE_KEY, Cost, Registration, Registry
+from garuda.core.plugins import TYPE_KEY, Cost, Registration, Registry
 from garuda.engine.rules.context import RuleContext
 from garuda.engine.rules.outcome import RuleOutcome
 

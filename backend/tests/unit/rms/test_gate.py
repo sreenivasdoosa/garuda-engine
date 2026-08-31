@@ -266,6 +266,7 @@ class TestTheGate:
 
         class BrokenCheck:
             breach_type = BreachType.CHECK_FAILED
+            guards_exits = True
 
             def __call__(self, context: RiskContext) -> Breach | None:
                 raise ZeroDivisionError("this check has a bug")
@@ -278,6 +279,7 @@ class TestTheGate:
     def test_one_broken_check_does_not_stop_the_others(self, nifty_call):
         class BrokenCheck:
             breach_type = BreachType.CHECK_FAILED
+            guards_exits = True
 
             def __call__(self, context: RiskContext) -> Breach | None:
                 raise ValueError("bug")

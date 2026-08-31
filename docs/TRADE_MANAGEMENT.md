@@ -357,17 +357,35 @@ Each leg keeps its own stop as well. The combined level is an additional exit
 for the group, in the same way an exit rule set is (`STRATEGY_RULES.md` §5):
 whichever comes first.
 
-### Risk gates entries, and nothing gates an exit
+### Risk gates every order, and gates an exit differently
 
 A breach must stop an account taking *more* risk and must never stop it
 leaving the risk it has. A limit that blocked a stop-loss would turn a bad day
 into an uncapped one.
 
+That does not mean exits go out unchecked. Every order passes the gate; on an
+exit the checks that could only prevent closing stand down, and each check
+answers for itself whether it has any business stopping one. Of the eleven,
+two say yes — the market being open, and the exchange's freeze quantity. Both
+are conditions the exchange would refuse on anyway, and being told here names
+the reason more clearly than a broker rejection does. The rest — the kill
+switch, the daily loss limit, order size and value caps, and every check that
+needs a usable quote — stand down. Not knowing the price is a reason not to
+open a position and never a reason to keep one.
+
 An `OrderRequest` cannot tell an entry from an exit, so the distinction is made
-where it is known rather than carried on the request: the entry service is
-given the gated placement, and the protective and square-off services the
-plain one. The reference engine arrives at the same place from the other
-direction, with a `skip_price_validation_for_exit` flag on its configuration.
+where it is known rather than carried on the request: the entry service and the
+protective and square-off services are wired with two different placements off
+the same gate. The reference engine draws the same line from the other
+direction, with a `skip_price_validation_for_exit` flag on its configuration
+and an explicit "always allow closing positions" on the checks it bypasses.
+
+The kill switch is the one an operator would guess wrong: it stops an account
+taking risk and must never stop it closing. It is also not yet reachable —
+`kill_switches` is a table with no runtime service behind it, so nothing sets
+the reason the check reads. The market-open check *is* reachable: the gate
+asks the venue's own calendar, which it did not before, and an order outside
+the session is now refused by name rather than by the broker an hour later.
 
 A refusal is raised as `OrderRejectedError`, which is what trade management
 already reads as "no order exists, so a later attempt may safely send a fresh

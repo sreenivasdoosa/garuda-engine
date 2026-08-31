@@ -11,8 +11,8 @@ import logging
 from collections.abc import Callable, Mapping, Sequence
 from typing import Protocol, runtime_checkable
 
+from garuda.core.plugins import Registration, Registry
 from garuda.domain.enums import Direction
-from garuda.engine.plugins import Registration, Registry
 from garuda.engine.rules.context import RuleContext
 
 logger = logging.getLogger(__name__)

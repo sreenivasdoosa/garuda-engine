@@ -9,7 +9,7 @@ import pytest
 from garuda.domain import Currency, Money
 from garuda.domain.enums import OptionType
 from garuda.domain.errors import DomainError
-from garuda.engine.strikes import Moneyness, atm_strike, strike_for
+from garuda.domain.strikes import Moneyness, atm_strike, strike_for
 
 GAP = Decimal(50)
 

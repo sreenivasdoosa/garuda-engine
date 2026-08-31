@@ -29,13 +29,13 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Protocol, runtime_checkable
 
+from garuda.core.plugins import Registration, Registry
 from garuda.domain.enums import ExpiryKind, OptionType
 from garuda.domain.errors import DomainError
 from garuda.domain.instrument import InstrumentId
 from garuda.domain.market import Tick
 from garuda.domain.money import Currency, Money
-from garuda.engine.plugins import Registration, Registry
-from garuda.engine.strikes import atm_strike
+from garuda.domain.strikes import atm_strike
 from garuda.marketdata.pricing import implied_volatility, years_to_expiry
 
 logger = logging.getLogger(__name__)

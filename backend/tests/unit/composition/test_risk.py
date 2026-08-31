@@ -1,8 +1,13 @@
-"""Putting the risk gate in front of entries.
+"""Putting the risk gate in front of orders.
 
 The checks existed and nothing ran them. These are about the wiring: that an
-entry is refused when it should be, that an exit is never refused, and that a
-refusal arrives in the shape the entry service knows how to handle.
+entry is refused when it should be, that an exit is refused only by the two
+checks with any business stopping one, and that a refusal arrives in the shape
+the entry service knows how to handle.
+
+Every check is pinned from both sides here — stands down on an exit, still
+fires on an entry — because a `guards_exits` that silently read True would
+trap a position on exactly the day the limit was reached.
 """
 
 from __future__ import annotations
@@ -19,16 +24,18 @@ from garuda.domain.client import TradingClientId
 from garuda.domain.enums import InstrumentKind, Segment
 from garuda.domain.exchange import Exchange
 from garuda.domain.instrument import Instrument, InstrumentId
-from garuda.domain.market import Tick
+from garuda.domain.market import DepthLevel, Tick
 from garuda.domain.order import BrokerOrderId, ClientOrderId, OrderRequest, Side
 from garuda.domain.trade import Trade, TradeId
 from garuda.domain.trade_state import TradeExitReason, TradeState
 from garuda.protocols.broker import OrderRejectedError
 from garuda.rms.checks import default_checks
-from garuda.rms.gate import RiskGate
+from garuda.rms.gate import RiskContext, RiskGate
 from garuda.rms.limits import RiskLimits
 
-NOW = datetime(2026, 8, 31, 10, 0, tzinfo=UTC)
+#: 10:30 IST on a Monday — inside the session, because the gate now asks the
+#: venue calendar and every order outside it is refused.
+NOW = datetime(2026, 8, 31, 5, 0, tzinfo=UTC)
 CLIENT = TradingClientId("appa")
 STOCK = InstrumentId("NSE:RELIANCE")
 
@@ -64,6 +71,21 @@ def an_order(quantity: int = 10) -> OrderRequest:
 
 def a_quote(at: datetime = NOW) -> Tick:
     return Tick(instrument=STOCK, last_price=rupees("2500"), timestamp=at)
+
+
+def a_wide_quote() -> Tick:
+    """A hundred rupees across, on a 2,500 stock: 4% of the price."""
+    return Tick(
+        instrument=STOCK,
+        last_price=rupees("2500"),
+        timestamp=NOW,
+        bids=(DepthLevel(price=rupees("2450"), quantity=100),),
+        asks=(DepthLevel(price=rupees("2550"), quantity=100),),
+    )
+
+
+def a_thin_quote() -> Tick:
+    return Tick(instrument=STOCK, last_price=rupees("2500"), timestamp=NOW, volume=12)
 
 
 def wrap(
@@ -308,3 +330,252 @@ def _accepting(placed: list[OrderRequest]) -> PlaceOrder:
         return BrokerOrderId("250831000001")
 
     return place
+
+
+# -- exits are gated differently, not ungated -------------------------------
+
+
+def leaving(
+    stock: Instrument,
+    *,
+    limits: RiskLimits | None = None,
+    quote: Tick | None = None,
+    placed: list[OrderRequest] | None = None,
+    realized: Money | None = None,
+    at: datetime = NOW,
+) -> PlaceOrder:
+    """The placement the protective and square-off services are given."""
+
+    async def place(request: OrderRequest) -> BrokerOrderId:
+        if placed is not None:
+            placed.append(request)
+        return BrokerOrderId("250831000001")
+
+    return gated(
+        place,
+        gate=RiskGate(default_checks()),
+        limits=limits or RiskLimits(),
+        instruments=lambda instrument: stock,
+        quotes=lambda instrument: quote,
+        clock=ReplayClock(at),
+        label="Appa",
+        realized_today=(lambda: realized) if realized is not None else None,
+        is_exit=True,
+    )
+
+
+async def test_a_stop_loss_goes_out_on_the_day_the_limit_was_reached(
+    stock: Instrument,
+) -> None:
+    """The one that matters. A loss limit that blocked an exit would turn a
+    bad day into an uncapped one."""
+    placed: list[OrderRequest] = []
+    place = leaving(
+        stock,
+        limits=RiskLimits(max_daily_loss=rupees("40000")),
+        quote=a_quote(),
+        placed=placed,
+        realized=rupees("-500000"),
+    )
+
+    await place(an_order())
+
+    assert len(placed) == 1
+
+
+async def test_an_exit_is_not_stopped_by_a_size_cap(stock: Instrument) -> None:
+    """A cap on how much may be taken on has nothing to say about leaving."""
+    placed: list[OrderRequest] = []
+    place = leaving(stock, limits=RiskLimits(max_order_quantity=5), quote=a_quote(), placed=placed)
+
+    await place(an_order(10))
+
+    assert len(placed) == 1
+
+
+async def test_an_exit_is_not_stopped_by_a_missing_price(stock: Instrument) -> None:
+    """Not knowing the price is a reason not to open a position and never a
+    reason to keep one."""
+    placed: list[OrderRequest] = []
+    place = leaving(stock, quote=None, placed=placed)
+
+    await place(an_order())
+
+    assert len(placed) == 1
+
+
+async def test_an_exit_is_not_stopped_by_a_stale_price(stock: Instrument) -> None:
+    placed: list[OrderRequest] = []
+    place = leaving(stock, quote=a_quote(NOW - timedelta(minutes=5)), placed=placed)
+
+    await place(an_order())
+
+    assert len(placed) == 1
+
+
+async def test_an_exit_is_still_stopped_by_what_the_exchange_would_refuse(
+    nse: Exchange,
+) -> None:
+    """Above the freeze limit the exchange refuses it whichever way the order
+    points, so an exit above it has to be sliced too — and being told here is
+    a clearer reason than a broker rejection."""
+    small = Instrument(
+        id=STOCK,
+        exchange=nse,
+        segment=Segment.FNO,
+        kind=InstrumentKind.EQUITY,
+        trading_symbol="RELIANCE",
+        lot_size=1,
+        tick_size=Decimal("0.05"),
+        freeze_quantity=5,
+    )
+    placed: list[OrderRequest] = []
+    place = leaving(small, quote=a_quote(), placed=placed)
+
+    with pytest.raises(OrderRejectedError, match="freeze"):
+        await place(an_order(10))
+
+    assert placed == []
+
+
+async def test_an_exit_is_not_gated_away_entirely(stock: Instrument) -> None:
+    """It goes through the gate; it is not waved past it. An exit for an
+    instrument nobody can identify is still refused."""
+    unknown = OrderRequest(
+        client_order_id=ClientOrderId("gar-3"),
+        trading_client=CLIENT,
+        instrument=InstrumentId("NSE:NOTLISTED"),
+        side=Side.SELL,
+        quantity=1,
+        order_type=OrderType.MARKET,
+        product=ProductType.MIS,
+    )
+    place = gated(
+        _accepting([]),
+        gate=RiskGate(default_checks()),
+        limits=RiskLimits(),
+        instruments=lambda instrument: None,
+        quotes=lambda instrument: a_quote(),
+        clock=ReplayClock(NOW),
+        label="Appa",
+        is_exit=True,
+    )
+
+    with pytest.raises(OrderRejectedError, match="instrument master"):
+        await place(unknown)
+
+
+async def test_an_exit_is_not_stopped_by_a_kill_switch(stock: Instrument) -> None:
+    """The one an operator would guess wrong. A kill switch stops an account
+    taking risk; the risk already taken still has to be closable, and the
+    reference engine says so in as many words."""
+    context = RiskContext(
+        request=an_order(),
+        instrument=stock,
+        now=NOW,
+        limits=RiskLimits(),
+        quote=a_quote(),
+        kill_switch_reason="operator halted trading",
+        is_exit=True,
+    )
+
+    assert RiskGate(default_checks()).evaluate(context).allowed
+
+
+async def test_an_entry_is_stopped_by_a_kill_switch(stock: Instrument) -> None:
+    """The other half, so the check is not merely unreachable."""
+    context = RiskContext(
+        request=an_order(),
+        instrument=stock,
+        now=NOW,
+        limits=RiskLimits(),
+        quote=a_quote(),
+        kill_switch_reason="operator halted trading",
+    )
+
+    decision = RiskGate(default_checks()).evaluate(context)
+
+    assert not decision.allowed
+    assert "operator halted" in decision.reason
+
+
+async def test_an_exit_is_not_stopped_by_a_zero_price(stock: Instrument) -> None:
+    """A zero print is a feed defect. It stops an entry -- it reads as a free
+    trade -- and it is not a reason to sit in a position."""
+    placed: list[OrderRequest] = []
+    zero = Tick(instrument=STOCK, last_price=rupees("0"), timestamp=NOW)
+    place = leaving(stock, quote=zero, placed=placed)
+
+    await place(an_order())
+
+    assert len(placed) == 1
+
+
+async def test_an_exit_is_not_stopped_by_an_order_value_cap(stock: Instrument) -> None:
+    placed: list[OrderRequest] = []
+    place = leaving(
+        stock,
+        limits=RiskLimits(max_order_value=rupees("1000")),
+        quote=a_quote(),
+        placed=placed,
+    )
+
+    await place(an_order(10))
+
+    assert len(placed) == 1
+
+
+async def test_an_exit_is_not_stopped_by_a_wide_spread(stock: Instrument) -> None:
+    """A wide spread makes leaving expensive. Staying is more expensive."""
+    placed: list[OrderRequest] = []
+    place = leaving(
+        stock,
+        limits=RiskLimits(max_spread_fraction=Decimal("0.01")),
+        quote=a_wide_quote(),
+        placed=placed,
+    )
+
+    await place(an_order())
+
+    assert len(placed) == 1
+
+
+async def test_an_entry_is_stopped_by_a_wide_spread(stock: Instrument) -> None:
+    with pytest.raises(OrderRejectedError, match="spread"):
+        await wrap(
+            stock,
+            limits=RiskLimits(max_spread_fraction=Decimal("0.01")),
+            quote=a_wide_quote(),
+        )(an_order())
+
+
+async def test_an_exit_is_not_stopped_by_thin_volume(stock: Instrument) -> None:
+    placed: list[OrderRequest] = []
+    place = leaving(
+        stock,
+        limits=RiskLimits(min_volume=100_000),
+        quote=a_thin_quote(),
+        placed=placed,
+    )
+
+    await place(an_order())
+
+    assert len(placed) == 1
+
+
+async def test_an_entry_is_stopped_by_thin_volume(stock: Instrument) -> None:
+    with pytest.raises(OrderRejectedError):
+        await wrap(stock, limits=RiskLimits(min_volume=100_000), quote=a_thin_quote())(an_order())
+
+
+async def test_an_exit_after_the_close_is_refused(stock: Instrument) -> None:
+    """The exchange refuses it whichever way the order points, and a named
+    refusal here is clearer than a broker rejection an hour later."""
+    placed: list[OrderRequest] = []
+    after_hours = datetime(2026, 8, 31, 12, 0, tzinfo=UTC)
+    place = leaving(stock, quote=a_quote(after_hours), placed=placed, at=after_hours)
+
+    with pytest.raises(OrderRejectedError, match="closed"):
+        await place(an_order())
+
+    assert placed == []

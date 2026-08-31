@@ -27,9 +27,9 @@ from decimal import Decimal
 from itertools import pairwise
 from typing import Protocol, runtime_checkable
 
+from garuda.core.plugins import Registration, Registry
 from garuda.domain.errors import DomainError
 from garuda.domain.market import Bar
-from garuda.engine.plugins import Registration, Registry
 
 HUNDRED = Decimal(100)
 TWO = Decimal(2)
