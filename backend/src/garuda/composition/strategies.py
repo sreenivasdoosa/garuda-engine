@@ -194,6 +194,7 @@ def _subscriptions(
                 capital=Money(Decimal(row.capital), currency),
                 entry_rules=strategy.entry_rules,
                 direction_rules=strategy.direction_rules,
+                exit_rules=strategy.exit_rules,
                 tranches=strategy.tranches,
                 is_paper=bool(row.is_paper_trading),
             )

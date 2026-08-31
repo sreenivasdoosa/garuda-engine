@@ -21,16 +21,18 @@ Two things this owns that nothing below it can:
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 
 from garuda.alerts.manager import AlertManager
-from garuda.composition.engine import Engine
+from garuda.composition.engine import ClientParts, Engine
 from garuda.composition.routing import deliver
-from garuda.composition.strategies import Loaded
+from garuda.composition.strategies import Loaded, Strategy
 from garuda.composition.strategy_context import LiveContext, MarketView, day_conditions_for
 from garuda.domain.alert import EntityType
 from garuda.domain.exchange import Exchange
+from garuda.domain.trade import Trade
+from garuda.engine.daycondition import DayCondition
 from garuda.engine.signals import SignalBatch
 from garuda.engine.strategy import Result, StrategyRunner, StrategySubscription
 from garuda.engine.tranches import TrancheLedger
@@ -124,6 +126,7 @@ class StrategyLoop:
         )
 
         results: list[Result] = []
+        await self._consider_exits(subscription, client, conditions)
         for tranche in subscription.tranches:
             state = self.ledger.get(subscription.identity(tranche, now))
             if state is not None and not state.is_open:
@@ -133,23 +136,67 @@ class StrategyLoop:
                     await self.runner.evaluate(
                         subscription,
                         tranche,
-                        LiveContext(
-                            market=self.market,
-                            book=client.book,
-                            now=now,
-                            trading_day=self.trading_day,
-                            strategy=subscription.spec.name,
-                            trading_client=subscription.trading_client,
-                            tranche=tranche,
-                            config=strategy.configuration(tranche, conditions),
-                            underlying=subscription.spec.underlying,
-                            day_conditions=conditions,
-                        ),
+                        self._context(subscription, strategy, tranche, conditions, client, now=now),
                     )
                 )
             except Exception as error:
                 await self._failed(subscription, tranche, error)
         return results
+
+    def _context(
+        self,
+        subscription: StrategySubscription,
+        strategy: Strategy,
+        tranche: int,
+        conditions: frozenset[DayCondition],
+        client: ClientParts,
+        *,
+        now: datetime | None = None,
+        trade: Trade | None = None,
+    ) -> LiveContext:
+        """One evaluation's view. Built fresh, because it holds a moment."""
+        return LiveContext(
+            market=self.market,
+            book=client.book,
+            now=now or self.clock.now(),
+            trading_day=self.trading_day,
+            strategy=subscription.spec.name,
+            trading_client=subscription.trading_client,
+            tranche=tranche,
+            config=strategy.configuration(tranche, conditions),
+            underlying=subscription.spec.underlying,
+            day_conditions=conditions,
+            trade=trade,
+        )
+
+    async def _consider_exits(
+        self,
+        subscription: StrategySubscription,
+        client: ClientParts,
+        conditions: frozenset[DayCondition],
+    ) -> None:
+        """Whether anything already on should come off early.
+
+        Before the entries, because a strategy that wants out and back in on
+        the same sweep should get out first — and because a position leaving
+        frees the capital the entry will size against.
+        """
+        # Whether there are exit rules at all is the runner's to decide, and
+        # having it in two places is having it disagree in one of them.
+        strategy = self.loaded.strategies.get(subscription.spec.name)
+        if strategy is None:
+            return
+
+        def context_for(trade: Trade) -> LiveContext:
+            return self._context(subscription, strategy, 0, conditions, client, trade=trade)
+
+        runner = replace(self.runner, request_exit=client.square_off.request)
+        try:
+            await runner.consider_exits(
+                subscription, client.book.trades_for(subscription.spec.name), context_for
+            )
+        except Exception:
+            logger.exception("%s: exit rules could not be evaluated", subscription.spec.name)
 
     async def _failed(
         self, subscription: StrategySubscription, tranche: int, error: Exception

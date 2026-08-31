@@ -30,7 +30,8 @@ from garuda.domain.exchange import Exchange
 from garuda.domain.instrument import Instrument, InstrumentId
 from garuda.domain.intent import LegRole
 from garuda.domain.market import Bar, BarInterval, Tick
-from garuda.domain.trade import Trade
+from garuda.domain.trade import Trade, TradeId
+from garuda.domain.trade_state import TradeExitReason, TradeState
 from garuda.engine.config import ConfigLayer, ResolvedConfig, resolve
 from garuda.engine.rules.compose import AllOf
 from garuda.engine.rules.outcome import RuleOutcome, failed, passed
@@ -140,11 +141,13 @@ class World:
 
 @dataclass(frozen=True)
 class Says:
-    """A rule that answers however a test needs."""
+    """A rule that answers however a test needs, and records that it ran."""
 
     verdict: bool = True
+    ran: list[str] = field(default_factory=list)
 
     def evaluate(self, context: object) -> RuleOutcome:
+        self.ran.append("evaluated")
         return passed("the condition holds") if self.verdict else failed("not yet")
 
 
@@ -665,3 +668,184 @@ async def test_trailing_is_carried_from_the_tranche_s_configuration(
     await runner(catalogue, world, doorman).evaluate(subscribed(), 0, world)
 
     assert doorman.batches[0].signals[0].protection.is_trailing
+
+
+# -- exits ------------------------------------------------------------------
+
+
+@dataclass
+class Exits:
+    """Stands in for trade management's square-off queue."""
+
+    requests: list[tuple[TradeId, TradeExitReason]] = field(default_factory=list)
+    accept: bool = True
+
+    async def __call__(self, trade: Trade, reason: TradeExitReason) -> bool:
+        self.requests.append((trade.id, reason))
+        return self.accept
+
+
+def a_position(identity: str = "t1", **overrides: object) -> Trade:
+    defaults: dict[str, object] = {
+        "id": TradeId(identity),
+        "trading_client": CLIENT,
+        "instrument": InstrumentId("NFO:N25000CE"),
+        "strategy": "straddle",
+        "direction": Direction.SHORT,
+        "product": ProductType.NRML,
+        "quantity": 75,
+        "state": TradeState.ACTIVE,
+        "filled_quantity": 75,
+        "entry": rupees("150"),
+        "started_at": NOW,
+    }
+    return Trade(**{**defaults, **overrides})  # type: ignore[arg-type]
+
+
+def exiting_runner(
+    catalogue: dict[InstrumentId, Instrument], world: World, exits: Exits
+) -> StrategyRunner:
+    factory = SignalFactory(Sizer(FixedLotAllocator(2)), catalogue.get, world.quote)
+    return StrategyRunner(
+        factory=factory,
+        deliver=Doorman(),
+        ledger=TrancheLedger(TODAY),
+        request_exit=exits,
+    )
+
+
+async def test_an_exit_rule_that_holds_takes_the_position_off(
+    catalogue: dict[InstrumentId, Instrument], world: World
+) -> None:
+    exits = Exits()
+    subject = exiting_runner(catalogue, world, exits)
+    subscription = subscribed(exit_rules=AllOf((Says(True),)))
+
+    decided = await subject.consider_exits(subscription, [a_position()], lambda trade: world)
+
+    assert [decision.requested for decision in decided] == [True]
+    assert exits.requests == [(TradeId("t1"), TradeExitReason.EXIT_SIGNAL)]
+
+
+async def test_an_exit_rule_that_does_not_hold_leaves_it_on(
+    catalogue: dict[InstrumentId, Instrument], world: World
+) -> None:
+    exits = Exits()
+    subject = exiting_runner(catalogue, world, exits)
+
+    await subject.consider_exits(
+        subscribed(exit_rules=AllOf((Says(False),))), [a_position()], lambda t: world
+    )
+
+    assert exits.requests == []
+
+
+async def test_a_strategy_with_no_exit_rules_asks_nothing(
+    catalogue: dict[InstrumentId, Instrument], world: World
+) -> None:
+    """The stop, the target and the square-off deadline are the ordinary ways
+    out, and they need no help from here."""
+    exits = Exits()
+    subject = exiting_runner(catalogue, world, exits)
+
+    decided = await subject.consider_exits(subscribed(), [a_position()], lambda t: world)
+
+    assert decided == []
+    assert exits.requests == []
+
+
+async def test_exit_rules_are_not_evaluated_when_nothing_can_act_on_them(
+    catalogue: dict[InstrumentId, Instrument], world: World
+) -> None:
+    """Deciding and being ignored is worse than not deciding."""
+    ran: list[str] = []
+    factory = SignalFactory(Sizer(FixedLotAllocator(2)), catalogue.get, world.quote)
+    subject = StrategyRunner(factory=factory, deliver=Doorman(), ledger=TrancheLedger(TODAY))
+
+    await subject.consider_exits(
+        subscribed(exit_rules=AllOf((Says(True, ran),))), [a_position()], lambda t: world
+    )
+
+    assert ran == []
+
+
+async def test_a_position_already_on_its_way_out_is_left_alone(
+    catalogue: dict[InstrumentId, Instrument], world: World
+) -> None:
+    """Asking again would only add a reason to a request already queued."""
+    exits = Exits()
+    subject = exiting_runner(catalogue, world, exits)
+    leaving = a_position(exiting_for=TradeExitReason.STOP_LOSS)
+
+    await subject.consider_exits(
+        subscribed(exit_rules=AllOf((Says(True),))), [leaving], lambda t: world
+    )
+
+    assert exits.requests == []
+
+
+async def test_a_finished_position_is_not_exited_again(
+    catalogue: dict[InstrumentId, Instrument], world: World
+) -> None:
+    exits = Exits()
+    subject = exiting_runner(catalogue, world, exits)
+    done = a_position(
+        state=TradeState.COMPLETED,
+        exit=rupees("120"),
+        ended_at=NOW,
+        exit_reason=TradeExitReason.TARGET,
+    )
+
+    await subject.consider_exits(
+        subscribed(exit_rules=AllOf((Says(True),))), [done], lambda t: world
+    )
+
+    assert exits.requests == []
+
+
+async def test_the_rule_sees_the_position_it_is_judging(
+    catalogue: dict[InstrumentId, Instrument], world: World
+) -> None:
+    """ "This trade is 10% down from where it went on" needs the trade."""
+    seen: list[Trade | None] = []
+
+    @dataclass(frozen=True)
+    class Watches:
+        def evaluate(self, context: object) -> RuleOutcome:
+            seen.append(context.trade)  # type: ignore[attr-defined]
+            return failed("not yet")
+
+    exits = Exits()
+    subject = exiting_runner(catalogue, world, exits)
+    position = a_position()
+
+    def context_for(trade: Trade) -> World:
+        world.trade = trade
+        return world
+
+    await subject.consider_exits(
+        subscribed(exit_rules=AllOf((Watches(),))), [position], context_for
+    )
+
+    assert seen == [position]
+
+
+async def test_a_broken_exit_rule_does_not_take_the_position_off(
+    catalogue: dict[InstrumentId, Instrument], world: World
+) -> None:
+    """An exception is UNAVAILABLE, which does not pass, so nothing exits on a
+    rule nobody could evaluate."""
+
+    @dataclass(frozen=True)
+    class Broken:
+        def evaluate(self, context: object) -> RuleOutcome:
+            raise RuntimeError("this rule is broken")
+
+    exits = Exits()
+    subject = exiting_runner(catalogue, world, exits)
+
+    await subject.consider_exits(
+        subscribed(exit_rules=AllOf((Broken(),))), [a_position()], lambda t: world
+    )
+
+    assert exits.requests == []

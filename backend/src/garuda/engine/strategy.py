@@ -35,6 +35,8 @@ from garuda.domain.errors import DomainError
 from garuda.domain.instrument import InstrumentId
 from garuda.domain.intent import Intent, IntentKind, LegRole
 from garuda.domain.money import Money
+from garuda.domain.trade import Trade
+from garuda.domain.trade_state import TradeExitReason
 from garuda.engine.direction import DirectionRule, first_answer
 from garuda.engine.protection import configured_protection
 from garuda.engine.rules.context import RuleContext
@@ -57,11 +59,24 @@ class StrategyContext(RuleContext, SelectionContext, Protocol):
     """
 
 
+#: Asks trade management to take a position off. Returns whether the request
+#: was queued.
+type RequestExit = Callable[[Trade, TradeExitReason], Awaitable[bool]]
+
 #: Hands a built batch to the account that will trade it. Returns whether it
 #: landed; why it did not is the deliverer's to report. Asynchronous because
 #: a book is, and pretending otherwise would mean a synchronous runner that
 #: cannot actually deliver anything.
 type Deliver = Callable[[SignalBatch], Awaitable[bool]]
+
+
+@dataclass(frozen=True, slots=True)
+class ExitDecision:
+    """What the exit rules said about one open position."""
+
+    trade: Trade
+    requested: bool
+    because: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,6 +110,10 @@ class StrategySubscription:
     #: Asked in order; the first with an opinion wins. Empty means the legs'
     #: own side rules decide, which is what an undirectional strategy is.
     direction_rules: tuple[DirectionRule, ...] = ()
+    #: Conditions that should take a position off early. None means the stop,
+    #: the target and the square-off deadline are the only ways out — which is
+    #: the ordinary case.
+    exit_rules: Rule | None = None
     #: How much of the tranche's day is left, as an absolute instant.
     cutoff: datetime | None = None
     tranches: tuple[int, ...] = (0,)
@@ -117,6 +136,9 @@ class StrategyRunner:
     factory: SignalFactory
     deliver: Deliver
     ledger: TrancheLedger
+    #: How a position is taken off. Absent means exit rules cannot act, so
+    #: they are not evaluated at all rather than deciding and being ignored.
+    request_exit: RequestExit | None = None
     rules: RuleRunner = field(default_factory=RuleRunner)
 
     async def evaluate(
@@ -190,6 +212,51 @@ class StrategyRunner:
             await self.evaluate(subscription, tranche, context_for(tranche))
             for tranche in subscription.tranches
         ]
+
+    async def consider_exits(
+        self,
+        subscription: StrategySubscription,
+        trades: Sequence[Trade],
+        context_for: Callable[[Trade], StrategyContext],
+    ) -> list[ExitDecision]:
+        """Whether any open position should come off early.
+
+        **An additional way out, not the way out.** The stop, the target and
+        the square-off deadline are placed as real orders and fire on their
+        own; this is the discretionary layer above them, and a rule set that
+        never fires must never be the reason a position had no stop.
+
+        All the rules must pass, like an entry. That is the right combinator
+        precisely because the hard exits cover the cases where one condition
+        alone should end a position.
+        """
+        if subscription.exit_rules is None or self.request_exit is None:
+            return []
+
+        decided: list[ExitDecision] = []
+        for trade in trades:
+            if not trade.is_live or trade.exiting_for is not None:
+                # Already on its way out. Asking again would only add a reason
+                # to a request that is already queued.
+                continue
+            evaluation = self.rules.evaluate(
+                subscription.exit_rules,
+                context_for(trade),
+                label=f"{subscription.spec.name}:exit",
+            )
+            if not evaluation.passed:
+                continue
+            requested = await self.request_exit(trade, TradeExitReason.EXIT_SIGNAL)
+            decided.append(
+                ExitDecision(trade=trade, requested=requested, because=evaluation.outcome.because)
+            )
+            logger.info(
+                "%s: %s exits on its rules — %s",
+                subscription.spec.name,
+                trade.instrument,
+                evaluation.outcome.because,
+            )
+        return decided
 
     # -- the steps ----------------------------------------------------------
 

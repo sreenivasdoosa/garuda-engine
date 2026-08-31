@@ -23,7 +23,7 @@ from garuda.composition.strategy_context import MarketView
 from garuda.composition.strategy_loop import StrategyLoop
 from garuda.core.bus import InProcessEventBus
 from garuda.core.clock import ReplayClock
-from garuda.domain import Currency, Direction, Money
+from garuda.domain import Currency, Direction, Money, ProductType
 from garuda.domain.alert import Alert, AlertLevel
 from garuda.domain.calendar import TradingCalendar
 from garuda.domain.enums import (
@@ -38,6 +38,8 @@ from garuda.domain.exchange import Exchange
 from garuda.domain.instrument import Instrument, InstrumentId
 from garuda.domain.market import Bar, BarInterval, Tick
 from garuda.domain.symbol import SymbolInfo
+from garuda.domain.trade import Trade, TradeId
+from garuda.domain.trade_state import TradeExitReason, TradeState
 from garuda.engine.rules.compose import AllOf
 from garuda.engine.rules.outcome import RuleOutcome, failed, passed
 from garuda.engine.selectors import OptionStrikeSelector
@@ -182,12 +184,13 @@ def loop_over(
     nse_calendar: TradingCalendar,
     *,
     entry: object = None,
+    exit_rules: object = None,
     tranches: tuple[int, ...] = (0,),
 ) -> StrategyLoop:
     strategy = Strategy(
         spec=a_straddle(),
         entry_rules=entry or AllOf((Says(True),)),  # type: ignore[arg-type]
-        exit_rules=None,
+        exit_rules=exit_rules,  # type: ignore[arg-type]
         direction_rules=(),
         layers=(),
         tranches=tranches,
@@ -197,6 +200,7 @@ def loop_over(
         spec=strategy.spec,
         capital=rupees("500000"),
         entry_rules=strategy.entry_rules,
+        exit_rules=strategy.exit_rules,
         tranches=tranches,
     )
     market = MarketView(
@@ -583,3 +587,90 @@ def _unused() -> HistorySource:
             raise AssertionError("there is no session to fetch for")
 
     return Nothing()
+
+
+# -- exits ------------------------------------------------------------------
+
+
+async def test_a_sweep_takes_a_position_off_when_its_exit_rules_hold(
+    engine: Engine, registry: InstrumentRegistry, nse_calendar: TradingCalendar
+) -> None:
+    doorman = Doorman()
+    await prices(engine.parts.hub)
+    loop = loop_over(engine, registry, doorman, nse_calendar, exit_rules=AllOf((Says(True),)))
+    client = engine.parts.clients[APPA]
+    client.book.add_trade(_a_position())
+    asked: list[str] = []
+
+    async def square_off(trade: Trade, reason: TradeExitReason) -> bool:
+        asked.append(reason.value)
+        return True
+
+    client.square_off.request = square_off  # type: ignore[method-assign, assignment]
+
+    await loop.run_once()
+
+    assert asked == [TradeExitReason.EXIT_SIGNAL.value]
+
+
+async def test_exits_are_considered_before_entries(
+    engine: Engine, registry: InstrumentRegistry, nse_calendar: TradingCalendar
+) -> None:
+    """A strategy wanting out and back in on one sweep should get out first,
+    and a position leaving frees the capital the entry sizes against."""
+    order: list[str] = []
+    doorman = Doorman()
+    await prices(engine.parts.hub)
+    loop = loop_over(engine, registry, doorman, nse_calendar, exit_rules=AllOf((Says(True),)))
+    client = engine.parts.clients[APPA]
+    client.book.add_trade(_a_position())
+
+    async def square_off(trade: Trade, reason: TradeExitReason) -> bool:
+        order.append("exit")
+        return True
+
+    async def deliver(batch: SignalBatch) -> bool:
+        order.append("enter")
+        return True
+
+    client.square_off.request = square_off  # type: ignore[method-assign, assignment]
+    loop.runner = replace(loop.runner, deliver=deliver)
+
+    await loop.run_once()
+
+    assert order == ["exit", "enter"]
+
+
+async def test_a_broken_exit_evaluation_does_not_stop_the_sweep(
+    engine: Engine, registry: InstrumentRegistry, nse_calendar: TradingCalendar
+) -> None:
+    doorman = Doorman()
+    await prices(engine.parts.hub)
+    loop = loop_over(engine, registry, doorman, nse_calendar, exit_rules=AllOf((Says(True),)))
+    client = engine.parts.clients[APPA]
+    client.book.add_trade(_a_position())
+
+    async def explode(trade: Trade, reason: TradeExitReason) -> bool:
+        raise RuntimeError("square-off is broken")
+
+    client.square_off.request = explode  # type: ignore[method-assign, assignment]
+
+    results = await loop.run_once()
+
+    assert [result.fired for result in results] == [True]
+
+
+def _a_position() -> Trade:
+    return Trade(
+        id=TradeId("t1"),
+        trading_client=APPA,
+        instrument=InstrumentId("NFO:N25000CE"),
+        strategy="straddle",
+        direction=Direction.SHORT,
+        product=ProductType.NRML,
+        quantity=75,
+        state=TradeState.ACTIVE,
+        filled_quantity=75,
+        entry=rupees("150"),
+        started_at=NOW,
+    )
