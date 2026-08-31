@@ -55,17 +55,16 @@ class TradeId:
 class Protection:
     """Where a trade gets out, and whether those levels move.
 
-    ``combined_stop_loss`` belongs to a group rather than to this leg: a
-    straddle is stopped on what the two legs are worth together, and stopping
-    each leg on its own premium exits the winning side of a position that is
-    net fine.
+    The combined levels belong to a group rather than to this leg: a straddle
+    is stopped on what the two legs are worth together, and stopping each leg
+    on its own premium exits the winning side of a position that is net fine.
+    They are carried as percentages because the price they mean cannot be
+    known until every leg has filled -- see `trademgmt/combined_rules.py`.
     """
 
     stop_loss: Money | None = None
     initial_stop_loss: Money | None = None
     target: Money | None = None
-    combined_stop_loss: Money | None = None
-    initial_combined_stop_loss: Money | None = None
     #: The group's levels, as percentages of what the group took in. Kept as
     #: percentages rather than prices because the level cannot be a price
     #: until every leg has filled, and kept on the leg rather than looked up
@@ -89,7 +88,6 @@ class Protection:
     #: telling it how far.
     trail: TrailConfig | None = None
     trail_to_cost: bool = False
-    exit_with_trail: bool = False
     #: How far a stop-loss limit sits from its trigger, when the strategy
     #: overrides the venue default.
     trigger_to_limit_gap_percent: Decimal | None = None

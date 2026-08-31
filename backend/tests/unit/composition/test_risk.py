@@ -675,3 +675,53 @@ async def test_an_entry_is_never_bounded_by_what_is_open(stock: Instrument) -> N
     await place(an_order(100))
 
     assert len(placed) == 1
+
+
+# -- the position cap, wired to the book ------------------------------------
+
+
+async def test_an_entry_is_capped_by_what_is_already_committed(
+    stock: Instrument,
+) -> None:
+    placed: list[OrderRequest] = []
+    place = gated(
+        _accepting(placed),
+        gate=RiskGate(default_checks()),
+        limits=everywhere(RiskLimits(max_position_quantity_per_symbol=100)),
+        instruments=lambda instrument: stock,
+        quotes=lambda instrument: a_quote(),
+        clock=ReplayClock(NOW),
+        label="Appa",
+        committed_quantity=lambda instrument, side: 95,
+    )
+
+    with pytest.raises(OrderRejectedError, match="past the limit"):
+        await place(an_order(10))
+
+    assert placed == []
+
+
+async def test_the_cap_reads_the_side_the_order_would_take_on(
+    stock: Instrument,
+) -> None:
+    """A sell opens a short, and the short is what it adds to. Reading the
+    long instead would cap an order against a position it does not join."""
+    placed: list[OrderRequest] = []
+    book = {Side.SELL: 95, Side.BUY: 0}
+    place = gated(
+        _accepting(placed),
+        gate=RiskGate(default_checks()),
+        limits=everywhere(RiskLimits(max_position_quantity_per_symbol=100)),
+        instruments=lambda instrument: stock,
+        quotes=lambda instrument: a_quote(),
+        clock=ReplayClock(NOW),
+        label="Appa",
+        committed_quantity=lambda instrument, side: book[side],
+    )
+
+    with pytest.raises(OrderRejectedError):
+        await place(an_order(10, side=Side.SELL))
+
+    await place(an_order(10, side=Side.BUY))
+
+    assert len(placed) == 1

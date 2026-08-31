@@ -23,7 +23,11 @@ class RiskLimits:
 
     max_order_quantity: int | None = None
     max_order_value: Money | None = None
-    max_position_value_per_symbol: Money | None = None
+    #: How much of one instrument may be held one way at once, counting what
+    #: is ordered and still resting. In units, not value: that is what the
+    #: reference configures and what the table holds. `max_order_value` is
+    #: what caps a single order's money.
+    max_position_quantity_per_symbol: int | None = None
     max_daily_loss: Money | None = None
     #: A quote older than this is not a price, it is a memory.
     stale_quote_after: timedelta | None = timedelta(seconds=30)
@@ -40,8 +44,8 @@ class RiskLimits:
         return RiskLimits(
             max_order_quantity=_pick(self.max_order_quantity, override.max_order_quantity),
             max_order_value=_pick(self.max_order_value, override.max_order_value),
-            max_position_value_per_symbol=_pick(
-                self.max_position_value_per_symbol, override.max_position_value_per_symbol
+            max_position_quantity_per_symbol=_pick(
+                self.max_position_quantity_per_symbol, override.max_position_quantity_per_symbol
             ),
             max_daily_loss=_pick(self.max_daily_loss, override.max_daily_loss),
             stale_quote_after=_pick(self.stale_quote_after, override.stale_quote_after),

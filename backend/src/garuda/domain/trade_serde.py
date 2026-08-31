@@ -118,8 +118,6 @@ def encode_trade(trade: Trade) -> str:
                 "stop_loss": _money(protection.stop_loss),
                 "initial_stop_loss": _money(protection.initial_stop_loss),
                 "target": _money(protection.target),
-                "combined_stop_loss": _money(protection.combined_stop_loss),
-                "initial_combined_stop_loss": _money(protection.initial_combined_stop_loss),
                 "combined_stop_loss_percent": _decimal(protection.combined_stop_loss_percent),
                 "combined_target_percent": _decimal(protection.combined_target_percent),
                 "no_stop_loss": protection.no_stop_loss,
@@ -128,7 +126,6 @@ def encode_trade(trade: Trade) -> str:
                 "is_trailing": protection.is_trailing,
                 "trail": _trail(protection.trail),
                 "trail_to_cost": protection.trail_to_cost,
-                "exit_with_trail": protection.exit_with_trail,
                 "trigger_to_limit_gap_percent": _decimal(protection.trigger_to_limit_gap_percent),
             },
             "relationships": {
@@ -207,8 +204,6 @@ def decode_trade(payload: str) -> Trade:
             stop_loss=_read_money(protection.get("stop_loss")),
             initial_stop_loss=_read_money(protection.get("initial_stop_loss")),
             target=_read_money(protection.get("target")),
-            combined_stop_loss=_read_money(protection.get("combined_stop_loss")),
-            initial_combined_stop_loss=_read_money(protection.get("initial_combined_stop_loss")),
             combined_stop_loss_percent=_read_decimal(protection.get("combined_stop_loss_percent")),
             combined_target_percent=_read_decimal(protection.get("combined_target_percent")),
             no_stop_loss=protection.get("no_stop_loss", False),
@@ -217,7 +212,6 @@ def decode_trade(payload: str) -> Trade:
             is_trailing=protection.get("is_trailing", False),
             trail=_read_trail(protection.get("trail")),
             trail_to_cost=protection.get("trail_to_cost", False),
-            exit_with_trail=protection.get("exit_with_trail", False),
             trigger_to_limit_gap_percent=_read_decimal(
                 protection.get("trigger_to_limit_gap_percent")
             ),

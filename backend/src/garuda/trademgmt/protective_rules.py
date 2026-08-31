@@ -43,6 +43,16 @@ def closing_direction(side: Side) -> Direction:
     return Direction.LONG if side is Side.SELL else Direction.SHORT
 
 
+def opening_direction(side: Side) -> Direction:
+    """Which position a side would be taking on. The other half of the pair.
+
+    Buying opens a long and selling opens a short, which is exactly what
+    `closing_direction` says backwards -- and writing it as that rather than
+    as its own table is what stops the two drifting.
+    """
+    return closing_direction(side).opposite
+
+
 def protectable_quantity(trade: Trade) -> int:
     """How much there is to protect: what filled, never what was ordered.
 

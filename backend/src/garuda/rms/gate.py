@@ -66,6 +66,10 @@ class RiskContext:
     #: gross. Only meaningful on an exit, and None when the placing path did
     #: not supply one — which reads as "no bound available", never as zero.
     open_quantity: int | None = None
+    #: What the book already holds or has resting on the side this order
+    #: would take on, for a cap on position size. None when the placing path
+    #: did not supply one.
+    committed_quantity: int | None = None
     #: Whether this order is leaving a position rather than taking one.
     #:
     #: An exit is checked, but not by everything: a limit that stops an

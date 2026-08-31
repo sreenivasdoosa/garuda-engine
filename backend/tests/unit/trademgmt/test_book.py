@@ -543,6 +543,79 @@ class TestTheIndexes:
 
         assert subject.open_quantity_in(PUT, Direction.SHORT) == 0
 
+    async def test_what_is_resting_counts_towards_the_committed_total(
+        self, instruments: InstrumentLookup, alerts: AlertManager
+    ) -> None:
+        """What a position cap has to be measured against. A signal firing
+        twice places a second entry while the first is still unfilled, and a
+        count of what filled sees nothing."""
+        subject = book(instruments, alerts)
+        subject.add_trade(a_trade("t-resting", quantity=75))
+
+        assert subject.open_quantity_in(CALL, Direction.SHORT) == 0
+        assert subject.committed_quantity_in(CALL, Direction.SHORT) == 75
+
+    async def test_a_filled_trade_counts_what_filled_not_what_was_ordered(
+        self, instruments: InstrumentLookup, alerts: AlertManager
+    ) -> None:
+        """The remainder of a partly-filled entry may or may not still be
+        resting, and counting it would overstate the position all day."""
+        subject = book(instruments, alerts)
+        subject.add_trade(
+            a_trade("t-partial", quantity=75).with_entry_fill(25, rupees("120"), TODAY)
+        )
+
+        assert subject.committed_quantity_in(CALL, Direction.SHORT) == 25
+
+    async def test_a_finished_trade_holds_nothing(
+        self, instruments: InstrumentLookup, alerts: AlertManager
+    ) -> None:
+        """The invariant the committed total leans on. Both counts filter on
+        `is_live` as well, which is belt and braces only while this holds."""
+        done = (
+            a_trade("t-done", quantity=75)
+            .with_entry_fill(75, rupees("120"), TODAY)
+            .closed(rupees("100"), TradeExitReason.TARGET, TODAY)
+        )
+
+        assert done.open_quantity == 0
+        assert not done.is_open
+
+    async def test_a_leg_on_its_way_out_is_not_committed(
+        self, instruments: InstrumentLookup, alerts: AlertManager
+    ) -> None:
+        leaving = replace(
+            a_trade("t-leaving", quantity=75).with_entry_fill(75, rupees("120"), TODAY),
+            exiting_for=TradeExitReason.SQUARE_OFF,
+        )
+        subject = book(instruments, alerts)
+        subject.add_trade(leaving)
+
+        assert subject.committed_quantity_in(CALL, Direction.SHORT) == 0
+
+    async def test_the_other_side_is_not_committed(
+        self, instruments: InstrumentLookup, alerts: AlertManager
+    ) -> None:
+        subject = book(instruments, alerts)
+        subject.add_trade(a_trade("t-resting", quantity=75))
+
+        assert subject.committed_quantity_in(CALL, Direction.LONG) == 0
+
+    async def test_a_trade_that_has_closed_is_not_committed(
+        self, instruments: InstrumentLookup, alerts: AlertManager
+    ) -> None:
+        """It is not held any more, and counting it would cap every later
+        entry against a position the day has already been out of."""
+        done = (
+            a_trade("t-done", quantity=75)
+            .with_entry_fill(75, rupees("120"), TODAY)
+            .closed(rupees("100"), TradeExitReason.TARGET, TODAY)
+        )
+        subject = book(instruments, alerts)
+        subject.add_trade(done)
+
+        assert subject.committed_quantity_in(CALL, Direction.SHORT) == 0
+
     async def test_a_failed_entry_is_listed_separately(
         self, instruments: InstrumentLookup, alerts: AlertManager
     ) -> None:

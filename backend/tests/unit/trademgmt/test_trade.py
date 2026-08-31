@@ -267,9 +267,13 @@ class TestProtection:
         assert moved.initial_stop_loss == rupees("100")
 
     def test_a_combined_stop_is_separate_from_the_legs_own(self) -> None:
-        """A straddle is stopped on what both legs are worth together."""
-        protection = Protection(stop_loss=rupees("100"), combined_stop_loss=rupees("250"))
-        assert protection.stop_loss != protection.combined_stop_loss
+        """A straddle is stopped on what both legs are worth together, and
+        the group's level is a percentage rather than a price: what it means
+        in rupees is unknown until every leg has filled."""
+        protection = Protection(stop_loss=rupees("100"), combined_stop_loss_percent=Decimal(10))
+
+        assert protection.stop_loss == rupees("100")
+        assert protection.combined_stop_loss_percent == Decimal(10)
 
 
 class TestCorporateActions:

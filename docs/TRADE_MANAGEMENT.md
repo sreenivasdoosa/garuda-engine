@@ -428,6 +428,20 @@ through a chain of fallbacks, because its exits reach the validator with no
 link to the trade they close; here the book is in process and the number is
 exact, so the fallbacks are not ported.
 
+One more check runs on entries only and needed the book to exist: a cap on
+how much of one instrument may be held one way at once. It is measured against
+what the book holds **plus what it has resting**, because the failure it
+catches is a signal firing twice — the first entry is still unfilled, so a
+check against filled quantity alone sees nothing and lets the second through.
+The reference engine added its own version for exactly that, and calls it out
+as preventing "bugs that fire duplicate entry signals from building excessive
+positions".
+
+The cap is in units, not money. That is what `rms_config.max_position_qty_per_symbol`
+holds and what the reference configures; `max_order_value` is what caps a
+single order's money. A `max_position_value_per_symbol` limit had been declared
+here with no column populating it and no check reading it, and is gone.
+
 The kill switch is the one an operator would guess wrong: it stops an account
 taking risk and must never stop it closing. It is also not yet reachable —
 `kill_switches` is a table with no runtime service behind it, so nothing sets

@@ -25,6 +25,7 @@ from garuda.trademgmt.protective_rules import (
     closing_direction,
     exit_side,
     has_no_stop_configured,
+    opening_direction,
     stop_order_shape,
     stop_within_circuit,
     target_defer_reason,
@@ -449,6 +450,19 @@ class TestThePriceBand:
 def test_closing_a_long_sells_and_closing_a_short_buys() -> None:
     assert exit_side(Direction.LONG) is Side.SELL
     assert exit_side(Direction.SHORT) is Side.BUY
+
+
+def test_a_side_says_which_position_it_would_open() -> None:
+    """The direction a position cap has to read: an entry adds to the side it
+    opens, and reading the other one would cap it against a position it does
+    not join."""
+    assert opening_direction(Side.BUY) is Direction.LONG
+    assert opening_direction(Side.SELL) is Direction.SHORT
+
+
+def test_opening_and_closing_are_opposites_for_every_side() -> None:
+    for side in Side:
+        assert opening_direction(side) is closing_direction(side).opposite
 
 
 def test_a_side_says_which_position_it_would_close() -> None:

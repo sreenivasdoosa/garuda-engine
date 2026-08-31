@@ -69,7 +69,7 @@ from garuda.trademgmt.entry import EntryService
 from garuda.trademgmt.loop import TradeLoop, TradeLoops
 from garuda.trademgmt.positions import PositionWatch
 from garuda.trademgmt.protective import ProtectiveOrderService
-from garuda.trademgmt.protective_rules import closing_direction
+from garuda.trademgmt.protective_rules import closing_direction, opening_direction
 from garuda.trademgmt.squareoff import SquareOffService
 from garuda.trademgmt.squareoff_rules import ExitWindow
 from garuda.trademgmt.tracking import TradeTracker
@@ -362,7 +362,15 @@ def _build_client(
     # Both are gated; they differ in which checks have any business stopping
     # them. A stop-loss must go out on the day a loss limit was reached, and a
     # square-off must go out whatever the spread has done.
-    entry_placement = watching(broker.place)
+    entry_placement = watching(
+        broker.place,
+        # What is already held or resting on the side this order would add to.
+        # Resting counts: the failure a position cap catches is a signal
+        # firing twice while the first entry is still unfilled.
+        committed_quantity=lambda instrument, side: book.committed_quantity_in(
+            instrument, opening_direction(side)
+        ),
+    )
     exit_placement = watching(
         broker.place,
         is_exit=True,

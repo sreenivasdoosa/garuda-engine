@@ -335,6 +335,28 @@ class TradingClientManager:
             if trade.is_live and trade.direction is direction
         )
 
+    def committed_quantity_in(self, instrument: InstrumentId, direction: Direction) -> int:
+        """Units held plus units ordered and still resting, one direction.
+
+        What the account will hold if every entry it has out fills. That is
+        the number a cap on position size has to be measured against:
+        checking only what has filled lets a duplicated signal place a second
+        entry while the first is still resting, which is the bug the reference
+        engine added its own version of this check for.
+
+        A trade that has filled counts what filled, not what was ordered. The
+        remainder of a partly-filled entry may or may not still be resting,
+        and counting it would overstate the position for the rest of the day.
+        """
+        # ``is_live`` is belt and braces: a finished trade's open quantity is
+        # already zero, so dropping the filter changes nothing today. It is
+        # kept so the intent survives a change to that invariant.
+        return sum(
+            trade.quantity if trade.is_open else trade.open_quantity
+            for trade in self.trades_in(instrument)
+            if trade.is_live and trade.direction is direction and not trade.is_exiting
+        )
+
     # -- relationships ------------------------------------------------------
 
     async def hedge_for(self, leg: Trade | TradeSignal) -> Trade | None:

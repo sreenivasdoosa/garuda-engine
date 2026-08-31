@@ -317,6 +317,43 @@ class ExitQuantityCheck:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class PositionQuantityCheck:
+    """A cap on how much of one instrument may be held one way at once.
+
+    Measured against what the book holds *plus what it has resting*, because
+    the failure this catches is a signal firing twice: the first entry is
+    still unfilled, so a check against filled quantity alone sees nothing and
+    lets the second through. The reference engine added its own version for
+    exactly that.
+
+    Entries only, which `guards_exits` says once for the gate rather than
+    this check saying it again for itself: a cap on how much may be taken on
+    has nothing to say about an order reducing it.
+    """
+
+    breach_type: BreachType = BreachType.POSITION_PER_SYMBOL_EXCEEDED
+
+    @property
+    def guards_exits(self) -> bool:
+        """A cap on size is about what is taken on."""
+        return False
+
+    def __call__(self, context: RiskContext) -> Breach | None:
+        limit = context.limits.max_position_quantity_per_symbol
+        committed = context.committed_quantity
+        if limit is None or committed is None:
+            return None
+        total = committed + context.request.quantity
+        if total <= limit:
+            return None
+        return Breach(
+            self.breach_type,
+            f"{committed} already held or resting in {context.instrument.trading_symbol} "
+            f"plus {context.request.quantity} more is {total}, past the limit of {limit}",
+        )
+
+
 def default_checks() -> tuple[
     KillSwitchCheck,
     MarketOpenCheck,
@@ -327,6 +364,7 @@ def default_checks() -> tuple[
     StaleQuoteCheck,
     OrderQuantityCheck,
     OrderValueCheck,
+    PositionQuantityCheck,
     FreezeQuantityCheck,
     SpreadCheck,
     VolumeCheck,
@@ -346,6 +384,7 @@ def default_checks() -> tuple[
         StaleQuoteCheck(),
         OrderQuantityCheck(),
         OrderValueCheck(),
+        PositionQuantityCheck(),
         FreezeQuantityCheck(),
         SpreadCheck(),
         VolumeCheck(),

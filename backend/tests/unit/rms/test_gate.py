@@ -32,6 +32,7 @@ from garuda.rms.checks import (
     KillSwitchCheck,
     OrderQuantityCheck,
     OrderValueCheck,
+    PositionQuantityCheck,
     PriceNonZeroCheck,
     QuoteAvailableCheck,
     SpreadCheck,
@@ -357,3 +358,69 @@ class TestExitQuantity:
         """Refusing because nothing could be checked would strand a real
         position, which is the failure this exists to prevent."""
         assert ExitQuantityCheck()(context(nifty_call, is_exit=True)) is None
+
+
+class TestPositionQuantity:
+    """A cap on how much of one instrument may be held one way at once."""
+
+    def test_a_first_entry_inside_the_cap_passes(self, nifty_call):
+        at_hand = context(
+            nifty_call,
+            limits=RiskLimits(max_position_quantity_per_symbol=150),
+            committed_quantity=0,
+        )
+        assert PositionQuantityCheck()(at_hand) is None
+
+    def test_taking_the_position_past_the_cap_vetoes(self, nifty_call):
+        breach = PositionQuantityCheck()(
+            context(
+                nifty_call,
+                limits=RiskLimits(max_position_quantity_per_symbol=100),
+                committed_quantity=75,
+            )
+        )
+        assert breach is not None
+        assert breach.type is BreachType.POSITION_PER_SYMBOL_EXCEEDED
+
+    def test_reaching_the_cap_exactly_is_allowed(self, nifty_call):
+        """A maximum is a value that may be reached."""
+        at_hand = context(
+            nifty_call,
+            limits=RiskLimits(max_position_quantity_per_symbol=150),
+            committed_quantity=75,
+        )
+        assert PositionQuantityCheck()(at_hand) is None
+
+    def test_what_is_resting_counts_towards_it(self, nifty_call):
+        """The failure this catches is a signal firing twice: the first entry
+        is still unfilled, so a check against filled quantity alone sees
+        nothing and lets the second through."""
+        breach = PositionQuantityCheck()(
+            context(
+                nifty_call,
+                limits=RiskLimits(max_position_quantity_per_symbol=75),
+                committed_quantity=75,
+            )
+        )
+        assert breach is not None
+
+    def test_no_cap_configured_says_nothing(self, nifty_call):
+        assert PositionQuantityCheck()(context(nifty_call, committed_quantity=10_000)) is None
+
+    def test_an_exit_is_not_capped_by_it(self, nifty_call):
+        """A cap on what may be taken on has nothing to say about an order
+        reducing it. The gate is what enforces that, once, for every check
+        that stands down on an exit -- so this goes through the gate rather
+        than asking the check directly."""
+        at_hand = context(
+            nifty_call,
+            limits=RiskLimits(max_position_quantity_per_symbol=10),
+            committed_quantity=500,
+            is_exit=True,
+        )
+
+        assert RiskGate(default_checks()).evaluate(at_hand).allowed
+
+    def test_nothing_supplied_means_no_opinion(self, nifty_call):
+        at_hand = context(nifty_call, limits=RiskLimits(max_position_quantity_per_symbol=10))
+        assert PositionQuantityCheck()(at_hand) is None

@@ -66,6 +66,11 @@ type DayResult = Callable[[], Money | None]
 #: book moves under the gate all session.
 type OpenQuantity = Callable[[InstrumentId, Side], int]
 
+#: What the book already holds or has resting on the side an entry would take
+#: on. Separate from the above because they read opposite sides: one bounds an
+#: exit against what is held, the other caps what may be added to it.
+type CommittedQuantity = Callable[[InstrumentId, Side], int]
+
 
 def gated(
     place: PlaceOrder,
@@ -78,6 +83,7 @@ def gated(
     label: str,
     realized_today: DayResult | None = None,
     open_quantity: OpenQuantity | None = None,
+    committed_quantity: CommittedQuantity | None = None,
     is_exit: bool = False,
 ) -> PlaceOrder:
     """Wrap a placement so the risk gate sees it first.
@@ -117,6 +123,11 @@ def gated(
                 open_quantity=(
                     open_quantity(request.instrument, request.side)
                     if open_quantity is not None
+                    else None
+                ),
+                committed_quantity=(
+                    committed_quantity(request.instrument, request.side)
+                    if committed_quantity is not None
                     else None
                 ),
                 is_exit=is_exit,
@@ -193,6 +204,7 @@ def _limits_from(row: RmsConfigRow, currency: Currency) -> RiskLimits:
         max_order_quantity=row.max_order_qty,
         max_order_value=_money(row.max_order_value, currency),
         max_daily_loss=_money(row.max_daily_loss_amount, currency),
+        max_position_quantity_per_symbol=row.max_position_qty_per_symbol,
         stale_quote_after=(
             timedelta(seconds=row.stale_price_seconds)
             if row.stale_price_seconds is not None
