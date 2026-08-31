@@ -13,10 +13,11 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
+from decimal import Decimal
 
 from garuda.domain.client import TradingClientId
-from garuda.domain.enums import TradingMode
+from garuda.domain.enums import ExpiryKind, OptionType, TradingMode
 from garuda.domain.instrument import InstrumentId
 from garuda.domain.intent import Intent
 from garuda.domain.market import Tick
@@ -57,6 +58,40 @@ class EvaluationContext:
 
     def position(self, instrument: InstrumentId) -> Position | None:
         return self.positions.get(instrument)
+
+    def spot(self, underlying: InstrumentId) -> Money | None:
+        """Selection methods, so a leg selector can be handed this context.
+
+        This context belongs to the phase-one slice, which resolves fixed
+        instruments and the underlying itself. It knows nothing of chains or
+        expiries, so an option selector handed this one finds nothing and the
+        evaluator stands the entry down -- which is the right answer, and is
+        why these return None rather than raising.
+        """
+        quote = self.quote(underlying)
+        return quote.last_price if quote is not None else None
+
+    def strike_gap(self, underlying: InstrumentId) -> Decimal | None:
+        del underlying
+        return None
+
+    def expiry(self, underlying: InstrumentId, kind: ExpiryKind) -> date | None:
+        del underlying, kind
+        return None
+
+    def option(
+        self,
+        underlying: InstrumentId,
+        expiry: date,
+        strike: Decimal,
+        option_type: OptionType,
+    ) -> InstrumentId | None:
+        del underlying, expiry, strike, option_type
+        return None
+
+    def future(self, underlying: InstrumentId, expiry: date) -> InstrumentId | None:
+        del underlying, expiry
+        return None
 
     def has_open_position(self, instrument: InstrumentId) -> bool:
         position = self.positions.get(instrument)

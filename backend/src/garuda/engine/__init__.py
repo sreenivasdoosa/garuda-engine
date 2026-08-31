@@ -10,7 +10,15 @@ from garuda.engine.daycondition import DayCondition, conditions_on
 from garuda.engine.evaluator import LegBasedEvaluator, StrategyEvaluator
 from garuda.engine.pipeline import IntentOutcome, TradingPipeline
 from garuda.engine.protection import configured_protection, protection_from
-from garuda.engine.selectors import FixedInstrumentSelector, UnderlyingSelector
+from garuda.engine.selectors import (
+    FixedInstrumentSelector,
+    HedgeStrikeSelector,
+    InstrumentSelector,
+    NearMonthFutureSelector,
+    OptionStrikeSelector,
+    SelectionContext,
+    UnderlyingSelector,
+)
 from garuda.engine.signals import (
     SignalBatch,
     SignalFactory,
@@ -20,12 +28,11 @@ from garuda.engine.spec import (
     MAX_LEGS_CEILING,
     DirectionProvider,
     FixedDirection,
-    InstrumentSelector,
     LegSpec,
     SideRule,
     StrategySpec,
 )
-from garuda.engine.strikes import Moneyness, atm_strike, strike_for
+from garuda.engine.strikes import AT_THE_MONEY, Moneyness, atm_strike, strike_for
 from garuda.engine.tranches import (
     Tranche,
     TrancheId,
@@ -35,6 +42,7 @@ from garuda.engine.tranches import (
 )
 
 __all__ = [
+    "AT_THE_MONEY",
     "DEFAULT_MAX_LEGS",
     "MAX_LEGS_CEILING",
     "ConfigLayer",
@@ -44,12 +52,16 @@ __all__ = [
     "EvaluationResult",
     "FixedDirection",
     "FixedInstrumentSelector",
+    "HedgeStrikeSelector",
     "InstrumentSelector",
     "IntentOutcome",
     "LegBasedEvaluator",
     "LegSpec",
     "Moneyness",
+    "NearMonthFutureSelector",
+    "OptionStrikeSelector",
     "ResolvedConfig",
+    "SelectionContext",
     "SideRule",
     "SignalBatch",
     "SignalFactory",

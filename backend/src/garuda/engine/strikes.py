@@ -90,6 +90,10 @@ class Moneyness:
         return cls(steps if side == "OTM" else -steps)
 
 
+#: The default, and the commonest thing a strategy asks for.
+AT_THE_MONEY = Moneyness(0)
+
+
 def atm_strike(spot: Money, gap: Decimal) -> Decimal:
     """The listed strike nearest the spot price.
 

@@ -20,6 +20,7 @@ from garuda.domain.enums import Direction, OrderType, ProductType
 from garuda.domain.errors import DomainError
 from garuda.domain.instrument import InstrumentId
 from garuda.domain.intent import LegRole
+from garuda.engine.selectors import InstrumentSelector
 
 #: Default cap on legs in one spec. A hedged iron condor is exactly eight,
 #: which is why this is a setting rather than a constant.
@@ -53,18 +54,6 @@ class SideRule(StrEnum):
                 return Direction.LONG
             case SideRule.ALWAYS_SHORT:
                 return Direction.SHORT
-
-
-@runtime_checkable
-class InstrumentSelector(Protocol):
-    """Picks the instrument a leg trades.
-
-    Where asset class lives. An option selector reads strike and expiry rules,
-    a future selector reads expiry, an equity selector reads a symbol -- and
-    none of that is the evaluator's business.
-    """
-
-    def select(self, underlying: InstrumentId, context: object) -> InstrumentId | None: ...
 
 
 @dataclass(frozen=True, slots=True)
