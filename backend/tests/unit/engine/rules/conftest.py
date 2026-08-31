@@ -6,7 +6,7 @@ of the real rules are used here: these tests are about the machinery.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from decimal import Decimal
@@ -47,7 +47,10 @@ class FakeContext:
     bars: dict[tuple[InstrumentId, BarInterval], list[Bar]] = field(default_factory=dict)
     #: Keyed by name, or by (name, interval) when a test cares which interval
     #: was asked for.
-    indicators: dict[str | tuple[str, str], Decimal] = field(default_factory=dict)
+    #: Keyed by name; by (name, interval) when a test cares which interval was
+    #: asked for; by (name, interval, back) or (name, back) when it cares how
+    #: far back. Most specific key wins.
+    indicators: dict[object, Decimal] = field(default_factory=dict)
     held: list[Trade] = field(default_factory=list)
     #: What was asked for, so a test can prove laziness.
     asked: list[str] = field(default_factory=list)
@@ -61,12 +64,19 @@ class FakeContext:
         return self.bars.get((instrument, interval), [])[-count:]
 
     def indicator(
-        self, name: str, instrument: InstrumentId, interval: BarInterval, **params: object
+        self,
+        name: str,
+        instrument: InstrumentId,
+        interval: BarInterval,
+        *,
+        back: int = 0,
+        params: Mapping[str, object] | None = None,
     ) -> Decimal | None:
-        self.asked.append(f"indicator:{name}:{interval.value}")
-        if (name, interval.value) in self.indicators:
-            return self.indicators[(name, interval.value)]
-        return self.indicators.get(name)
+        self.asked.append(f"indicator:{name}:{interval.value}:back={back}")
+        for key in ((name, interval.value, back), (name, interval.value), (name, back), name):
+            if key in self.indicators:
+                return self.indicators[key]
+        return None
 
     def positions(self) -> Sequence[Trade]:
         return list(self.held)

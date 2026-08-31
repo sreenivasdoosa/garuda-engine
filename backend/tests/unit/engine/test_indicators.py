@@ -355,3 +355,47 @@ def test_every_indicator_says_how_much_history_it_wants() -> None:
 
 def test_the_catalogue_lists_what_is_available() -> None:
     assert {"rsi", "atr", "supertrend"} <= set(registered())
+
+
+# -- the price itself, so a rule can compare an indicator against it --------
+
+
+def test_the_price_is_the_last_closed_bars_close() -> None:
+    """Every real rule in the reference engine is one indicator against
+    another, and "SuperTrend above the close" is the shape half of them take.
+    Without a price to name on the other side, that rule cannot be written."""
+    assert compute("price", flat(["100", "101", "102"])) == Decimal("102")
+
+
+def test_each_price_of_the_bar_can_be_named() -> None:
+    bars = ranged([("110", "90", "105")])
+
+    assert compute("price", bars, field="OPEN") == Decimal("90")
+    assert compute("price", bars, field="HIGH") == Decimal("110")
+    assert compute("price", bars, field="LOW") == Decimal("90")
+    assert compute("price", bars, field="CLOSE") == Decimal("105")
+
+
+def test_the_typical_price_is_the_mean_of_high_low_and_close() -> None:
+    bars = ranged([("120", "90", "105")])
+
+    assert compute("price", bars, field="TYPICAL") == Decimal("105")
+
+
+def test_no_history_has_no_price() -> None:
+    assert compute("price", []) is None
+
+
+def test_a_price_needs_only_one_bar() -> None:
+    """It is not smoothed, so asking for a warm-up would refuse a rule on the
+    first bar of the day for no reason."""
+    assert build("price").bars_needed == 1
+
+
+def test_a_price_field_nobody_recognises_is_refused() -> None:
+    with pytest.raises(DomainError):
+        build("price", field="MIDPOINT")
+
+
+def test_the_price_is_in_the_catalogue() -> None:
+    assert "price" in registered()

@@ -21,7 +21,7 @@ turns that into ``UNAVAILABLE`` with a sentence naming what was absent.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Protocol, runtime_checkable
@@ -99,9 +99,18 @@ class RuleContext(Protocol):
         name: str,
         instrument: InstrumentId,
         interval: BarInterval,
-        **params: object,
+        *,
+        back: int = 0,
+        params: Mapping[str, object] | None = None,
     ) -> Decimal | None:
-        """An indicator value, computed from closed bars only."""
+        """An indicator value, computed from closed bars only.
+
+        ``back`` steps the window into the past: 0 is the value at the last
+        closed bar, 1 the value it had at the bar before. That is what a
+        crossover is -- above now and not above then -- and computing it any
+        other way means holding state between evaluations, which a rule may
+        not do and a restart would lose.
+        """
         ...
 
     def positions(self) -> Sequence[Trade]:

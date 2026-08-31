@@ -245,7 +245,7 @@ def _never_asked() -> HistorySource:
 
 def test_an_indicator_with_no_history_answers_nothing(context: LiveContext) -> None:
     """A morning, not a fault."""
-    assert context.indicator("RSI", NIFTY, BarInterval.FIVE_MINUTES, period=14) is None
+    assert context.indicator("RSI", NIFTY, BarInterval.FIVE_MINUTES, params={"period": 14}) is None
 
 
 async def test_an_indicator_is_computed_from_the_candles(
@@ -257,7 +257,9 @@ async def test_an_indicator_is_computed_from_the_candles(
     context = _context_over(cache, hub, registry, alerts_book)
 
     # Nothing fell across the whole window, so the index is at its ceiling.
-    assert context.indicator("RSI", NIFTY, BarInterval.ONE_DAY, period=14) == Decimal(100)
+    assert context.indicator("RSI", NIFTY, BarInterval.ONE_DAY, params={"period": 14}) == Decimal(
+        100
+    )
 
 
 def _a_rising_series() -> list[Bar]:
@@ -297,9 +299,9 @@ def test_one_evaluation_computes_an_indicator_once(
     cache = CandleCache(source=_never_asked(), clock=ReplayClock(NOW))
     context = _context_over(cache, hub, registry, alerts_book)
 
-    first = context.indicator("RSI", NIFTY, BarInterval.ONE_DAY, period=14)
+    first = context.indicator("RSI", NIFTY, BarInterval.ONE_DAY, params={"period": 14})
     cache.forget_today()
-    second = context.indicator("RSI", NIFTY, BarInterval.ONE_DAY, period=14)
+    second = context.indicator("RSI", NIFTY, BarInterval.ONE_DAY, params={"period": 14})
 
     # The cache was emptied between the two, so a recomputation would have
     # answered differently. It was not recomputed.
@@ -359,3 +361,60 @@ def test_the_day_before_expiry_is_recognised(registry: InstrumentRegistry) -> No
     conditions = day_conditions_for(NIFTY, date(2026, 9, 2), registry, calendar)
 
     assert DayCondition.ONE_DAY_TO_EXPIRY in conditions
+
+
+async def test_an_indicator_can_be_read_at_an_earlier_bar(
+    hub: TickHub, registry: InstrumentRegistry, alerts_book: object
+) -> None:
+    """What a crossing needs: the value the indicator had one closed bar ago,
+    computed from the window ending there. Not held from the last evaluation --
+    a rule may not keep state and a restart would lose it."""
+    cache = CandleCache(source=_answering(_a_rising_series()), clock=ReplayClock(NOW))
+    cache.wants(NIFTY, BarInterval.ONE_DAY)
+    await cache.refresh_due(session_start=NOW - timedelta(hours=1))
+    context = _context_over(cache, hub, registry, alerts_book)
+
+    now = context.indicator("sma", NIFTY, BarInterval.ONE_DAY, params={"period": 2})
+    before = context.indicator("sma", NIFTY, BarInterval.ONE_DAY, back=1, params={"period": 2})
+
+    assert now is not None
+    assert before is not None
+    assert now > before, "the series rises, so a bar ago the average was lower"
+
+
+async def test_looking_back_further_than_the_history_answers_nothing(
+    hub: TickHub, registry: InstrumentRegistry, alerts_book: object
+) -> None:
+    cache = CandleCache(source=_answering(_a_rising_series()), clock=ReplayClock(NOW))
+    cache.wants(NIFTY, BarInterval.ONE_DAY)
+    await cache.refresh_due(session_start=NOW - timedelta(hours=1))
+    context = _context_over(cache, hub, registry, alerts_book)
+
+    assert (
+        context.indicator("sma", NIFTY, BarInterval.ONE_DAY, back=10_000, params={"period": 2})
+        is None
+    )
+
+
+async def test_looking_back_asks_for_the_bars_behind_it_too(
+    hub: TickHub, registry: InstrumentRegistry, alerts_book: object
+) -> None:
+    """A value one bar ago still needs its own window. The price needs exactly
+    one bar, so asking for one and then dropping one would leave nothing --
+    which is the shape a crossing against the price takes."""
+    cache = CandleCache(source=_answering(_a_rising_series()), clock=ReplayClock(NOW))
+    cache.wants(NIFTY, BarInterval.ONE_DAY)
+    await cache.refresh_due(session_start=NOW - timedelta(hours=1))
+    context = _context_over(cache, hub, registry, alerts_book)
+
+    now = context.indicator("price", NIFTY, BarInterval.ONE_DAY)
+    before = context.indicator("price", NIFTY, BarInterval.ONE_DAY, back=1)
+
+    assert now is not None
+    assert before is not None
+    assert now > before, "the series rises, so the bar before closed lower"
+
+
+def test_looking_back_a_negative_number_of_bars_is_refused(context: LiveContext) -> None:
+    with pytest.raises(DomainError):
+        context.indicator("sma", NIFTY, BarInterval.ONE_DAY, back=-1, params={"period": 2})

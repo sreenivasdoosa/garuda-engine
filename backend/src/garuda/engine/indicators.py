@@ -24,6 +24,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
+from enum import StrEnum
 from itertools import pairwise
 from typing import Protocol, runtime_checkable
 
@@ -132,6 +133,55 @@ def _true_ranges(bars: Sequence[Bar]) -> list[Decimal]:
 
 
 # -- the indicators ---------------------------------------------------------
+
+
+class BarField(StrEnum):
+    """Which price of a bar. The reference spells these upper case."""
+
+    OPEN = "OPEN"
+    HIGH = "HIGH"
+    LOW = "LOW"
+    CLOSE = "CLOSE"
+    #: (high + low + close) / 3, which is what a pivot or a VWAP is built on.
+    TYPICAL = "TYPICAL"
+
+    def of(self, bar: Bar) -> Decimal:
+        if self is BarField.OPEN:
+            return bar.open.amount
+        if self is BarField.HIGH:
+            return bar.high.amount
+        if self is BarField.LOW:
+            return bar.low.amount
+        if self is BarField.CLOSE:
+            return bar.close.amount
+        return (bar.high.amount + bar.low.amount + bar.close.amount) / Decimal(3)
+
+
+@indicator("price")
+@dataclass(frozen=True)
+class BarPrice:
+    """The price itself, so a rule can compare an indicator against it.
+
+    Not an indicator, and registered as one on purpose: every real rule in the
+    reference engine is one indicator against another, and "SuperTrend above
+    the close" is the shape half of them take. Without a price to name on the
+    other side of the comparison, that rule cannot be written at all -- and
+    writing a `price_vs_indicator` rule instead would mean two rules, two sets
+    of parameters and two places for the interval to disagree.
+
+    The last **closed** bar, like every other indicator here. The forming bar
+    is a guess that will change, and "close above the moving average" answered
+    from a bar half way through its five minutes is the repainting bug.
+    """
+
+    field: BarField = BarField.CLOSE
+
+    @property
+    def bars_needed(self) -> int:
+        return 1
+
+    def compute(self, bars: Sequence[Bar]) -> Decimal | None:
+        return self.field.of(bars[-1]) if bars else None
 
 
 @indicator("sma")

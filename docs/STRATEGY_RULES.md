@@ -108,7 +108,26 @@ feed is down, provided ATR answers.
 
 The reference already stores rule trees as JSON with `operator`/`condition`
 nodes. The shape above is a mechanical translation of that, so the Console's
-existing rule builder survives with a thin adapter.
+existing rule builder survives with a thin adapter. **The adapter is not
+built** — the vocabularies it has to map are `AND`/`OR` to `all`/`any`,
+`GREATER_THAN` and friends to the comparator names, `referenceIndicator` and
+its camelCase siblings to `reference`, and `5minute`/`60minute` to `5m`/`1h`.
+Until it exists the reference's own rule rows cannot be loaded.
+
+One note from reading those rows: every real one is an *indicator against
+another indicator*, not against a number. Two shapes cover all of them —
+`ATR(20) < ATR(100)` on the same interval, which is volatility contracting,
+and `SUPERTREND(10,2) > PRICE(CLOSE)`, which is a downtrend. The second needs
+a price on the right-hand side of the comparison, which is why `price` is
+registered as an indicator rather than given a rule of its own.
+
+A crossing is a third shape the reference has and its data does not yet use:
+`CROSS_ABOVE` and `CROSS_BELOW`. They are events rather than states — `EMA(9)
+above EMA(21)` is true every bar it stays above, while the crossing is true on
+the one bar it becomes so. Answered by asking the same question of the
+previous closed bar, through `back=1` on the context, so no rule holds state
+between evaluations. `FLIP`, which the reference has for SuperTrend state, is
+not built.
 
 ## 5. Three rule sets, two shapes
 

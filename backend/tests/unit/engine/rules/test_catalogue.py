@@ -480,3 +480,189 @@ def test_the_whole_first_catalogue_builds_from_configuration(
     )
 
     assert built.evaluate(context).is_pass
+
+
+def test_an_indicator_against_the_price(context: FakeContext) -> None:
+    """The shape half the reference engine's real rules take: SuperTrend above
+    the close means the trend is down. It needs `price` on the other side of
+    the comparison, which is why the price is registered as an indicator."""
+    context.indicators = {"supertrend": Decimal(105), "price": Decimal(100)}
+
+    outcome = IndicatorCompare(
+        "supertrend",
+        comparator=Comparator.ABOVE,
+        reference="price",
+        params={"period": 10, "multiplier": 2},
+        reference_params={"field": "CLOSE"},
+        interval=BarInterval.ONE_HOUR,
+    ).evaluate(context)
+
+    assert outcome.is_pass
+
+
+def test_the_price_above_a_moving_average(context: FakeContext) -> None:
+    """The same shape the other way round, which is how a trend filter reads."""
+    context.indicators = {"price": Decimal(105), "ema": Decimal(100)}
+
+    outcome = IndicatorCompare(
+        "price",
+        comparator=Comparator.ABOVE,
+        reference="ema",
+        reference_params={"period": 21},
+    ).evaluate(context)
+
+    assert outcome.is_pass
+
+
+def test_a_price_that_cannot_be_read_blocks_rather_than_fails(
+    context: FakeContext,
+) -> None:
+    """First bar of the day, before one has closed. Not knowing where the
+    price is is the absence of an answer, not a No."""
+    context.indicators = {"supertrend": Decimal(105)}
+
+    outcome = IndicatorCompare(
+        "supertrend", comparator=Comparator.ABOVE, reference="price"
+    ).evaluate(context)
+
+    assert outcome.verdict is Verdict.UNAVAILABLE
+
+
+# -- a crossing, which is an event rather than a state ---------------------
+
+
+def test_a_crossing_up_passes_on_the_bar_it_happens(context: FakeContext) -> None:
+    """Above now, not above at the previous bar."""
+    context.indicators = {
+        ("ema", "5m", 0): Decimal(101),
+        ("ema", "5m", 1): Decimal(99),
+        ("sma", "5m", 0): Decimal(100),
+        ("sma", "5m", 1): Decimal(100),
+    }
+
+    outcome = IndicatorCompare(
+        "ema", comparator=Comparator.CROSSES_ABOVE, reference="sma"
+    ).evaluate(context)
+
+    assert outcome.is_pass
+
+
+def test_staying_above_is_not_a_crossing(context: FakeContext) -> None:
+    """The distinction that matters. An `above` rule fires on every bar it
+    stays above, which for a re-entering strategy is a different strategy."""
+    context.indicators = {
+        ("ema", "5m", 0): Decimal(102),
+        ("ema", "5m", 1): Decimal(101),
+        ("sma", "5m", 0): Decimal(100),
+        ("sma", "5m", 1): Decimal(100),
+    }
+
+    outcome = IndicatorCompare(
+        "ema", comparator=Comparator.CROSSES_ABOVE, reference="sma"
+    ).evaluate(context)
+
+    assert outcome.verdict is Verdict.FAIL
+
+    standing = IndicatorCompare("ema", comparator=Comparator.ABOVE, reference="sma").evaluate(
+        context
+    )
+
+    assert standing.is_pass
+
+
+def test_below_now_is_not_a_crossing_up_whatever_it_was(context: FakeContext) -> None:
+    context.indicators = {
+        ("ema", "5m", 0): Decimal(99),
+        ("ema", "5m", 1): Decimal(101),
+        ("sma", "5m", 0): Decimal(100),
+        ("sma", "5m", 1): Decimal(100),
+    }
+
+    outcome = IndicatorCompare(
+        "ema", comparator=Comparator.CROSSES_ABOVE, reference="sma"
+    ).evaluate(context)
+
+    assert outcome.verdict is Verdict.FAIL
+
+
+def test_a_crossing_down_is_the_mirror(context: FakeContext) -> None:
+    context.indicators = {
+        ("ema", "5m", 0): Decimal(99),
+        ("ema", "5m", 1): Decimal(101),
+        ("sma", "5m", 0): Decimal(100),
+        ("sma", "5m", 1): Decimal(100),
+    }
+
+    outcome = IndicatorCompare(
+        "ema", comparator=Comparator.CROSSES_BELOW, reference="sma"
+    ).evaluate(context)
+
+    assert outcome.is_pass
+
+
+def test_a_crossing_a_number_needs_only_the_indicators_own_history(
+    context: FakeContext,
+) -> None:
+    """A fixed level does not move, so only the indicator's earlier value is
+    needed to tell a crossing from having been there all along."""
+    context.indicators = {("rsi", "5m", 0): Decimal(52), ("rsi", "5m", 1): Decimal(48)}
+
+    outcome = IndicatorCompare(
+        "rsi", comparator=Comparator.CROSSES_ABOVE, value=Decimal(50)
+    ).evaluate(context)
+
+    assert outcome.is_pass
+
+
+def test_a_crossing_with_no_previous_bar_blocks(context: FakeContext) -> None:
+    """On the first bar of a series everything looks like it just crossed, and
+    a strategy re-entering on crossings would enter every morning."""
+    context.indicators = {("ema", "5m", 0): Decimal(101), ("sma", "5m", 0): Decimal(100)}
+
+    outcome = IndicatorCompare(
+        "ema", comparator=Comparator.CROSSES_ABOVE, reference="sma"
+    ).evaluate(context)
+
+    assert outcome.verdict is Verdict.UNAVAILABLE
+
+
+def test_staying_below_is_not_a_crossing_down(context: FakeContext) -> None:
+    context.indicators = {
+        ("ema", "5m", 0): Decimal(98),
+        ("ema", "5m", 1): Decimal(99),
+        ("sma", "5m", 0): Decimal(100),
+        ("sma", "5m", 1): Decimal(100),
+    }
+
+    outcome = IndicatorCompare(
+        "ema", comparator=Comparator.CROSSES_BELOW, reference="sma"
+    ).evaluate(context)
+
+    assert outcome.verdict is Verdict.FAIL
+
+
+def test_equality_is_not_at_or_below(context: FakeContext) -> None:
+    """Below is not equal, however close."""
+    context.indicators = {"rsi": Decimal(49)}
+
+    outcome = IndicatorCompare("rsi", comparator=Comparator.EQUAL, value=Decimal(50)).evaluate(
+        context
+    )
+
+    assert outcome.verdict is Verdict.FAIL
+
+
+def test_equality_is_a_comparator(context: FakeContext) -> None:
+    context.indicators = {"rsi": Decimal(50)}
+
+    assert (
+        IndicatorCompare("rsi", comparator=Comparator.EQUAL, value=Decimal(50))
+        .evaluate(context)
+        .is_pass
+    )
+    assert (
+        IndicatorCompare("rsi", comparator=Comparator.NOT_EQUAL, value=Decimal(50))
+        .evaluate(context)
+        .verdict
+        is Verdict.FAIL
+    )

@@ -254,7 +254,7 @@ class IndicatorDirection:
 
     def resolve(self, context: RuleContext) -> Direction | None:
         subject = self.instrument or context.underlying
-        value = context.indicator(self.indicator, subject, self.interval, **dict(self.params))
+        value = context.indicator(self.indicator, subject, self.interval, params=self.params)
         if value is None:
             return None
 
@@ -284,8 +284,7 @@ class SuperTrendDirection:
             "supertrend",
             subject,
             self.interval,
-            period=self.period,
-            multiplier=self.multiplier,
+            params={"period": self.period, "multiplier": self.multiplier},
         )
         if line is None:
             return None

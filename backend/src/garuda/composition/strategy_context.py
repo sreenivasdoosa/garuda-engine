@@ -30,6 +30,7 @@ from zoneinfo import ZoneInfo
 from garuda.domain.calendar import TradingCalendar
 from garuda.domain.client import TradingClientId
 from garuda.domain.enums import ExpiryKind, OptionType
+from garuda.domain.errors import DomainError
 from garuda.domain.instrument import InstrumentId
 from garuda.domain.market import Bar, BarInterval, Tick
 from garuda.domain.money import Money
@@ -109,20 +110,31 @@ class LiveContext:
         name: str,
         instrument: InstrumentId,
         interval: BarInterval,
-        **params: object,
+        *,
+        back: int = 0,
+        params: Mapping[str, object] | None = None,
     ) -> Decimal | None:
         """One indicator, computed from closed bars.
 
         An indicator nobody knows raises, because that is a configuration
         error; one whose history is too short answers None, because that is a
         morning.
+
+        ``back`` drops that many bars off the end of the window, so the value
+        is the one the indicator had then. The bars behind it are asked for as
+        well: a twenty-period average one bar ago still needs twenty bars.
         """
-        key = (name.lower(), instrument, interval, tuple(sorted(params.items(), key=str)))
+        if back < 0:
+            raise DomainError(f"{name}: cannot look {back} bars back")
+        shape = params or {}
+        key = (name.lower(), instrument, interval, back, tuple(sorted(shape.items(), key=str)))
         if key in self._indicators:
             return self._indicators[key]
 
-        built = build_indicator(name, **params)
-        value = built.compute(self.candles(instrument, interval, built.bars_needed))
+        built = build_indicator(name, **shape)
+        bars = self.candles(instrument, interval, built.bars_needed + back)
+        window = bars[: len(bars) - back] if back else bars
+        value = built.compute(window)
         self._indicators[key] = value
         return value
 
