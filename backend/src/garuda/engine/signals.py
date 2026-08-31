@@ -113,8 +113,15 @@ class SignalFactory:
         group: str = "DEFAULT",
         tranche: int = 0,
         is_paper: bool = False,
+        protection: ProtectionPolicy | None = None,
+        entry: EntryPolicy | None = None,
     ) -> SignalBatch:
-        """Size every leg, then emit signals -- or refuse the lot."""
+        """Size every leg, then emit signals -- or refuse the lot.
+
+        The policies may be given per call as well as per factory, because
+        what protects a leg is *configuration*, and configuration is resolved
+        for one tranche on one day. A factory built once cannot know it.
+        """
         if not intents:
             return SignalBatch()
 
@@ -129,12 +136,14 @@ class SignalFactory:
                 return SignalBatch(refusal=leg, sizings=tuple(sized.sizing for sized in legs))
             legs.append(leg)
 
+        policies = _Policies(protection or self._protection, entry or self._entry)
         combo_id = intents[0].correlation_id if len(legs) > 1 else None
         signals: list[TradeSignal] = []
         for leg in legs:
             signals.extend(
                 self._signals_for(
                     leg,
+                    policies=policies,
                     combo_id=combo_id,
                     leg_count=len(legs),
                     now=now,
@@ -181,6 +190,7 @@ class SignalFactory:
         self,
         leg: _Leg,
         *,
+        policies: _Policies,
         combo_id: str | None,
         leg_count: int,
         now: datetime,
@@ -190,8 +200,8 @@ class SignalFactory:
     ) -> list[TradeSignal]:
         """One signal per slice, because one signal becomes one order."""
         relationships = _relationships_for(leg, combo_id)
-        protection = self._protection(leg.intent, leg.instrument, leg.price)
-        entry = self._entry(leg.intent, leg.instrument, leg.price)
+        protection = policies.protection(leg.intent, leg.instrument, leg.price)
+        entry = policies.entry(leg.intent, leg.instrument, leg.price)
 
         return [
             TradeSignal(
@@ -218,6 +228,14 @@ class SignalFactory:
             )
             for ordinal, quantity in enumerate(leg.sizing.slices, start=1)
         ]
+
+
+@dataclass(frozen=True, slots=True)
+class _Policies:
+    """What decides a leg's levels and how its entry is placed."""
+
+    protection: ProtectionPolicy
+    entry: EntryPolicy
 
 
 @dataclass(frozen=True, slots=True)

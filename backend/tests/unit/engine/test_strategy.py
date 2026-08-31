@@ -31,7 +31,7 @@ from garuda.domain.instrument import Instrument, InstrumentId
 from garuda.domain.intent import LegRole
 from garuda.domain.market import Bar, BarInterval, Tick
 from garuda.domain.trade import Trade
-from garuda.engine.config import ResolvedConfig
+from garuda.engine.config import ConfigLayer, ResolvedConfig, resolve
 from garuda.engine.rules.compose import AllOf
 from garuda.engine.rules.outcome import RuleOutcome, failed, passed
 from garuda.engine.rules.registry import Rule
@@ -155,7 +155,7 @@ class Doorman:
     accept: bool = True
     batches: list[SignalBatch] = field(default_factory=list)
 
-    def __call__(self, batch: SignalBatch) -> bool:
+    async def __call__(self, batch: SignalBatch) -> bool:
         self.batches.append(batch)
         return self.accept
 
@@ -224,32 +224,36 @@ def subscribed(entry: Rule | None = None, **overrides: object) -> StrategySubscr
 # -- the whole path ---------------------------------------------------------
 
 
-def test_a_passing_strategy_enters(catalogue: dict[InstrumentId, Instrument], world: World) -> None:
+async def test_a_passing_strategy_enters(
+    catalogue: dict[InstrumentId, Instrument], world: World
+) -> None:
     doorman = Doorman()
 
-    result = runner(catalogue, world, doorman).evaluate(subscribed(), 0, world)
+    result = await runner(catalogue, world, doorman).evaluate(subscribed(), 0, world)
 
     assert result.fired
     assert result.tranche.state is TrancheState.FIRED
     assert len(result.signals) == 2
 
 
-def test_both_legs_of_the_straddle_are_sold(
+async def test_both_legs_of_the_straddle_are_sold(
     catalogue: dict[InstrumentId, Instrument], world: World
 ) -> None:
     doorman = Doorman()
 
-    runner(catalogue, world, doorman).evaluate(subscribed(), 0, world)
+    await runner(catalogue, world, doorman).evaluate(subscribed(), 0, world)
 
     signals = doorman.batches[0].signals
     assert {s.direction for s in signals} == {Direction.SHORT}
     assert {s.instrument.value for s in signals} == {"NFO:N25000CE", "NFO:N25000PE"}
 
 
-def test_the_legs_are_one_combo(catalogue: dict[InstrumentId, Instrument], world: World) -> None:
+async def test_the_legs_are_one_combo(
+    catalogue: dict[InstrumentId, Instrument], world: World
+) -> None:
     doorman = Doorman()
 
-    runner(catalogue, world, doorman).evaluate(subscribed(), 0, world)
+    await runner(catalogue, world, doorman).evaluate(subscribed(), 0, world)
 
     combos = {s.relationships.combo_id for s in doorman.batches[0].signals}
     assert len(combos) == 1
@@ -259,37 +263,41 @@ def test_the_legs_are_one_combo(catalogue: dict[InstrumentId, Instrument], world
 # -- standing down ----------------------------------------------------------
 
 
-def test_a_blocked_rule_set_enters_nothing(
+async def test_a_blocked_rule_set_enters_nothing(
     catalogue: dict[InstrumentId, Instrument], world: World
 ) -> None:
     doorman = Doorman()
 
-    result = runner(catalogue, world, doorman).evaluate(subscribed(AllOf((Says(False),))), 0, world)
+    result = await runner(catalogue, world, doorman).evaluate(
+        subscribed(AllOf((Says(False),))), 0, world
+    )
 
     assert not result.fired
     assert doorman.batches == []
     assert result.tranche.state is TrancheState.WAITING
 
 
-def test_what_blocked_it_is_kept_on_the_tranche(
+async def test_what_blocked_it_is_kept_on_the_tranche(
     catalogue: dict[InstrumentId, Instrument], world: World
 ) -> None:
     doorman = Doorman()
 
-    result = runner(catalogue, world, doorman).evaluate(subscribed(AllOf((Says(False),))), 0, world)
+    result = await runner(catalogue, world, doorman).evaluate(
+        subscribed(AllOf((Says(False),))), 0, world
+    )
 
     assert result.tranche.blocked_by is not None
     assert "not yet" in result.tranche.blocked_by
 
 
-def test_a_leg_that_resolves_to_nothing_stands_the_whole_entry_down(
+async def test_a_leg_that_resolves_to_nothing_stands_the_whole_entry_down(
     catalogue: dict[InstrumentId, Instrument], world: World
 ) -> None:
     """A partial entry is worse than none, held at the first of three places."""
     doorman = Doorman()
     world.listed = {InstrumentId("NFO:N25000CE")}  # the put is not listed
 
-    result = runner(catalogue, world, doorman).evaluate(subscribed(), 0, world)
+    result = await runner(catalogue, world, doorman).evaluate(subscribed(), 0, world)
 
     assert not result.fired
     assert doorman.batches == []
@@ -297,18 +305,18 @@ def test_a_leg_that_resolves_to_nothing_stands_the_whole_entry_down(
     assert "partial entry is worse" in result.stood_down
 
 
-def test_no_spot_price_resolves_no_legs(
+async def test_no_spot_price_resolves_no_legs(
     catalogue: dict[InstrumentId, Instrument], world: World
 ) -> None:
     doorman = Doorman()
     world.spot_price = None
 
-    result = runner(catalogue, world, doorman).evaluate(subscribed(), 0, world)
+    result = await runner(catalogue, world, doorman).evaluate(subscribed(), 0, world)
 
     assert not result.fired
 
 
-def test_a_leg_that_cannot_be_sized_refuses_the_batch(
+async def test_a_leg_that_cannot_be_sized_refuses_the_batch(
     catalogue: dict[InstrumentId, Instrument], world: World
 ) -> None:
     """The second of the three places."""
@@ -316,13 +324,13 @@ def test_a_leg_that_cannot_be_sized_refuses_the_batch(
     factory = SignalFactory(Sizer(FixedLotAllocator(0)), catalogue.get, world.quote)
     subject = StrategyRunner(factory=factory, deliver=doorman, ledger=TrancheLedger(TODAY))
 
-    result = subject.evaluate(subscribed(), 0, world)
+    result = await subject.evaluate(subscribed(), 0, world)
 
     assert not result.fired
     assert doorman.batches == []
 
 
-def test_a_strategy_with_no_direction_stands_aside(
+async def test_a_strategy_with_no_direction_stands_aside(
     catalogue: dict[InstrumentId, Instrument], world: World
 ) -> None:
     @dataclass(frozen=True)
@@ -338,7 +346,7 @@ def test_a_strategy_with_no_direction_stands_aside(
         legs=straddle().legs,
     )
 
-    result = runner(catalogue, world, doorman).evaluate(subscribed(spec=spec), 0, world)
+    result = await runner(catalogue, world, doorman).evaluate(subscribed(spec=spec), 0, world)
 
     assert not result.fired
     assert result.stood_down is not None
@@ -348,7 +356,7 @@ def test_a_strategy_with_no_direction_stands_aside(
 # -- once, and only once ----------------------------------------------------
 
 
-def test_a_tranche_that_fired_does_not_fire_again(
+async def test_a_tranche_that_fired_does_not_fire_again(
     catalogue: dict[InstrumentId, Instrument], world: World
 ) -> None:
     """The rule set still passes on the next pass, and must not enter again."""
@@ -356,26 +364,26 @@ def test_a_tranche_that_fired_does_not_fire_again(
     subject = runner(catalogue, world, doorman)
     subscription = subscribed()
 
-    subject.evaluate(subscription, 0, world)
-    again = subject.evaluate(subscription, 0, world)
+    await subject.evaluate(subscription, 0, world)
+    again = await subject.evaluate(subscription, 0, world)
 
     assert not again.fired
     assert len(doorman.batches) == 1
 
 
-def test_a_blocked_tranche_is_tried_again(
+async def test_a_blocked_tranche_is_tried_again(
     catalogue: dict[InstrumentId, Instrument], world: World
 ) -> None:
     doorman = Doorman()
     subject = runner(catalogue, world, doorman)
 
-    subject.evaluate(subscribed(AllOf((Says(False),))), 0, world)
-    later = subject.evaluate(subscribed(), 0, world)
+    await subject.evaluate(subscribed(AllOf((Says(False),))), 0, world)
+    later = await subject.evaluate(subscribed(), 0, world)
 
     assert later.fired
 
 
-def test_each_tranche_is_its_own_entry(
+async def test_each_tranche_is_its_own_entry(
     catalogue: dict[InstrumentId, Instrument], world: World
 ) -> None:
     doorman = Doorman()
@@ -385,18 +393,18 @@ def test_each_tranche_is_its_own_entry(
         world.tranche = number
         return world
 
-    results = subject.evaluate_all(subscribed(tranches=(0, 1, 2)), for_tranche)
+    results = await subject.evaluate_all(subscribed(tranches=(0, 1, 2)), for_tranche)
 
     assert [result.fired for result in results] == [True, True, True]
     assert len(doorman.batches) == 3
 
 
-def test_a_tranche_past_its_cutoff_expires_rather_than_entering(
+async def test_a_tranche_past_its_cutoff_expires_rather_than_entering(
     catalogue: dict[InstrumentId, Instrument], world: World
 ) -> None:
     doorman = Doorman()
 
-    result = runner(catalogue, world, doorman).evaluate(
+    result = await runner(catalogue, world, doorman).evaluate(
         subscribed(cutoff=NOW - timedelta(minutes=1)), 0, world
     )
 
@@ -404,14 +412,14 @@ def test_a_tranche_past_its_cutoff_expires_rather_than_entering(
     assert doorman.batches == []
 
 
-def test_signals_refused_at_the_door_leave_the_tranche_armed(
+async def test_signals_refused_at_the_door_leave_the_tranche_armed(
     catalogue: dict[InstrumentId, Instrument], world: World
 ) -> None:
     """Marking it fired would hide that something is holding these signals
     while the day is still running."""
     doorman = Doorman(accept=False)
 
-    result = runner(catalogue, world, doorman).evaluate(subscribed(), 0, world)
+    result = await runner(catalogue, world, doorman).evaluate(subscribed(), 0, world)
 
     assert not result.fired
     assert result.tranche.state is TrancheState.ARMED
@@ -420,46 +428,46 @@ def test_signals_refused_at_the_door_leave_the_tranche_armed(
 # -- correlation ------------------------------------------------------------
 
 
-def test_one_evaluation_is_one_correlation(
+async def test_one_evaluation_is_one_correlation(
     catalogue: dict[InstrumentId, Instrument], world: World
 ) -> None:
     doorman = Doorman()
 
-    runner(catalogue, world, doorman).evaluate(subscribed(), 0, world)
+    await runner(catalogue, world, doorman).evaluate(subscribed(), 0, world)
 
     ids = {s.id for s in doorman.batches[0].signals}
     assert len(ids) == 2
 
 
-def test_two_tranches_do_not_share_signal_ids(
+async def test_two_tranches_do_not_share_signal_ids(
     catalogue: dict[InstrumentId, Instrument], world: World
 ) -> None:
     """Otherwise duplicate detection refuses the second tranche outright."""
     doorman = Doorman()
     subject = runner(catalogue, world, doorman)
 
-    subject.evaluate(subscribed(tranches=(0, 1)), 0, world)
+    await subject.evaluate(subscribed(tranches=(0, 1)), 0, world)
     world.tranche = 1
-    subject.evaluate(subscribed(tranches=(0, 1)), 1, world)
+    await subject.evaluate(subscribed(tranches=(0, 1)), 1, world)
 
     first = {s.id for s in doorman.batches[0].signals}
     second = {s.id for s in doorman.batches[1].signals}
     assert not (first & second)
 
 
-def test_a_signal_is_labelled_with_the_tranche_that_produced_it(
+async def test_a_signal_is_labelled_with_the_tranche_that_produced_it(
     catalogue: dict[InstrumentId, Instrument], world: World
 ) -> None:
     """Duplicate detection keys on the label, and trade management records it."""
     doorman = Doorman()
     world.tranche = 2
 
-    runner(catalogue, world, doorman).evaluate(subscribed(tranches=(2,)), 2, world)
+    await runner(catalogue, world, doorman).evaluate(subscribed(tranches=(2,)), 2, world)
 
     assert {s.tranche for s in doorman.batches[0].signals} == {2}
 
 
-def test_a_context_built_for_another_tranche_is_refused(
+async def test_a_context_built_for_another_tranche_is_refused(
     catalogue: dict[InstrumentId, Instrument], world: World
 ) -> None:
     """Two sources for one number is two chances to disagree: the signals would
@@ -468,13 +476,13 @@ def test_a_context_built_for_another_tranche_is_refused(
     world.tranche = 0
 
     with pytest.raises(DomainError, match="context built for tranche"):
-        runner(catalogue, world, doorman).evaluate(subscribed(tranches=(1,)), 1, world)
+        await runner(catalogue, world, doorman).evaluate(subscribed(tranches=(1,)), 1, world)
 
 
 # -- a strangle, to prove the shape generalises -----------------------------
 
 
-def test_a_strangle_is_the_same_runner_with_a_different_moneyness(
+async def test_a_strangle_is_the_same_runner_with_a_different_moneyness(
     catalogue: dict[InstrumentId, Instrument], world: World
 ) -> None:
     doorman = Doorman()
@@ -502,7 +510,7 @@ def test_a_strangle_is_the_same_runner_with_a_different_moneyness(
         InstrumentId("NFO:N24900PE"): "70",
     }
 
-    result = runner(catalogue, world, doorman).evaluate(subscribed(spec=spec), 0, world)
+    result = await runner(catalogue, world, doorman).evaluate(subscribed(spec=spec), 0, world)
 
     assert result.fired
     assert {s.instrument.value for s in doorman.batches[0].signals} == {
@@ -511,7 +519,7 @@ def test_a_strangle_is_the_same_runner_with_a_different_moneyness(
     }
 
 
-def test_a_hedged_leg_is_bought_while_the_main_is_sold(
+async def test_a_hedged_leg_is_bought_while_the_main_is_sold(
     catalogue: dict[InstrumentId, Instrument], world: World
 ) -> None:
     """One spec, two side rules. No template and no mode."""
@@ -541,14 +549,16 @@ def test_a_hedged_leg_is_bought_while_the_main_is_sold(
         InstrumentId("NFO:N25100CE"): "60",
     }
 
-    runner(catalogue, world, doorman).evaluate(subscribed(spec=spec), 0, world)
+    await runner(catalogue, world, doorman).evaluate(subscribed(spec=spec), 0, world)
 
     by_instrument = {s.instrument.value: s for s in doorman.batches[0].signals}
     assert by_instrument["NFO:N25000CE"].direction is Direction.SHORT
     assert by_instrument["NFO:N25100CE"].direction is Direction.LONG
 
 
-def test_the_hedge_goes_on_first(catalogue: dict[InstrumentId, Instrument], world: World) -> None:
+async def test_the_hedge_goes_on_first(
+    catalogue: dict[InstrumentId, Instrument], world: World
+) -> None:
     """Protection first on entry, so the main comes off first on exit."""
     doorman = Doorman()
     spec = StrategySpec(
@@ -576,9 +586,82 @@ def test_the_hedge_goes_on_first(catalogue: dict[InstrumentId, Instrument], worl
         InstrumentId("NFO:N25100CE"): "60",
     }
 
-    runner(catalogue, world, doorman).evaluate(subscribed(spec=spec), 0, world)
+    await runner(catalogue, world, doorman).evaluate(subscribed(spec=spec), 0, world)
 
     sequences = {
         s.instrument.value: s.relationships.entry_sequence for s in doorman.batches[0].signals
     }
     assert sequences["NFO:N25100CE"] < sequences["NFO:N25000CE"]
+
+
+# -- configuration reaches the trade ----------------------------------------
+
+
+async def test_the_tranche_s_configured_stop_reaches_the_signal(
+    catalogue: dict[InstrumentId, Instrument], world: World
+) -> None:
+    """Without this the loop would place live trades with no stop-loss, which
+    is the worst thing this engine could ship."""
+    doorman = Doorman()
+    world.config = resolve(
+        "straddle",
+        [ConfigLayer(values={"sl_percentage": Decimal(30), "target_percentage": Decimal(50)})],
+    )
+
+    await runner(catalogue, world, doorman).evaluate(subscribed(), 0, world)
+
+    sold_call = next(s for s in doorman.batches[0].signals if s.instrument.value == "NFO:N25000CE")
+    assert sold_call.protection.stop_loss == rupees("195")  # 150 sold, stopped 30% up
+    assert sold_call.protection.target == rupees("75")
+
+
+async def test_each_leg_is_protected_at_its_own_premium(
+    catalogue: dict[InstrumentId, Instrument], world: World
+) -> None:
+    doorman = Doorman()
+    world.config = resolve("straddle", [ConfigLayer(values={"sl_percentage": Decimal(20)})])
+
+    await runner(catalogue, world, doorman).evaluate(subscribed(), 0, world)
+
+    stops = {s.instrument.value: s.protection.stop_loss for s in doorman.batches[0].signals}
+    assert stops["NFO:N25000CE"] == rupees("180")  # 150 + 20%
+    assert stops["NFO:N25000PE"] == rupees("144")  # 120 + 20%
+
+
+async def test_a_strategy_configured_without_a_stop_says_so(
+    catalogue: dict[InstrumentId, Instrument], world: World
+) -> None:
+    doorman = Doorman()
+    world.config = resolve("straddle", [ConfigLayer(values={"no_stop_loss": True})])
+
+    await runner(catalogue, world, doorman).evaluate(subscribed(), 0, world)
+
+    assert doorman.batches[0].signals[0].protection.no_stop_loss
+
+
+async def test_configuration_that_says_nothing_leaves_a_signal_unprotected(
+    catalogue: dict[InstrumentId, Instrument], world: World
+) -> None:
+    """Not silently: `no_stop_loss` is False, so the difference between "none
+    configured" and "deliberately none" survives to the trade."""
+    doorman = Doorman()
+
+    await runner(catalogue, world, doorman).evaluate(subscribed(), 0, world)
+
+    protection = doorman.batches[0].signals[0].protection
+    assert protection.stop_loss is None
+    assert not protection.no_stop_loss
+
+
+async def test_trailing_is_carried_from_the_tranche_s_configuration(
+    catalogue: dict[InstrumentId, Instrument], world: World
+) -> None:
+    doorman = Doorman()
+    world.config = resolve(
+        "straddle",
+        [ConfigLayer(values={"sl_percentage": Decimal(30), "trail_sl": True})],
+    )
+
+    await runner(catalogue, world, doorman).evaluate(subscribed(), 0, world)
+
+    assert doorman.batches[0].signals[0].protection.is_trailing

@@ -22,6 +22,7 @@ from garuda.brokers.streams import AccountStreamManager, UpdateHandler
 from garuda.brokers.websocket import Connector
 from garuda.composition.engine import Engine, build_account_stream
 from garuda.composition.persistence import TradePersistence
+from garuda.composition.strategy_loop import StrategyLoop
 from garuda.core.runner import EngineRunner, InMemoryPhaseRecorder
 from garuda.domain.alert import EntityType
 from garuda.domain.client import TradingClientId
@@ -43,6 +44,9 @@ class Runtime:
     runner: EngineRunner
     streams: AccountStreamManager
     persistence: dict[TradingClientId, TradePersistence] = field(default_factory=dict)
+    #: The strategies, once there are any subscribed. None means nothing is
+    #: looking for an entry — which is a state, not a fault.
+    strategies: StrategyLoop | None = None
     _tasks: list[asyncio.Task[None]] = field(default_factory=list)
 
     async def stop(self) -> None:
@@ -53,6 +57,10 @@ class Runtime:
         written out last so the final state reaches disk.
         """
         self.runner.stop()
+        if self.strategies is not None:
+            # First: nothing new should go on while everything else is coming
+            # down.
+            self.strategies.stop()
         await _quietly("the trade loops", self.engine.loops.stop())
         await _quietly("the account streams", self.streams.stop())
         market_data = self.engine.parts.market_data
@@ -81,6 +89,7 @@ async def start(
     loader: InstrumentLoader | None,
     connector: Connector,
     now: datetime,
+    strategies: StrategyLoop | None = None,
 ) -> Runtime:
     """Restore the books, open the channels, and register the day's tasks."""
     parts = engine.parts
@@ -118,14 +127,29 @@ async def start(
         offsets=dict(parts.venues.offsets),
     )
 
-    runtime = Runtime(engine=engine, runner=runner, streams=streams, persistence=persistence)
+    runtime = Runtime(
+        engine=engine,
+        runner=runner,
+        streams=streams,
+        persistence=persistence,
+        strategies=strategies,
+    )
     runtime._tasks = [
         asyncio.create_task(_fan_out_ticks(engine), name="ticks"),
+        *(
+            [asyncio.create_task(strategies.run_forever(), name="strategies")]
+            if strategies is not None
+            else []
+        ),
         *(
             asyncio.create_task(keeper.run_forever(), name=f"persist:{client_id.value}")
             for client_id, keeper in persistence.items()
         ),
     ]
+    if strategies is None:
+        logger.warning(
+            "no strategy is subscribed on any account, so nothing will look for an entry"
+        )
     logger.info("engine started: %s", engine.describe())
     return runtime
 

@@ -7,7 +7,8 @@ subscription's tranche, on one evaluation:
 2. its entry rules pass, or the tranche records what blocked it;
 3. a direction is resolved, or the strategy stands aside;
 4. every leg resolves to a listed instrument, or the entry stands down whole;
-5. the legs become intents, which the signal factory sizes into signals;
+5. the legs become intents, which the signal factory sizes into signals,
+   protected at the levels this tranche's configuration asks for;
 6. the tranche arms, the signals are delivered, and the tranche fires.
 
 **A partial entry is worse than none**, and that line is held at three
@@ -23,7 +24,7 @@ chosen. It knows the order.
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable, Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Protocol
@@ -34,6 +35,7 @@ from garuda.domain.errors import DomainError
 from garuda.domain.instrument import InstrumentId
 from garuda.domain.intent import Intent, IntentKind, LegRole
 from garuda.domain.money import Money
+from garuda.engine.protection import configured_protection
 from garuda.engine.rules.context import RuleContext
 from garuda.engine.rules.evaluate import RuleRunner, blocking_reason
 from garuda.engine.rules.registry import Rule
@@ -55,8 +57,10 @@ class StrategyContext(RuleContext, SelectionContext, Protocol):
 
 
 #: Hands a built batch to the account that will trade it. Returns whether it
-#: landed; why it did not is the deliverer's to report.
-type Deliver = Callable[[SignalBatch], bool]
+#: landed; why it did not is the deliverer's to report. Asynchronous because
+#: a book is, and pretending otherwise would mean a synchronous runner that
+#: cannot actually deliver anything.
+type Deliver = Callable[[SignalBatch], Awaitable[bool]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -111,7 +115,7 @@ class StrategyRunner:
     ledger: TrancheLedger
     rules: RuleRunner = field(default_factory=RuleRunner)
 
-    def evaluate(
+    async def evaluate(
         self, subscription: StrategySubscription, tranche: int, context: StrategyContext
     ) -> Result:
         """One tranche, one pass."""
@@ -152,7 +156,7 @@ class StrategyRunner:
         armed = state.armed(context.now, identifiers)
         self.ledger.record(armed)
 
-        if not self.deliver(batch):
+        if not await self.deliver(batch):
             # Built and refused at the door. The tranche stays armed rather
             # than firing: something is holding these signals and the day is
             # not over, and marking it fired would hide that.
@@ -168,7 +172,7 @@ class StrategyRunner:
         )
         return Result(fired, signals=identifiers)
 
-    def evaluate_all(
+    async def evaluate_all(
         self, subscription: StrategySubscription, context_for: Callable[[int], StrategyContext]
     ) -> list[Result]:
         """Every tranche of one subscription, in order.
@@ -179,7 +183,7 @@ class StrategyRunner:
         serving several would answer for the wrong one.
         """
         return [
-            self.evaluate(subscription, tranche, context_for(tranche))
+            await self.evaluate(subscription, tranche, context_for(tranche))
             for tranche in subscription.tranches
         ]
 
@@ -209,6 +213,7 @@ class StrategyRunner:
             group=subscription.group,
             tranche=tranche,
             is_paper=subscription.is_paper,
+            protection=configured_protection(context.config),
         )
 
     def _intents(

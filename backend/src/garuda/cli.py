@@ -15,22 +15,34 @@ import asyncio
 import logging
 import signal
 import sys
+from collections.abc import Mapping
 from contextlib import suppress
+from dataclasses import dataclass
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from garuda.brokers.routing import trading_client_factory
 from garuda.brokers.sessions import SessionResolver
 from garuda.brokers.websocket import websocket_connector
+from garuda.capital import CapitalLotAllocator, Sizer
 from garuda.composition.accounts import build_resolver
 from garuda.composition.engine import Engine, build_engine
 from garuda.composition.instruments import build_loader, load_symbols
 from garuda.composition.runtime import Runtime, start
+from garuda.composition.strategies import Loaded, load_strategies
+from garuda.composition.strategy_context import MarketView
+from garuda.composition.strategy_loop import StrategyLoop, deliver_for
 from garuda.composition.venues import Venues, load_venues
 from garuda.config.settings import Settings, load_settings
 from garuda.core.clock import LiveClock
 from garuda.domain.errors import DomainError
+from garuda.domain.instrument import Instrument, InstrumentId
+from garuda.domain.symbol import SymbolInfo
+from garuda.engine.signals import SignalFactory
+from garuda.engine.strategy import StrategyRunner
+from garuda.engine.tranches import TrancheLedger
 from garuda.marketdata.loader import InstrumentLoader
+from garuda.marketdata.registry import InstrumentRegistry
 from garuda.persistence.engine import create_engine, create_session_factory
 from garuda.persistence.secrets import SecretBox
 from garuda.persistence.seed import load_seed
@@ -77,9 +89,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
 
-async def _build(
-    settings: Settings, clock: Clock
-) -> tuple[Engine, Venues, InstrumentLoader, SessionResolver]:
+async def _build(settings: Settings, clock: Clock) -> _Assembled:
     """Everything both commands need, built once."""
     database = create_engine(settings.database)
     sessions = create_session_factory(database)
@@ -105,7 +115,39 @@ async def _build(
         now=clock.now(),
         connector=websocket_connector(),
     )
-    return engine, venues, loader, resolver
+    strategies = await load_strategies(sessions)
+    _report(strategies)
+    return _Assembled(
+        engine=engine,
+        venues=venues,
+        loader=loader,
+        resolver=resolver,
+        symbols=symbols,
+        strategies=strategies,
+    )
+
+
+@dataclass(frozen=True)
+class _Assembled:
+    """Everything both commands build, kept together rather than positional."""
+
+    engine: Engine
+    venues: Venues
+    loader: InstrumentLoader
+    resolver: SessionResolver
+    symbols: Mapping[str, SymbolInfo]
+    strategies: Loaded
+
+
+def _report(strategies: Loaded) -> None:
+    logger.info(
+        "%d strategies loaded, %d subscriptions, %d strategies left out",
+        len(strategies.strategies),
+        len(strategies.subscriptions),
+        len(strategies.refused),
+    )
+    for name, why in sorted(strategies.refused.items()):
+        logger.warning("%s will not be traded: %s", name, why)
 
 
 def _timezone(venues: Venues) -> ZoneInfo:
@@ -123,7 +165,8 @@ async def _check() -> int:
     """Build everything and say what it found. Places nothing."""
     settings = load_settings()
     clock = LiveClock()
-    engine, _, _, _ = await _build(settings, clock)
+    assembled = await _build(settings, clock)
+    engine = assembled.engine
     parts = engine.parts
 
     print(engine.describe())
@@ -132,6 +175,11 @@ async def _check() -> int:
     for client_id, reason in sorted(parts.unavailable.items()):
         account = parts.accounts.get(client_id)
         print(f"  waiting {account.label if account else client_id.value}: {reason}")
+
+    ready = len(assembled.strategies.subscriptions)
+    print(f"  {ready} subscription(s) will look for an entry")
+    for name, why in sorted(assembled.strategies.refused.items()):
+        print(f"  left out {name}: {why}")
 
     # A configured engine with nothing able to trade is not an error -- nobody
     # has logged in yet at dawn -- but it is worth a non-zero exit so a health
@@ -158,17 +206,68 @@ async def _seed() -> int:
     return 0
 
 
+def _strategy_loop(assembled: _Assembled, clock: Clock) -> StrategyLoop | None:
+    """The loop that looks for entries, if anything is subscribed.
+
+    None when nothing is: an engine with no subscriptions still runs, manages
+    whatever is already on, and squares off on time. It simply never enters.
+    """
+    if not assembled.strategies.subscriptions:
+        return None
+
+    engine = assembled.engine
+    venues = assembled.venues.all
+    if not venues:
+        logger.warning("no venue is configured, so no strategy can be evaluated")
+        return None
+    venue = venues[0]
+
+    broker = next(iter(engine.parts.accounts.values())).broker if engine.parts.accounts else ""
+
+    def registry() -> InstrumentRegistry:
+        return engine.parts.instruments.for_broker(broker)
+
+    def instrument(instrument_id: InstrumentId) -> Instrument | None:
+        return registry().get(instrument_id)
+
+    market = MarketView(
+        hub=engine.parts.hub,
+        registry=registry,
+        symbols=assembled.symbols,
+        timezone=venue.timezone,
+    )
+
+    async def deliver(batch: object) -> bool:
+        return await deliver_for(engine, batch)  # type: ignore[arg-type]
+
+    factory = SignalFactory(Sizer(CapitalLotAllocator()), instrument, engine.parts.hub.latest)
+    # One ledger, shared. Two would let the loop think a tranche was open
+    # while the runner had already fired it, and it would enter every sweep.
+    ledger = TrancheLedger(venue.trading_day_for(clock.now()))
+    return StrategyLoop(
+        engine=engine,
+        loaded=assembled.strategies,
+        market=market,
+        venue=venue,
+        clock=clock,
+        alerts=engine.parts.alerts,
+        runner=StrategyRunner(factory=factory, deliver=deliver, ledger=ledger),
+        ledger=ledger,
+    )
+
+
 async def _run() -> int:
     settings = load_settings()
     clock = LiveClock()
-    engine, _, loader, resolver = await _build(settings, clock)
+    assembled = await _build(settings, clock)
 
     runtime = await start(
-        engine,
-        resolver=resolver,
-        loader=loader,
+        assembled.engine,
+        resolver=assembled.resolver,
+        loader=assembled.loader,
         connector=websocket_connector(),
         now=clock.now(),
+        strategies=_strategy_loop(assembled, clock),
     )
     await _run_until_signalled(runtime)
     return 0
