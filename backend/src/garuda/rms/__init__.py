@@ -9,6 +9,7 @@ __all__ = [
     "Breach",
     "BreachFamily",
     "BreachType",
+    "DailyLossCheck",
     "KillSwitch",
     "RiskCheck",
     "RiskContext",

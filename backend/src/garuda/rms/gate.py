@@ -24,6 +24,7 @@ from typing import Protocol, runtime_checkable
 from garuda.domain.client import TradingClientId
 from garuda.domain.instrument import Instrument
 from garuda.domain.market import Tick
+from garuda.domain.money import Money
 from garuda.domain.order import OrderRequest
 from garuda.domain.position import Position
 from garuda.rms.breaches import BreachType
@@ -57,7 +58,10 @@ class RiskContext:
     position: Position | None = None
     market_open: bool = True
     kill_switch_reason: str | None = None
-    realized_pnl_today: object = None
+    #: What the account has actually lost or made today, realised. Typed
+    #: rather than left open: it was `object` and nothing read it, which is
+    #: how the daily loss limit came to be configurable and unenforced.
+    realized_pnl_today: Money | None = None
 
 
 @runtime_checkable

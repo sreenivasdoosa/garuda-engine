@@ -146,6 +146,36 @@ class FreezeQuantityCheck:
 
 
 @dataclass(frozen=True, slots=True)
+class DailyLossCheck:
+    """Stops an account that has already lost its budget for the day.
+
+    Entries only, which is the whole point of gating entries rather than
+    orders: an account past its limit must stop *taking* risk, and must never
+    be stopped from getting out of the risk it already has. A limit that
+    blocked an exit would turn a bad day into an uncapped one.
+
+    The limit is a positive amount and the day's realised result is signed, so
+    the comparison is against its negation — which reads oddly and is the
+    right way round: -50,000 breaches a 40,000 limit.
+    """
+
+    breach_type: BreachType = BreachType.DAILY_LOSS_EXCEEDED
+
+    def __call__(self, context: RiskContext) -> Breach | None:
+        limit = context.limits.max_daily_loss
+        realized = context.realized_pnl_today
+        if limit is None or realized is None:
+            return None
+        if realized >= -limit:
+            return None
+        return Breach(
+            self.breach_type,
+            f"the day is down {realized}, past the limit of {limit}; no new positions "
+            "until tomorrow, and everything open can still be closed",
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class SpreadCheck:
     """A wide spread means the exit will cost more than the model assumes."""
 
@@ -189,6 +219,7 @@ class VolumeCheck:
 def default_checks() -> tuple[
     KillSwitchCheck,
     MarketOpenCheck,
+    DailyLossCheck,
     QuoteAvailableCheck,
     PriceNonZeroCheck,
     StaleQuoteCheck,
@@ -206,6 +237,7 @@ def default_checks() -> tuple[
     return (
         KillSwitchCheck(),
         MarketOpenCheck(),
+        DailyLossCheck(),
         QuoteAvailableCheck(),
         PriceNonZeroCheck(),
         StaleQuoteCheck(),

@@ -30,6 +30,7 @@ from garuda.capital import CapitalLotAllocator, Sizer
 from garuda.composition.accounts import build_resolver
 from garuda.composition.engine import Engine, build_engine
 from garuda.composition.instruments import build_loader, load_symbols
+from garuda.composition.risk import load_limits
 from garuda.composition.runtime import Runtime, start
 from garuda.composition.strategies import Loaded, load_strategies
 from garuda.composition.strategy_context import MarketView
@@ -112,6 +113,7 @@ async def _build(settings: Settings, clock: Clock) -> _Assembled:
         clock=clock,
         http=trading_client_factory(None),
     )
+    limits = await load_limits(sessions)
     engine = build_engine(
         sessions=sessions,
         resolver=resolver,
@@ -119,6 +121,7 @@ async def _build(settings: Settings, clock: Clock) -> _Assembled:
         clock=clock,
         now=clock.now(),
         connector=websocket_connector(),
+        limits=limits,
     )
     strategies = await load_strategies(sessions)
     _report(strategies)

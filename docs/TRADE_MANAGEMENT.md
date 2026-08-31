@@ -357,6 +357,23 @@ Each leg keeps its own stop as well. The combined level is an additional exit
 for the group, in the same way an exit rule set is (`STRATEGY_RULES.md` §5):
 whichever comes first.
 
+### Risk gates entries, and nothing gates an exit
+
+A breach must stop an account taking *more* risk and must never stop it
+leaving the risk it has. A limit that blocked a stop-loss would turn a bad day
+into an uncapped one.
+
+An `OrderRequest` cannot tell an entry from an exit, so the distinction is made
+where it is known rather than carried on the request: the entry service is
+given the gated placement, and the protective and square-off services the
+plain one. The reference engine arrives at the same place from the other
+direction, with a `skip_price_validation_for_exit` flag on its configuration.
+
+A refusal is raised as `OrderRejectedError`, which is what trade management
+already reads as "no order exists, so a later attempt may safely send a fresh
+one". Any other exception leaves it believing an order might be resting at the
+exchange, and it will not place again.
+
 ### Not decided yet
 
 - **Where stop and target levels come from.** Settled and built for the

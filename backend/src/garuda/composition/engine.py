@@ -38,6 +38,7 @@ from garuda.brokers.zerodha.account import ZerodhaAccountStream
 from garuda.brokers.zerodha.broker import ZerodhaBroker
 from garuda.brokers.zerodha.feed import ZerodhaFeed
 from garuda.brokers.zerodha.rest import KiteClient
+from garuda.composition.risk import gated, realised_today
 from garuda.composition.venues import Venues
 from garuda.core.bus import InProcessEventBus
 from garuda.core.runner import TaskRegistry
@@ -58,6 +59,9 @@ from garuda.persistence.uow import UnitOfWork
 from garuda.protocols.account import AccountStream
 from garuda.protocols.clock import Clock
 from garuda.protocols.feed import MarketDataFeed
+from garuda.rms.checks import default_checks
+from garuda.rms.gate import RiskGate
+from garuda.rms.limits import RiskLimits
 from garuda.trademgmt.client import TradingClientManager
 from garuda.trademgmt.coordination import LegCoordinator
 from garuda.trademgmt.entry import EntryService
@@ -158,6 +162,7 @@ def build_engine(
     clock: Clock,
     now: datetime,
     connector: Connector,
+    limits: RiskLimits | None = None,
     trail_config: TrailConfigLookup | None = None,
 ) -> Engine:
     """Build every part the current configuration allows.
@@ -191,7 +196,16 @@ def build_engine(
             continue
         credentials = resolver.credentials_for(account.id, now)
         parts.clients[account.id] = _build_client(
-            account, credentials, sessions, instruments, hub, venues, alerts, clock, trail_config
+            account,
+            credentials,
+            sessions,
+            instruments,
+            hub,
+            venues,
+            alerts,
+            clock,
+            trail_config,
+            limits or RiskLimits(),
         )
 
     loops = TradeLoops(clock, alerts)
@@ -284,6 +298,7 @@ def _build_client(
     alerts: AlertManager,
     clock: Clock,
     trail_config: TrailConfigLookup | None,
+    limits: RiskLimits,
 ) -> ClientParts:
     """One account's broker, its book, and everything that acts on them."""
     http = trading_client_factory(credentials.static_ip)
@@ -361,6 +376,20 @@ def _build_client(
         result = await protection.place_stop(trade)
         return result.order_id
 
+    # The gate stands in front of entries and nowhere else. An account past a
+    # limit must stop taking risk, and must never be stopped from leaving the
+    # risk it has -- so the protective and square-off services above were
+    # given the plain placement deliberately.
+    entry_placement = gated(
+        broker.place,
+        gate=RiskGate(default_checks()),
+        limits=limits,
+        instruments=instrument,
+        quotes=last_tick,
+        clock=clock,
+        label=account.label,
+        realized_today=realised_today(book.trades),
+    )
     coordinator = LegCoordinator(book, square_off.request, alerts)
     return ClientParts(
         account=account,
@@ -369,7 +398,7 @@ def _build_client(
         tracker=tracker,
         entry=EntryService(
             book,
-            broker.place,
+            entry_placement,
             find_placed,
             instrument,
             clock,
