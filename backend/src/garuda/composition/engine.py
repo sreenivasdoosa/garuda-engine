@@ -62,7 +62,7 @@ from garuda.protocols.clock import Clock
 from garuda.protocols.feed import MarketDataFeed
 from garuda.rms.checks import default_checks
 from garuda.rms.gate import RiskGate
-from garuda.rms.limits import RiskLimits
+from garuda.rms.scope import NO_LIMITS, LimitBook
 from garuda.trademgmt.client import TradingClientManager
 from garuda.trademgmt.coordination import LegCoordinator
 from garuda.trademgmt.entry import EntryService
@@ -163,7 +163,7 @@ def build_engine(
     clock: Clock,
     now: datetime,
     connector: Connector,
-    limits: RiskLimits | None = None,
+    limits: LimitBook | None = None,
     trail_config: TrailConfigLookup | None = None,
 ) -> Engine:
     """Build every part the current configuration allows.
@@ -206,7 +206,7 @@ def build_engine(
             alerts,
             clock,
             trail_config,
-            limits or RiskLimits(),
+            limits or NO_LIMITS,
         )
 
     loops = TradeLoops(clock, alerts)
@@ -299,7 +299,7 @@ def _build_client(
     alerts: AlertManager,
     clock: Clock,
     trail_config: TrailConfigLookup | None,
-    limits: RiskLimits,
+    limits: LimitBook,
 ) -> ClientParts:
     """One account's broker, its book, and everything that acts on them."""
     http = trading_client_factory(credentials.static_ip)

@@ -17,6 +17,10 @@ the same line from the other side, with `skip_price_validation_for_exit` on
 its configuration and an explicit "always allow closing positions" on the
 checks it bypasses.
 
+**Limits are resolved per order, not per engine.** The table holds rows at
+several scopes and an account trades more than one sort of instrument, so
+which row applies is a question about this order — see `rms/scope.py`.
+
 **A refusal is definitive.** Nothing left the engine, so it is raised as an
 `OrderRejectedError` — which the entry service already treats as "no order
 exists, the attempt record can go, a later attempt may safely send a fresh
@@ -44,6 +48,7 @@ from garuda.protocols.broker import OrderRejectedError
 from garuda.protocols.clock import Clock
 from garuda.rms.gate import RiskContext, RiskGate
 from garuda.rms.limits import RiskLimits
+from garuda.rms.scope import NO_LIMITS, SEGMENT_KINDS, LimitBook, LimitScope, ScopedLimits
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +66,7 @@ def gated(
     place: PlaceOrder,
     *,
     gate: RiskGate,
-    limits: RiskLimits,
+    limits: LimitBook,
     instruments: InstrumentLookup,
     quotes: QuoteLookup,
     clock: Clock,
@@ -93,7 +98,7 @@ def gated(
                 request=request,
                 instrument=instrument,
                 now=now,
-                limits=limits,
+                limits=limits.for_(instrument, request.trading_client),
                 # From the venue's own calendar. Left to its default it reads
                 # as "always open", which is how a check can look configured
                 # and never once fire.
@@ -114,29 +119,52 @@ def gated(
 
 async def load_limits(
     sessions: async_sessionmaker[AsyncSession], *, currency: Currency = Currency.INR
-) -> RiskLimits:
-    """The account-wide limits, from configuration.
+) -> LimitBook:
+    """Every active row of risk configuration, at whatever scope it was set.
 
-    The global row only. The table is keyed by exchange, symbol and segment as
-    well, and resolving those the way strategy configuration resolves its
-    scopes is worth doing on its own — with the global row read, a limit set
-    there is enforced, which is more than was true before.
+    Read once and resolved per order. Configuration changes while the engine
+    is running are not picked up, which is the same bargain the rest of the
+    engine's configuration makes: a limit must not change under an order
+    halfway through being checked.
     """
     async with UnitOfWork(sessions) as uow:
         rows = await uow.repositories.rms_config.all()
 
-    globals_ = [
-        row
-        for row in rows
-        if row.is_active is not False
-        and (row.config_level or "").upper() == "GLOBAL"
-        and row.symbol is None
-        and row.exchange is None
-    ]
-    if not globals_:
-        logger.warning("no global risk configuration; only the unconfigurable checks apply")
-        return RiskLimits()
-    return _limits_from(globals_[0], currency)
+    active = [row for row in rows if row.is_active is not False]
+    if not active:
+        logger.warning("no risk configuration; only the unconfigurable checks apply")
+        return NO_LIMITS
+
+    book = LimitBook(
+        tuple(ScopedLimits(_scope_of(row), _limits_from(row, currency)) for row in active)
+    )
+    logger.info("risk configuration: %d active rows", len(book))
+    return book
+
+
+def _scope_of(row: RmsConfigRow) -> LimitScope:
+    """What the row applies to, read from its scope columns.
+
+    Deliberately not from `config_level`. In the reference engine's own data a
+    row labelled SYMBOL carries no symbol and a row labelled GLOBAL names an
+    exchange, so the label says less than the columns do — and taking it at
+    its word is how "the global row" came to mean an equity row applied to an
+    options order.
+    """
+    segment = (row.segment_type or "").upper()
+    if segment and segment not in SEGMENT_KINDS:
+        logger.warning(
+            "risk configuration row %s names segment %r, which matches no instrument kind; "
+            "the row is treated as applying to every kind",
+            row.id,
+            row.segment_type,
+        )
+    return LimitScope(
+        exchange=row.exchange or None,
+        trading_client=row.trading_client_id or None,
+        symbol=row.symbol or None,
+        kind=SEGMENT_KINDS.get(segment),
+    )
 
 
 def _limits_from(row: RmsConfigRow, currency: Currency) -> RiskLimits:

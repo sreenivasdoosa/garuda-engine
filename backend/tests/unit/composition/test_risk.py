@@ -32,6 +32,7 @@ from garuda.protocols.broker import OrderRejectedError
 from garuda.rms.checks import default_checks
 from garuda.rms.gate import RiskContext, RiskGate
 from garuda.rms.limits import RiskLimits
+from garuda.rms.scope import LimitBook, LimitScope, ScopedLimits
 
 #: 10:30 IST on a Monday — inside the session, because the gate now asks the
 #: venue calendar and every order outside it is refused.
@@ -42,6 +43,11 @@ STOCK = InstrumentId("NSE:RELIANCE")
 
 def rupees(value: str) -> Money:
     return Money.of(value, Currency.INR)
+
+
+def everywhere(limits: RiskLimits) -> LimitBook:
+    """One row, scoped to nothing, so it applies to every order."""
+    return LimitBook((ScopedLimits(LimitScope(), limits),))
 
 
 @pytest.fixture
@@ -103,7 +109,7 @@ def wrap(
     return gated(
         place,
         gate=RiskGate(default_checks()),
-        limits=limits or RiskLimits(),
+        limits=everywhere(limits or RiskLimits()),
         instruments=lambda instrument: stock if instrument == STOCK else None,
         quotes=lambda instrument: quote,
         clock=ReplayClock(NOW),
@@ -197,7 +203,7 @@ async def test_an_account_past_its_daily_loss_takes_no_new_position(
     place = gated(
         _accepting(placed),
         gate=RiskGate(default_checks()),
-        limits=RiskLimits(max_daily_loss=rupees("40000")),
+        limits=everywhere(RiskLimits(max_daily_loss=rupees("40000"))),
         instruments=lambda instrument: stock,
         quotes=lambda instrument: a_quote(),
         clock=ReplayClock(NOW),
@@ -218,7 +224,7 @@ async def test_an_account_inside_its_daily_loss_still_trades(
     place = gated(
         _accepting(placed),
         gate=RiskGate(default_checks()),
-        limits=RiskLimits(max_daily_loss=rupees("40000")),
+        limits=everywhere(RiskLimits(max_daily_loss=rupees("40000"))),
         instruments=lambda instrument: stock,
         quotes=lambda instrument: a_quote(),
         clock=ReplayClock(NOW),
@@ -241,7 +247,7 @@ async def test_losing_exactly_the_limit_is_at_it_not_past_it(
     place = gated(
         _accepting(placed),
         gate=RiskGate(default_checks()),
-        limits=RiskLimits(max_daily_loss=rupees("40000")),
+        limits=everywhere(RiskLimits(max_daily_loss=rupees("40000"))),
         instruments=lambda instrument: stock,
         quotes=lambda instrument: a_quote(),
         clock=ReplayClock(NOW),
@@ -259,7 +265,7 @@ async def test_a_profitable_day_is_never_a_breach(stock: Instrument) -> None:
     place = gated(
         _accepting(placed),
         gate=RiskGate(default_checks()),
-        limits=RiskLimits(max_daily_loss=rupees("40000")),
+        limits=everywhere(RiskLimits(max_daily_loss=rupees("40000"))),
         instruments=lambda instrument: stock,
         quotes=lambda instrument: a_quote(),
         clock=ReplayClock(NOW),
@@ -354,7 +360,7 @@ def leaving(
     return gated(
         place,
         gate=RiskGate(default_checks()),
-        limits=limits or RiskLimits(),
+        limits=everywhere(limits or RiskLimits()),
         instruments=lambda instrument: stock,
         quotes=lambda instrument: quote,
         clock=ReplayClock(at),
@@ -453,7 +459,7 @@ async def test_an_exit_is_not_gated_away_entirely(stock: Instrument) -> None:
     place = gated(
         _accepting([]),
         gate=RiskGate(default_checks()),
-        limits=RiskLimits(),
+        limits=LimitBook(),
         instruments=lambda instrument: None,
         quotes=lambda instrument: a_quote(),
         clock=ReplayClock(NOW),
