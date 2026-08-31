@@ -64,6 +64,12 @@ def protection_from(
         target=target,
         no_stop_loss=no_stop,
         no_target=target is None,
+        # Percentages, not prices. A group's level is a percentage of what
+        # the group took in, which is unknown until every leg has filled --
+        # see `trademgmt/combined_rules.py`. Each leg keeps its own stop as
+        # well; whichever comes first.
+        combined_stop_loss_percent=config.percent("combined_sl_percentage"),
+        combined_target_percent=config.percent("combined_target_percentage"),
         is_trailing=config.flag("trail_sl"),
         trail_to_cost=config.flag("trail_sl_to_cost"),
         trigger_to_limit_gap_percent=config.percent("sl_trigger_to_limit_gap_percentage"),

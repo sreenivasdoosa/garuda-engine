@@ -243,3 +243,56 @@ def test_a_zero_percent_stop_sits_at_the_entry(option: Instrument) -> None:
     protection = levels(option, Direction.SHORT, sl_percentage=Decimal(0))
 
     assert protection.stop_loss == rupees("100")
+
+
+class TestTheGroupsLevels:
+    """A group's levels are percentages of what the group took in, so they
+    ride on the leg as percentages rather than as prices: the price cannot be
+    known until every leg has filled."""
+
+    def test_the_combined_percentages_are_carried_on_the_leg(self, option: Instrument) -> None:
+        protection = protection_from(
+            configured(combined_sl_percentage=Decimal(10), combined_target_percentage=Decimal(25)),
+            direction=Direction.SHORT,
+            instrument=option,
+            entry=rupees("150"),
+        )
+
+        assert protection.combined_stop_loss_percent == Decimal(10)
+        assert protection.combined_target_percent == Decimal(25)
+
+    def test_a_group_stop_without_a_group_target_carries_only_the_stop(
+        self, option: Instrument
+    ) -> None:
+        protection = protection_from(
+            configured(combined_sl_percentage=Decimal(10)),
+            direction=Direction.SHORT,
+            instrument=option,
+            entry=rupees("150"),
+        )
+
+        assert protection.combined_stop_loss_percent == Decimal(10)
+        assert protection.combined_target_percent is None
+
+    def test_nothing_configured_leaves_the_group_without_levels(self, option: Instrument) -> None:
+        protection = protection_from(
+            configured(sl_percentage=Decimal(30)),
+            direction=Direction.SHORT,
+            instrument=option,
+            entry=rupees("150"),
+        )
+
+        assert protection.combined_stop_loss_percent is None
+        assert protection.combined_target_percent is None
+
+    def test_the_group_levels_are_not_the_legs_own(self, option: Instrument) -> None:
+        """A leg keeps its own stop as well; whichever comes first."""
+        protection = protection_from(
+            configured(sl_percentage=Decimal(30), combined_sl_percentage=Decimal(10)),
+            direction=Direction.SHORT,
+            instrument=option,
+            entry=rupees("150"),
+        )
+
+        assert protection.stop_loss == rupees("195")
+        assert protection.combined_stop_loss_percent == Decimal(10)

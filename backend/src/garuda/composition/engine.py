@@ -67,6 +67,7 @@ from garuda.trademgmt.client import TradingClientManager
 from garuda.trademgmt.coordination import LegCoordinator
 from garuda.trademgmt.entry import EntryService
 from garuda.trademgmt.loop import TradeLoop, TradeLoops
+from garuda.trademgmt.positions import PositionWatch
 from garuda.trademgmt.protective import ProtectiveOrderService
 from garuda.trademgmt.protective_rules import closing_direction
 from garuda.trademgmt.squareoff import SquareOffService
@@ -96,6 +97,7 @@ class ClientParts:
     entry: EntryService
     protection: ProtectiveOrderService
     trailing: TrailingService
+    positions: PositionWatch
     square_off: SquareOffService
     coordinator: LegCoordinator
     loop: TradeLoop
@@ -404,6 +406,15 @@ def _build_client(
         result = await protection.place_stop(trade)
         return result.order_id
 
+    trailing = TrailingService(
+        book,
+        broker.modify,
+        broker.cancel,
+        place_replacement_stop,
+        instrument,
+        trail_config or _no_trailing,
+        alerts,
+    )
     coordinator = LegCoordinator(book, square_off.request, alerts)
     return ClientParts(
         account=account,
@@ -419,15 +430,8 @@ def _build_client(
             alerts,
         ),
         protection=protection,
-        trailing=TrailingService(
-            book,
-            broker.modify,
-            broker.cancel,
-            place_replacement_stop,
-            instrument,
-            trail_config or _no_trailing,
-            alerts,
-        ),
+        trailing=trailing,
+        positions=PositionWatch(book, trailing, square_off, last_tick, alerts),
         square_off=square_off,
         coordinator=coordinator,
         loop=TradeLoop(

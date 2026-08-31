@@ -81,6 +81,15 @@ class TrailResult:
     to_stop: Money | None = None
     detail: str | None = None
 
+    @property
+    def moved(self) -> bool:
+        """Whether the stop is now somewhere else than it was.
+
+        Tracked counts: the level moved and the exit will be taken from it,
+        the only difference being that no order rests at the broker.
+        """
+        return self.outcome in (TrailOutcome.MOVED, TrailOutcome.REPLACED, TrailOutcome.TRACKED)
+
 
 class TrailingService:
     """Keeps a stop as tight as the position has earned."""

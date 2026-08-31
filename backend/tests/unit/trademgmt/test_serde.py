@@ -39,6 +39,11 @@ def a_rich_trade() -> Trade:
             stop_loss=rupees("150.55"),
             initial_stop_loss=rupees("160"),
             target=rupees("80.25"),
+            # The group's levels, which ride on the leg as percentages: the
+            # price cannot be known until every leg has filled, so a restart
+            # that dropped these would leave the group unprotected.
+            combined_stop_loss_percent=Decimal(10),
+            combined_target_percent=Decimal("12.5"),
             is_trailing=True,
             trigger_to_limit_gap_percent=Decimal("2.5"),
         ),

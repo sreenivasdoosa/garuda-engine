@@ -65,6 +65,14 @@ class Protection:
     target: Money | None = None
     combined_stop_loss: Money | None = None
     initial_combined_stop_loss: Money | None = None
+    #: The group's levels, as percentages of what the group took in. Kept as
+    #: percentages rather than prices because the level cannot be a price
+    #: until every leg has filled, and kept on the leg rather than looked up
+    #: from configuration because the leg is what survives a restart -- and
+    #: because the day conditions that resolved them are known at signal time
+    #: and gone by the time a tick arrives.
+    combined_stop_loss_percent: Decimal | None = None
+    combined_target_percent: Decimal | None = None
     #: The strategy asked for no protective order at all. Distinct from having
     #: one that has not been placed yet.
     no_stop_loss: bool = False

@@ -357,6 +357,42 @@ Each leg keeps its own stop as well. The combined level is an additional exit
 for the group, in the same way an exit rule set is (`STRATEGY_RULES.md` §5):
 whichever comes first.
 
+**Built.** `trademgmt/combined_rules.py` holds the arithmetic and
+`trademgmt/positions.py` runs it, once per tick, for every group holding the
+instrument that ticked. Three things it settles that the specification above
+left implicit:
+
+- **Where the percentages live.** On the leg, in `Protection`, resolved at
+  signal time with the day conditions in hand and persisted with the trade.
+  Not looked up from configuration at tick time: the level cannot be a price
+  until every leg has filled, and the conditions that resolved it are gone by
+  then.
+- **A group with a leg still resting cannot be valued.** It comes back
+  UNAVAILABLE rather than being measured on the legs that did fill. A straddle
+  with one side unfilled is not a one-legged straddle, and reading it as one
+  fires the combined stop on half a position.
+- **The levels are the group's, not the first leg's.** Legs carrying no
+  combined percentages are ignored, so a hedge added without them does not
+  turn the group's stop off. Legs carrying *different* ones leave the group
+  with no level at all and say so loudly — picking a winner would apply a stop
+  nobody configured.
+
+A group is asked out once. The level stays true on every tick after it is
+crossed, and re-asking would bury the log; the square-off queue is idempotent
+per trade regardless.
+
+### One pass over what is open, every tick
+
+Entry asks what a price means for a signal. A second pass asks what it means
+for everything already in the book, and until now there was no such pass:
+`TrailingService` was constructed into every account and nothing ever handed it
+a tick, so trailing stops never moved and the high and low since entry — which
+trailing measures from — were never recorded.
+
+The two are guarded separately in the fan-out. Entry failing on a tick must not
+stop a trailing stop moving or a combined level being read; those protect money
+already at risk.
+
 ### Risk gates every order, and gates an exit differently
 
 A breach must stop an account taking *more* risk and must never stop it

@@ -171,12 +171,21 @@ async def _quietly(what: str, work: Awaitable[object]) -> None:
 
 
 async def _fan_out_ticks(engine: Engine) -> None:
-    """Hand every tick to every account's entry service.
+    """Hand every tick to every account, for entry and then for what is open.
 
     One subscription, not one per account: the bus drops the oldest tick when a
     subscriber falls behind, and giving each account its own queue would let
     them fall behind by different amounts and enter the same signal at
     different prices.
+
+    Entry runs first. A signal that fires on this tick is a position by the
+    time the watch sees it, which is the order an operator would expect and
+    the one that lets a group be complete on the tick that completes it.
+
+    The two are guarded separately. Entry failing on one tick must not stop a
+    trailing stop moving or a combined level being read -- those protect money
+    already at risk, and it is least excusable for them to stop because
+    something upstream broke.
     """
     parts = engine.parts
     subscription = parts.bus.subscribe(Topic.TICKS, name="entry")
@@ -188,6 +197,10 @@ async def _fan_out_ticks(engine: Engine) -> None:
                 await client.entry.on_tick(event)
             except Exception:
                 logger.exception("%s: entry failed on a tick", client.account.label)
+            try:
+                await client.positions.on_tick(event)
+            except Exception:
+                logger.exception("%s: the position watch failed on a tick", client.account.label)
 
 
 def route_updates(engine: Engine) -> UpdateHandler:
