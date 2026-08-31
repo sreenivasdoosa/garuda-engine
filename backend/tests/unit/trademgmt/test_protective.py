@@ -22,6 +22,8 @@ from garuda.trademgmt.dedup import InstrumentLookup
 from garuda.trademgmt.protective import ProtectionOutcome, ProtectiveOrderService
 from garuda.trademgmt.protective_rules import (
     DeferReason,
+    closing_direction,
+    exit_side,
     has_no_stop_configured,
     stop_order_shape,
     stop_within_circuit,
@@ -442,3 +444,16 @@ class TestThePriceBand:
         book_again.add_trade(trade)
         result = await subject_again.place_target(trade)
         assert result.outcome is ProtectionOutcome.PLACED
+
+
+def test_closing_a_long_sells_and_closing_a_short_buys() -> None:
+    assert exit_side(Direction.LONG) is Side.SELL
+    assert exit_side(Direction.SHORT) is Side.BUY
+
+
+def test_a_side_says_which_position_it_would_close() -> None:
+    """The inverse, used where an exit arrives as a side and the book that
+    bounds it is keyed by direction. Round-tripping is the property that
+    matters: the two must not drift apart."""
+    for direction in Direction:
+        assert closing_direction(exit_side(direction)) is direction

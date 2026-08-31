@@ -40,7 +40,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from garuda.domain.instrument import Instrument, InstrumentId
 from garuda.domain.market import Tick
 from garuda.domain.money import Currency, Money
-from garuda.domain.order import BrokerOrderId, OrderRequest
+from garuda.domain.order import BrokerOrderId, OrderRequest, Side
 from garuda.domain.trade import Trade
 from garuda.persistence.models import RmsConfigRow
 from garuda.persistence.uow import UnitOfWork
@@ -61,6 +61,11 @@ type QuoteLookup = Callable[[InstrumentId], Tick | None]
 #: reading this morning.
 type DayResult = Callable[[], Money | None]
 
+#: How much the engine's own book holds on the side an exit would close. A
+#: callable rather than a number for the same reason as the day's result: the
+#: book moves under the gate all session.
+type OpenQuantity = Callable[[InstrumentId, Side], int]
+
 
 def gated(
     place: PlaceOrder,
@@ -72,6 +77,7 @@ def gated(
     clock: Clock,
     label: str,
     realized_today: DayResult | None = None,
+    open_quantity: OpenQuantity | None = None,
     is_exit: bool = False,
 ) -> PlaceOrder:
     """Wrap a placement so the risk gate sees it first.
@@ -105,6 +111,14 @@ def gated(
                 market_open=instrument.exchange.is_open(now),
                 quote=quotes(request.instrument),
                 realized_pnl_today=realized_today() if realized_today is not None else None,
+                # Supplied whether or not this is an exit. The check owns the
+                # rule that it only bounds one, and two guards saying the same
+                # thing means neither can be tested on its own.
+                open_quantity=(
+                    open_quantity(request.instrument, request.side)
+                    if open_quantity is not None
+                    else None
+                ),
                 is_exit=is_exit,
             )
         )

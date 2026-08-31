@@ -27,6 +27,7 @@ from garuda.rms import (
     default_checks,
 )
 from garuda.rms.checks import (
+    ExitQuantityCheck,
     FreezeQuantityCheck,
     KillSwitchCheck,
     OrderQuantityCheck,
@@ -313,3 +314,46 @@ class TestLimitComposition:
         merged = system.merged_with(client).merged_with(strategy)
         assert merged.max_order_quantity == 500
         assert merged.min_volume == 10_000
+
+
+class TestExitQuantity:
+    """The only check that exists for exits rather than in spite of them."""
+
+    def test_an_entry_is_not_bounded_by_what_is_open(self, nifty_call):
+        """Taking more of a position is not an exit, however little is held.
+        The caller supplies the bound either way, so this check is what
+        decides it."""
+        assert ExitQuantityCheck()(context(nifty_call, open_quantity=0)) is None
+
+    def test_an_exit_within_what_is_open_passes(self, nifty_call):
+        at_hand = context(
+            nifty_call,
+            request=a_request(nifty_call, quantity=75),
+            open_quantity=75,
+            is_exit=True,
+        )
+        assert ExitQuantityCheck()(at_hand) is None
+
+    def test_an_exit_beyond_what_is_open_vetoes(self, nifty_call):
+        """A misfired exit closes the position and opens the opposite one,
+        with nothing behind it."""
+        breach = ExitQuantityCheck()(
+            context(
+                nifty_call,
+                request=a_request(nifty_call, quantity=150),
+                open_quantity=75,
+                is_exit=True,
+            )
+        )
+        assert breach is not None
+        assert breach.type is BreachType.EXIT_QTY_EXCEEDS_POSITION
+
+    def test_nothing_open_means_nothing_to_close(self, nifty_call):
+        """Zero is a bound like any other. A second exit for a position
+        already closed is the ordinary way this goes wrong."""
+        assert ExitQuantityCheck()(context(nifty_call, open_quantity=0, is_exit=True)) is not None
+
+    def test_no_bound_supplied_means_no_opinion(self, nifty_call):
+        """Refusing because nothing could be checked would strand a real
+        position, which is the failure this exists to prevent."""
+        assert ExitQuantityCheck()(context(nifty_call, is_exit=True)) is None

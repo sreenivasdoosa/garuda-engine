@@ -62,6 +62,10 @@ class RiskContext:
     #: rather than left open: it was `object` and nothing read it, which is
     #: how the daily loss limit came to be configurable and unenforced.
     realized_pnl_today: Money | None = None
+    #: What the engine's own book holds on the side this order would close,
+    #: gross. Only meaningful on an exit, and None when the placing path did
+    #: not supply one — which reads as "no bound available", never as zero.
+    open_quantity: int | None = None
     #: Whether this order is leaving a position rather than taking one.
     #:
     #: An exit is checked, but not by everything: a limit that stops an

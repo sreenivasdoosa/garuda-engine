@@ -25,6 +25,7 @@ from datetime import date
 from garuda.alerts.manager import AlertManager
 from garuda.domain.alert import EntityType
 from garuda.domain.client import TradingClientId
+from garuda.domain.enums import Direction
 from garuda.domain.instrument import InstrumentId
 from garuda.domain.order import BrokerOrderId
 from garuda.domain.trade import Trade, TradeId
@@ -318,6 +319,20 @@ class TradingClientManager:
             trade.open_quantity * trade.direction.sign
             for trade in self.trades_in(instrument)
             if trade.is_live
+        )
+
+    def open_quantity_in(self, instrument: InstrumentId, direction: Direction) -> int:
+        """Units held one way, gross rather than netted.
+
+        Netting is the wrong number for bounding an exit. Two strategies
+        holding opposite positions in the same instrument net to nothing while
+        each has a real position to close, and a bound taken from the net
+        would refuse both of them.
+        """
+        return sum(
+            trade.open_quantity
+            for trade in self.trades_in(instrument)
+            if trade.is_live and trade.direction is direction
         )
 
     # -- relationships ------------------------------------------------------

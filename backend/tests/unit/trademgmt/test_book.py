@@ -504,6 +504,45 @@ class TestTheIndexes:
         )
         assert subject.open_quantity(CALL) == -50
 
+    async def test_each_side_is_counted_gross_as_well(
+        self, instruments: InstrumentLookup, alerts: AlertManager
+    ) -> None:
+        """What bounds an exit. The two strategies above net to fifty short
+        and each still has a real position to close, so a bound taken from the
+        net would refuse the long's exit outright."""
+        subject = book(instruments, alerts)
+        subject.add_trade(
+            a_trade("t-short", direction=Direction.SHORT).with_entry_fill(75, rupees("120"), TODAY)
+        )
+        subject.add_trade(
+            a_trade("t-long", direction=Direction.LONG, signal_id="sig-2").with_entry_fill(
+                25, rupees("120"), TODAY
+            )
+        )
+
+        assert subject.open_quantity_in(CALL, Direction.SHORT) == 75
+        assert subject.open_quantity_in(CALL, Direction.LONG) == 25
+
+    async def test_a_side_with_nothing_open_counts_nothing(
+        self, instruments: InstrumentLookup, alerts: AlertManager
+    ) -> None:
+        subject = book(instruments, alerts)
+        subject.add_trade(
+            a_trade("t-short", direction=Direction.SHORT).with_entry_fill(75, rupees("120"), TODAY)
+        )
+
+        assert subject.open_quantity_in(CALL, Direction.LONG) == 0
+
+    async def test_another_instrument_is_not_counted(
+        self, instruments: InstrumentLookup, alerts: AlertManager
+    ) -> None:
+        subject = book(instruments, alerts)
+        subject.add_trade(
+            a_trade("t-short", direction=Direction.SHORT).with_entry_fill(75, rupees("120"), TODAY)
+        )
+
+        assert subject.open_quantity_in(PUT, Direction.SHORT) == 0
+
     async def test_a_failed_entry_is_listed_separately(
         self, instruments: InstrumentLookup, alerts: AlertManager
     ) -> None:

@@ -33,6 +33,16 @@ def exit_side(direction: Direction) -> Side:
     return Side.SELL if direction is Direction.LONG else Side.BUY
 
 
+def closing_direction(side: Side) -> Direction:
+    """The other way round: which position a side would be closing.
+
+    An exit arrives as a side and the book is keyed by direction, so the two
+    have to meet somewhere. Written as the inverse of `exit_side` rather than
+    beside it, so the pair cannot drift.
+    """
+    return Direction.LONG if side is Side.SELL else Direction.SHORT
+
+
 def protectable_quantity(trade: Trade) -> int:
     """How much there is to protect: what filled, never what was ordered.
 

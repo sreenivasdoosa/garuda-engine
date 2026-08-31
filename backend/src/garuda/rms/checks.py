@@ -277,9 +277,50 @@ class VolumeCheck:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class ExitQuantityCheck:
+    """An exit may not be for more than the book says is open.
+
+    The one check that exists *for* exits rather than in spite of them. It
+    bounds the exit against the engine's own book — gross on the side being
+    closed, so two strategies holding opposite positions in the same
+    instrument do not cancel each other out — and never against the order,
+    because an order claiming a size is exactly what this is guarding against.
+
+    The reference engine reconstructs this from broker net positions with a
+    chain of fallbacks, because the exit reaches its validator with no link to
+    the trade it closes. Here the book is in process and the number is exact,
+    so the fallbacks are not ported.
+
+    A bound of None means the placing path did not supply one, and an exit is
+    allowed: refusing an exit because nothing could be checked would strand a
+    real position, which is the failure this check is meant to prevent.
+    """
+
+    breach_type: BreachType = BreachType.EXIT_QTY_EXCEEDS_POSITION
+
+    @property
+    def guards_exits(self) -> bool:
+        """It has nothing else to guard."""
+        return True
+
+    def __call__(self, context: RiskContext) -> Breach | None:
+        open_quantity = context.open_quantity
+        if not context.is_exit or open_quantity is None:
+            return None
+        if context.request.quantity <= open_quantity:
+            return None
+        return Breach(
+            self.breach_type,
+            f"exit of {context.request.quantity} exceeds the {open_quantity} open in "
+            f"{context.instrument.trading_symbol}",
+        )
+
+
 def default_checks() -> tuple[
     KillSwitchCheck,
     MarketOpenCheck,
+    ExitQuantityCheck,
     DailyLossCheck,
     QuoteAvailableCheck,
     PriceNonZeroCheck,
@@ -298,6 +339,7 @@ def default_checks() -> tuple[
     return (
         KillSwitchCheck(),
         MarketOpenCheck(),
+        ExitQuantityCheck(),
         DailyLossCheck(),
         QuoteAvailableCheck(),
         PriceNonZeroCheck(),

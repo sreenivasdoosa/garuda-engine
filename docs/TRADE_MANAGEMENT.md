@@ -380,6 +380,18 @@ the same gate. The reference engine draws the same line from the other
 direction, with a `skip_price_validation_for_exit` flag on its configuration
 and an explicit "always allow closing positions" on the checks it bypasses.
 
+One check runs on exits and nowhere else: an exit may not be for more than
+the book says is open on the side it closes. The bound is the engine's own
+book, gross per direction — two strategies holding opposite positions in the
+same instrument net to nothing and each has a real position to close — and
+never the order's own claim, which is what it guards against. No bound
+supplied means no opinion: refusing because nothing could be checked would
+strand a position, which is the failure the check exists to prevent. The
+reference engine reconstructs the same invariant from broker net positions
+through a chain of fallbacks, because its exits reach the validator with no
+link to the trade they close; here the book is in process and the number is
+exact, so the fallbacks are not ported.
+
 The kill switch is the one an operator would guess wrong: it stops an account
 taking risk and must never stop it closing. It is also not yet reachable —
 `kill_switches` is a table with no runtime service behind it, so nothing sets

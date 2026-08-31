@@ -12,6 +12,7 @@ trap a position on exactly the day the limit was reached.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
@@ -63,12 +64,12 @@ def stock(nse: Exchange) -> Instrument:
     )
 
 
-def an_order(quantity: int = 10) -> OrderRequest:
+def an_order(quantity: int = 10, side: Side = Side.SELL) -> OrderRequest:
     return OrderRequest(
         client_order_id=ClientOrderId("gar-1"),
         trading_client=CLIENT,
         instrument=STOCK,
-        side=Side.BUY,
+        side=side,
         quantity=quantity,
         order_type=OrderType.MARKET,
         product=ProductType.MIS,
@@ -349,6 +350,7 @@ def leaving(
     placed: list[OrderRequest] | None = None,
     realized: Money | None = None,
     at: datetime = NOW,
+    open_quantity: Callable[[InstrumentId, Side], int] | None = None,
 ) -> PlaceOrder:
     """The placement the protective and square-off services are given."""
 
@@ -366,6 +368,7 @@ def leaving(
         clock=ReplayClock(at),
         label="Appa",
         realized_today=(lambda: realized) if realized is not None else None,
+        open_quantity=open_quantity,
         is_exit=True,
     )
 
@@ -585,3 +588,90 @@ async def test_an_exit_after_the_close_is_refused(stock: Instrument) -> None:
         await place(an_order())
 
     assert placed == []
+
+
+# -- the one check that exists for exits ------------------------------------
+
+
+def holding(quantity: int) -> Callable[[InstrumentId, Side], int]:
+    """A book holding this much on whichever side is asked about."""
+    return lambda instrument, side: quantity
+
+
+async def test_an_exit_within_what_is_open_goes_out(stock: Instrument) -> None:
+    placed: list[OrderRequest] = []
+    place = leaving(stock, quote=a_quote(), placed=placed, open_quantity=holding(10))
+
+    await place(an_order(10))
+
+    assert len(placed) == 1
+
+
+async def test_an_exit_for_more_than_is_open_is_refused(stock: Instrument) -> None:
+    """A misfired exit is a runaway: it closes the position and opens the
+    opposite one, with no stop behind it."""
+    placed: list[OrderRequest] = []
+    place = leaving(stock, quote=a_quote(), placed=placed, open_quantity=holding(10))
+
+    with pytest.raises(OrderRejectedError, match="exceeds the 10 open"):
+        await place(an_order(25))
+
+    assert placed == []
+
+
+async def test_an_exit_with_nothing_open_is_refused(stock: Instrument) -> None:
+    """Zero is a bound like any other. Nothing open means nothing to close,
+    and a second exit for a position already closed is the ordinary way this
+    goes wrong."""
+    place = leaving(stock, quote=a_quote(), open_quantity=holding(0))
+
+    with pytest.raises(OrderRejectedError, match="exceeds the 0 open"):
+        await place(an_order())
+
+
+async def test_an_exit_is_allowed_when_no_bound_was_supplied(stock: Instrument) -> None:
+    """Refusing because nothing could be checked would strand a real
+    position, which is the failure this check exists to prevent."""
+    placed: list[OrderRequest] = []
+    place = leaving(stock, quote=a_quote(), placed=placed)
+
+    await place(an_order(1000))
+
+    assert len(placed) == 1
+
+
+async def test_an_exit_is_bounded_by_the_side_it_closes(stock: Instrument) -> None:
+    """A sell closes a long, and the long is what bounds it. Two strategies
+    holding opposite positions in the same instrument is the ordinary case
+    where reading the wrong side refuses a legitimate exit."""
+    placed: list[OrderRequest] = []
+    book = {Side.SELL: 100, Side.BUY: 2}
+    place = leaving(
+        stock,
+        quote=a_quote(),
+        placed=placed,
+        open_quantity=lambda instrument, side: book[side],
+    )
+
+    await place(an_order(50))
+
+    assert len(placed) == 1
+
+
+async def test_an_entry_is_never_bounded_by_what_is_open(stock: Instrument) -> None:
+    """Buying more of something is not an exit, however much is held."""
+    placed: list[OrderRequest] = []
+    place = gated(
+        _accepting(placed),
+        gate=RiskGate(default_checks()),
+        limits=everywhere(RiskLimits()),
+        instruments=lambda instrument: stock,
+        quotes=lambda instrument: a_quote(),
+        clock=ReplayClock(NOW),
+        label="Appa",
+        open_quantity=holding(0),
+    )
+
+    await place(an_order(100))
+
+    assert len(placed) == 1

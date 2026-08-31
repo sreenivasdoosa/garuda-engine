@@ -68,6 +68,7 @@ from garuda.trademgmt.coordination import LegCoordinator
 from garuda.trademgmt.entry import EntryService
 from garuda.trademgmt.loop import TradeLoop, TradeLoops
 from garuda.trademgmt.protective import ProtectiveOrderService
+from garuda.trademgmt.protective_rules import closing_direction
 from garuda.trademgmt.squareoff import SquareOffService
 from garuda.trademgmt.squareoff_rules import ExitWindow
 from garuda.trademgmt.tracking import TradeTracker
@@ -366,7 +367,15 @@ def _build_client(
     # them. A stop-loss must go out on the day a loss limit was reached, and a
     # square-off must go out whatever the spread has done.
     entry_placement = watching(broker.place)
-    exit_placement = watching(broker.place, is_exit=True)
+    exit_placement = watching(
+        broker.place,
+        is_exit=True,
+        # Bounded by the engine's own book, not by what the order asks for --
+        # an order claiming a size is what this guards against.
+        open_quantity=lambda instrument, side: book.open_quantity_in(
+            instrument, closing_direction(side)
+        ),
+    )
 
     protection = ProtectiveOrderService(
         book,
