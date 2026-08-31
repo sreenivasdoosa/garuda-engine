@@ -35,6 +35,7 @@ from garuda.domain.errors import DomainError
 from garuda.domain.instrument import InstrumentId
 from garuda.domain.intent import Intent, IntentKind, LegRole
 from garuda.domain.money import Money
+from garuda.engine.direction import DirectionRule, first_answer
 from garuda.engine.protection import configured_protection
 from garuda.engine.rules.context import RuleContext
 from garuda.engine.rules.evaluate import RuleRunner, blocking_reason
@@ -91,6 +92,9 @@ class StrategySubscription:
     spec: StrategySpec
     capital: Money
     entry_rules: Rule
+    #: Asked in order; the first with an opinion wins. Empty means the legs'
+    #: own side rules decide, which is what an undirectional strategy is.
+    direction_rules: tuple[DirectionRule, ...] = ()
     #: How much of the tranche's day is left, as an absolute instant.
     cutoff: datetime | None = None
     tranches: tuple[int, ...] = (0,)
@@ -198,7 +202,7 @@ class StrategyRunner:
     def _build(
         self, subscription: StrategySubscription, tranche: int, context: StrategyContext
     ) -> SignalBatch:
-        direction = subscription.spec.direction.resolve(context)
+        direction = self._direction(subscription, context)
         if direction is None:
             return SignalBatch(refusal=f"{subscription.spec.name}: no direction to trade")
 
@@ -215,6 +219,19 @@ class StrategyRunner:
             is_paper=subscription.is_paper,
             protection=configured_protection(context.config),
         )
+
+    def _direction(
+        self, subscription: StrategySubscription, context: StrategyContext
+    ) -> Direction | None:
+        """Which way, from the configured rules or the spec's own provider.
+
+        The rules win when there are any. A strategy with none falls back to
+        the spec, which for an undirectional one answers a fixed side that its
+        legs then read as "sell both".
+        """
+        if subscription.direction_rules:
+            return first_answer(subscription.direction_rules, context)
+        return subscription.spec.direction.resolve(context)
 
     def _intents(
         self,

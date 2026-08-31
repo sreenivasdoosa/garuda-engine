@@ -174,6 +174,11 @@ class Registry[T]:
             return _time(name, field, value)
         if isinstance(wanted, type) and issubclass(wanted, StrEnum):
             return _member(name, field, wanted, value)
+        if _is_value_object(wanted) and isinstance(value, Mapping):
+            # A nested value object — a reference, a window. Built the same
+            # way and refusing the same things, because a field left as the
+            # dict it arrived as is the third time that bug has appeared.
+            return self._value_object(entry, field, wanted, value)
         if _reads_itself(wanted):
             # A value object that knows how to read its own written form —
             # a moneyness, a duration. Without this it stays the string it
@@ -186,6 +191,34 @@ class Registry[T]:
             return self.build_all(value)
         return value
 
+    def _value_object(
+        self,
+        entry: Registration,
+        field: str,
+        wanted: type[Any],
+        value: Mapping[str, object],
+    ) -> object:
+        fields = {member.name: member for member in dataclasses.fields(wanted)}
+        unknown = set(value) - set(fields)
+        if unknown:
+            raise DomainError(
+                f"{entry.name}: {field} takes no "
+                f"{', '.join(repr(name) for name in sorted(unknown))}; "
+                f"it takes {', '.join(sorted(fields)) or 'none'}"
+            )
+        types = _resolved_types(wanted)
+        nested = Registration(name=f"{entry.name}.{field}", factory=wanted, cost=entry.cost)
+        arguments = {
+            name: self._coerce(nested, name, types.get(name, fields[name].type), inner)
+            for name, inner in value.items()
+        }
+        try:
+            return wanted(**arguments)
+        except DomainError:
+            raise
+        except TypeError as error:
+            raise DomainError(f"{entry.name}: {field} — {error}") from None
+
     def _is_mine(self, wanted: object) -> bool:
         return any(wanted is entry.factory for entry in self._entries.values()) or (
             isinstance(wanted, type) and getattr(wanted, "_is_protocol", False)
@@ -195,6 +228,11 @@ class Registry[T]:
         if get_origin(wanted) not in (tuple, list):
             return False
         return any(self._is_mine(arg) for arg in get_args(wanted))
+
+
+def _is_value_object(wanted: object) -> TypeGuard[type[Any]]:
+    """A dataclass that is data rather than a registered plug-in."""
+    return isinstance(wanted, type) and hasattr(wanted, "__dataclass_fields__")
 
 
 def _reads_itself(wanted: object) -> TypeGuard[type[Any]]:

@@ -188,6 +188,7 @@ def loop_over(
         spec=a_straddle(),
         entry_rules=entry or AllOf((Says(True),)),  # type: ignore[arg-type]
         exit_rules=None,
+        direction_rules=(),
         layers=(),
         tranches=tranches,
     )

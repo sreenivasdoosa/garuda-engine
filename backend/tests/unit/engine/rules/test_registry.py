@@ -228,3 +228,38 @@ def test_an_enum_parameter_becomes_the_enum_not_the_string() -> None:
 
 def test_a_cost_hint_is_recorded() -> None:
     assert registered()["test_everything"].cost is Cost.CHEAP
+
+
+@dataclass(frozen=True)
+class Corner:
+    """Data, not a plug-in. Nothing registers it."""
+
+    depth: int = 0
+    amount: Decimal = Decimal(0)
+
+
+@rule("test_nested")
+@dataclass(frozen=True)
+class Nested:
+    """A rule with a value object inside it."""
+
+    where: Corner = field(default_factory=Corner)
+
+    def evaluate(self, context: RuleContext) -> RuleOutcome:
+        return passed("yes")
+
+
+def test_a_nested_value_object_is_built_not_left_a_dict() -> None:
+    """The third time this bug appeared: a field left as the mapping it
+    arrived as compares unequal to everything and takes the other branch."""
+    built = build({"type": "test_nested", "where": {"depth": 3, "amount": "1.5"}})
+
+    assert isinstance(built, Nested)
+    assert isinstance(built.where, Corner)
+    assert built.where.depth == 3
+    assert built.where.amount == Decimal("1.5")
+
+
+def test_a_nested_value_object_refuses_what_it_does_not_take() -> None:
+    with pytest.raises(DomainError, match="takes no 'deth'"):
+        build({"type": "test_nested", "where": {"deth": 3}})

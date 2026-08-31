@@ -37,6 +37,8 @@ from garuda.domain.intent import LegRole
 from garuda.domain.money import Currency, Money
 from garuda.engine.config import ConfigLayer, ResolvedConfig, resolve
 from garuda.engine.daycondition import DayCondition
+from garuda.engine.direction import DirectionRule
+from garuda.engine.direction import build_all as build_directions
 from garuda.engine.rules.compose import AllOf
 from garuda.engine.rules.registry import Rule
 from garuda.engine.rules.registry import build as build_rule
@@ -86,6 +88,7 @@ class Strategy:
     spec: StrategySpec
     entry_rules: Rule
     exit_rules: Rule | None
+    direction_rules: tuple[DirectionRule, ...]
     layers: tuple[ConfigLayer, ...]
     tranches: tuple[int, ...]
 
@@ -190,6 +193,7 @@ def _subscriptions(
                 spec=strategy.spec,
                 capital=Money(Decimal(row.capital), currency),
                 entry_rules=strategy.entry_rules,
+                direction_rules=strategy.direction_rules,
                 tranches=strategy.tranches,
                 is_paper=bool(row.is_paper_trading),
             )
@@ -215,6 +219,7 @@ def _strategy(
         spec=spec,
         entry_rules=_rules(definition.strategy_name, "entry", rules),
         exit_rules=_optional_rules(definition.strategy_name, "exit", rules),
+        direction_rules=_direction_rules(definition, rules),
         layers=layers,
         tranches=_tranches(configs),
     )
@@ -250,16 +255,53 @@ def _tranches(configs: Sequence[StrategyConfigRow]) -> tuple[int, ...]:
 
 
 def _direction(definition: StrategyDefinitionsRow) -> DirectionProvider:
-    # Direction providers are rules of their own and are not loaded yet. Until
-    # they are, a strategy trades the one way its legs describe: the side rules
-    # on the legs carry the real decision for an option seller, and a
-    # directional strategy is refused rather than silently traded one way.
-    if definition.is_directional:
+    """The fallback for a strategy with no direction rules.
+
+    An undirectional strategy takes a fixed side and its legs read it — a short
+    strangle sells both, so which side it is told hardly matters. A directional
+    one without rules is refused (see :func:`_direction_rules`), so this is
+    never the answer for one that needs a real opinion.
+    """
+    del definition
+    return FixedDirection(Direction.SHORT)
+
+
+def _direction_rules(
+    definition: StrategyDefinitionsRow, rules: StrategyIndicatorRulesRow | None
+) -> tuple[DirectionRule, ...]:
+    """The rules that decide which way, in the order they are asked.
+
+    A directional strategy with none is refused rather than traded: trading it
+    in a direction nobody chose is worse than not trading it, and the only
+    other option is to guess.
+    """
+    configured = _direction_json(definition.strategy_name, rules)
+    if definition.is_directional and not configured:
         raise DomainError(
-            f"{definition.strategy_name} is directional, and direction rules are not loaded yet; "
+            f"{definition.strategy_name} is directional but has no direction rules; "
             "it is left out rather than traded in a direction nobody chose"
         )
-    return FixedDirection(Direction.SHORT)
+    return configured
+
+
+def _direction_json(
+    strategy: str, rules: StrategyIndicatorRulesRow | None
+) -> tuple[DirectionRule, ...]:
+    if rules is None:
+        return ()
+    raw = (rules.direction_rules_json or "").strip()
+    if not raw:
+        return ()
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as error:
+        raise DomainError(
+            f"{strategy}: its direction rules are not readable JSON ({error})"
+        ) from None
+    try:
+        return build_directions(parsed if isinstance(parsed, list) else [parsed])
+    except DomainError as error:
+        raise DomainError(f"{strategy}: its direction rules are not usable — {error}") from None
 
 
 def _legs(definition: StrategyDefinitionsRow) -> tuple[LegSpec, ...]:

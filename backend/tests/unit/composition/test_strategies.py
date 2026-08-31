@@ -266,12 +266,60 @@ def test_a_selector_nobody_registered_leaves_the_strategy_out() -> None:
     assert "straddle" in loaded.refused
 
 
-def test_a_directional_strategy_is_left_out_rather_than_guessed_at() -> None:
-    """Direction rules are not loaded yet, and trading a directional strategy
-    one way that nobody chose is worse than not trading it."""
+def test_a_directional_strategy_with_no_direction_rules_is_left_out() -> None:
+    """Trading it one way nobody chose is worse than not trading it, and the
+    only other option is to guess."""
     loaded = assemble([definition(is_directional=True)], [], [], [])
 
-    assert "direction rules are not loaded" in loaded.refused["straddle"]
+    assert "no direction rules" in loaded.refused["straddle"]
+
+
+def test_a_directional_strategy_with_rules_is_traded() -> None:
+    rules_json = json.dumps([{"type": "fixed", "way": "LONG"}])
+    loaded = assemble(
+        [definition(is_directional=True)],
+        [],
+        [rules(direction_rules_json=rules_json)],
+        [],
+    )
+
+    assert loaded.refused == {}
+    assert len(loaded.strategies["straddle"].direction_rules) == 1
+
+
+def test_direction_rules_are_asked_in_the_order_configured() -> None:
+    """First with an opinion wins, so "use the skew, else the candle" is a
+    list rather than a new provider class."""
+    rules_json = json.dumps(
+        [{"type": "n_bars_breakout", "bars": 3}, {"type": "fixed", "way": "SHORT"}]
+    )
+    loaded = assemble(
+        [definition(is_directional=True)], [], [rules(direction_rules_json=rules_json)], []
+    )
+
+    ordered = loaded.strategies["straddle"].direction_rules
+    assert [type(rule).__name__ for rule in ordered] == ["NBarsBreakout", "Fixed"]
+
+
+def test_an_undirectional_strategy_needs_no_direction_rules() -> None:
+    """A short strangle sells both sides; which way it is told hardly matters."""
+    loaded = assemble([definition(is_directional=False)], [], [], [])
+
+    assert loaded.refused == {}
+    assert loaded.strategies["straddle"].direction_rules == ()
+
+
+def test_a_direction_rule_nobody_registered_leaves_the_strategy_out() -> None:
+    rules_json = json.dumps([{"type": "read_the_tea_leaves"}])
+    loaded = assemble([definition()], [], [rules(direction_rules_json=rules_json)], [])
+
+    assert "direction rules are not usable" in loaded.refused["straddle"]
+
+
+def test_unreadable_direction_json_leaves_the_strategy_out() -> None:
+    loaded = assemble([definition()], [], [rules(direction_rules_json="{nope")], [])
+
+    assert "not readable JSON" in loaded.refused["straddle"]
 
 
 # -- configuration ----------------------------------------------------------
