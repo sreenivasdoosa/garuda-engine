@@ -11,6 +11,10 @@ qualitatively and vocabulary exactly.
 
 ## 1. What the configuration actually looks like
 
+> **Superseded in part.** `STRATEGY_RULES.md` replaces trigger types with
+> rules. What follows still describes what the reference engine does and why
+> the scheduler matters; it no longer describes what garuda will build.
+
 ### Entries are scheduled, not ticked
 
 **No configured strategy uses a tick trigger.** Almost all use the scheduled
