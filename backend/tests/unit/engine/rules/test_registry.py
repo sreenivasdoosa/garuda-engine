@@ -58,7 +58,7 @@ def test_a_registered_rule_can_be_built_by_name() -> None:
 
 
 def test_a_rule_nobody_registered_is_refused() -> None:
-    with pytest.raises(DomainError, match="is not a rule this engine knows"):
+    with pytest.raises(DomainError, match="is not a known rule"):
         build({"type": "enter_if_i_feel_like_it"})
 
 
@@ -199,7 +199,7 @@ def test_a_rule_taking_a_list_of_rules_builds_them_all() -> None:
 
 
 def test_a_broken_child_is_refused_along_with_its_parent() -> None:
-    with pytest.raises(DomainError, match="is not a rule this engine knows"):
+    with pytest.raises(DomainError, match="is not a known rule"):
         build({"type": "test_wrapper", "of": {"type": "imaginary"}})
 
 

@@ -8,11 +8,14 @@ every answer in a single evaluation must come from the same instant.
 Built fresh per evaluation. It is a view, not a cache: the hub and the registry
 are the sources, and this holds a moment's worth of them.
 
-**Candles and indicators are not available yet.** There is no candle store, so
-``candles`` answers empty and ``indicator`` answers None, and every rule that
-needs either reads UNAVAILABLE. That is the honest answer and the loud one: a
-strategy waiting on an indicator will say it cannot tell, rather than looking
-like one whose condition did not hold.
+Candles come from the cache, which holds what the broker's history API has
+answered. Reads never wait: asking for a series nobody has fetched registers
+the demand and answers empty, so the first pass over a new instrument says it
+cannot tell — which is true — and the next one has the data.
+
+Indicators are computed from those candles and cached for the length of one
+evaluation, so a tree asking for the same average in three rules computes it
+once and all three see one number.
 """
 
 from __future__ import annotations
@@ -34,6 +37,7 @@ from garuda.domain.symbol import SymbolInfo
 from garuda.domain.trade import Trade
 from garuda.engine.config import ResolvedConfig
 from garuda.engine.daycondition import DayCondition, conditions_on
+from garuda.engine.indicators import build as build_indicator
 from garuda.marketdata.history import CandleCache
 from garuda.marketdata.hub import TickHub
 from garuda.marketdata.registry import InstrumentRegistry
@@ -74,6 +78,9 @@ class LiveContext:
     #: answer. A tree whose first rule saw 100 and whose fifth saw 101 can
     #: contradict itself.
     _seen: dict[InstrumentId, Tick | None] = field(default_factory=dict)
+    #: Indicators computed in this pass, so a ten-rule tree is not ten
+    #: computations of the same average.
+    _indicators: dict[tuple[object, ...], Decimal | None] = field(default_factory=dict)
 
     @property
     def timezone(self) -> ZoneInfo:
@@ -104,9 +111,20 @@ class LiveContext:
         interval: BarInterval,
         **params: object,
     ) -> Decimal | None:
-        """Nothing yet, for the same reason: an indicator is candles."""
-        del name, instrument, interval, params
-        return None
+        """One indicator, computed from closed bars.
+
+        An indicator nobody knows raises, because that is a configuration
+        error; one whose history is too short answers None, because that is a
+        morning.
+        """
+        key = (name.lower(), instrument, interval, tuple(sorted(params.items(), key=str)))
+        if key in self._indicators:
+            return self._indicators[key]
+
+        built = build_indicator(name, **params)
+        value = built.compute(self.candles(instrument, interval, built.bars_needed))
+        self._indicators[key] = value
+        return value
 
     def positions(self) -> Sequence[Trade]:
         return self.book.trades_for(self.strategy)

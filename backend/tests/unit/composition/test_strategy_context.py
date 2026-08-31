@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime, time
+from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
@@ -26,6 +26,7 @@ from garuda.domain.enums import (
     Segment,
     SettlementType,
 )
+from garuda.domain.errors import DomainError
 from garuda.domain.exchange import Exchange
 from garuda.domain.instrument import Instrument, InstrumentId
 from garuda.domain.market import Bar, BarInterval, Tick
@@ -242,8 +243,95 @@ def _never_asked() -> HistorySource:
     return Nothing()
 
 
-def test_there_are_no_indicators_yet(context: LiveContext) -> None:
+def test_an_indicator_with_no_history_answers_nothing(context: LiveContext) -> None:
+    """A morning, not a fault."""
     assert context.indicator("RSI", NIFTY, BarInterval.FIVE_MINUTES, period=14) is None
+
+
+async def test_an_indicator_is_computed_from_the_candles(
+    hub: TickHub, registry: InstrumentRegistry, alerts_book: object
+) -> None:
+    cache = CandleCache(source=_answering(_a_rising_series()), clock=ReplayClock(NOW))
+    cache.wants(NIFTY, BarInterval.ONE_DAY)
+    await cache.refresh_due(session_start=NOW - timedelta(hours=1))
+    context = _context_over(cache, hub, registry, alerts_book)
+
+    # Nothing fell across the whole window, so the index is at its ceiling.
+    assert context.indicator("RSI", NIFTY, BarInterval.ONE_DAY, period=14) == Decimal(100)
+
+
+def _a_rising_series() -> list[Bar]:
+    return [
+        Bar(
+            instrument=NIFTY,
+            interval=BarInterval.ONE_DAY,
+            start=NOW - timedelta(days=60 - n),
+            open=rupees(str(100 + n)),
+            high=rupees(str(100 + n)),
+            low=rupees(str(100 + n)),
+            close=rupees(str(100 + n)),
+        )
+        for n in range(60)
+    ]
+
+
+def _answering(bars: list[Bar]) -> HistorySource:
+    class Source:
+        async def fetch(
+            self,
+            instrument: InstrumentId,
+            interval: BarInterval,
+            start: datetime,
+            end: datetime,
+        ) -> list[Bar]:
+            return [bar for bar in bars if start <= bar.start < end]
+
+    return Source()
+
+
+def test_one_evaluation_computes_an_indicator_once(
+    hub: TickHub, registry: InstrumentRegistry, alerts_book: object
+) -> None:
+    """A ten-rule tree must not be ten computations of the same average, and
+    all ten must see one number."""
+    cache = CandleCache(source=_never_asked(), clock=ReplayClock(NOW))
+    context = _context_over(cache, hub, registry, alerts_book)
+
+    first = context.indicator("RSI", NIFTY, BarInterval.ONE_DAY, period=14)
+    cache.forget_today()
+    second = context.indicator("RSI", NIFTY, BarInterval.ONE_DAY, period=14)
+
+    # The cache was emptied between the two, so a recomputation would have
+    # answered differently. It was not recomputed.
+    assert first == second
+
+
+def test_an_indicator_nobody_knows_is_a_configuration_error(
+    hub: TickHub, registry: InstrumentRegistry, alerts_book: object
+) -> None:
+    cache = CandleCache(source=_never_asked(), clock=ReplayClock(NOW))
+    context = _context_over(cache, hub, registry, alerts_book)
+
+    with pytest.raises(DomainError, match="not a known indicator"):
+        context.indicator("VIBES", NIFTY, BarInterval.ONE_DAY)
+
+
+def _context_over(
+    cache: CandleCache, hub: TickHub, registry: InstrumentRegistry, book: object
+) -> LiveContext:
+    return LiveContext(
+        market=MarketView(
+            hub=hub, registry=lambda: registry, symbols={}, timezone=IST, candles=cache
+        ),
+        book=book,  # type: ignore[arg-type]
+        now=NOW,
+        trading_day=TODAY,
+        strategy="straddle",
+        trading_client=CLIENT,
+        tranche=0,
+        config=ResolvedConfig(strategy="straddle"),
+        underlying=NIFTY,
+    )
 
 
 # -- day conditions ---------------------------------------------------------

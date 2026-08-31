@@ -114,9 +114,7 @@ class Registry[T]:
         entry = self._entries.get(named.strip().lower())
         if entry is None:
             known = ", ".join(sorted(self._entries)) or "none registered"
-            raise DomainError(
-                f"{named!r} is not a {self._kind} this engine knows; it knows {known}"
-            )
+            raise DomainError(f"{named!r} is not a known {self._kind}; this engine knows {known}")
 
         params = {key: value for key, value in config.items() if key != TYPE_KEY}
         return self._construct(entry, params)
