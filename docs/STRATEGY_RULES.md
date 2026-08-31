@@ -186,6 +186,60 @@ candle families that were going to exist anyway.
 
 That collapse is the strongest evidence the boundary is in the right place.
 
+### A source is not a rule
+
+The natural next thought is that a synthetic should *be* a rule — one class,
+all its logic inside it, plugged in like everything else. That instinct is
+right about the shape and wrong about the count. There are two pluggable
+things here, and merging them breaks the feature that motivated it.
+
+| | produces | has memory | run by |
+|---|---|---|---|
+| `SyntheticSource` | the series, tick by tick | yes | market data, continuously, from the open |
+| `Rule` | a verdict about the series | no | the rule engine, per strategy, per evaluation |
+
+The killer is the motivating example itself. *Rolling straddle is 10% below
+its open* needs the open. A rule first evaluated at 13:00 has never seen the
+open, and nothing inside the rule can recover it: the series has to have been
+accumulating since the session started, whether or not any strategy was
+watching. Three more follow from the same place — fifty strategies referencing
+one straddle would each recompute it; one-minute candles need every second's
+value rather than the instants some rule happened to run; and a restart at
+13:05 has to rebuild the morning from somewhere.
+
+There is also §2 to answer to. Rules are pure, and purity is what lets a
+recorded day replay identically and lets the engine reorder by cost. A rule
+carrying rolling state is not a rule any more.
+
+So the dividing line is:
+
+> **If it needs memory of anything before this instant, it is a source. If it
+> is a pure function of the current context, it is a rule.**
+
+`max_pain_distance` is a rule: it reads today's chain and computes, and has no
+past. A rolling straddle is a source. What joins them is that
+`percent_from_reference` neither knows nor cares which it is reading.
+
+The two share their plug-in mechanism exactly — a class with its logic inside
+it, registered by name, configured by parameters, discovered through an entry
+point:
+
+```python
+@synthetic("rolling_straddle")
+@dataclass(frozen=True)
+class RollingStraddle:
+    underlying: InstrumentId
+    expiry: ExpiryRule = ExpiryRule.NEAREST_WEEKLY
+    roll_when_spot_moves: Decimal = Decimal("0.5")   # in strikes
+
+    def price(self, chain: OptionChain, spot: Money, held: StrikeChoice | None) -> Money | None:
+        ...
+```
+
+Writing a new synthetic is therefore the same act as writing a new rule, and
+neither touches the engine. They are simply plugged into different sockets:
+one publishes a price, the other reads one.
+
 ### Two things it costs
 
 - **A synthetic is never a trigger price and never an entry level.** Nothing
@@ -475,8 +529,8 @@ list badly: half-overriding a list is a footgun with no good semantics. So:
    configured today, and everything else is additive by construction. Note
    that `vix_below` is not on that list and does not need to be: VIX is an
    instrument, so `price_below` is the VIX rule.
-5. **Who defines a synthetic.** Market data computes and publishes them, but
-   something has to say *which* ones exist — "the rolling at-the-money straddle
+5. **Who defines a synthetic.** A `SyntheticSource` says *how* one is
+   computed (§6), but something has to say *which* ones exist — "the rolling at-the-money straddle
    of this underlying on the nearest weekly expiry, rolled when spot moves half
    a strike". That is configuration, it needs a table, and its roll rule is
    what makes the resulting series explicable. Worth settling before the first
