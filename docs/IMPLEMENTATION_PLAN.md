@@ -1,6 +1,6 @@
 # Garuda Engine — Implementation Plan
 
-**Status:** Draft v1.0 · 2026-08-28
+**Status:** Draft v1.0 · 2026-08-28 · progress reviewed 2026-09-01
 **Companion to:** [`DESIGN.md`](DESIGN.md) · [`SCOPE_DECISIONS.md`](SCOPE_DECISIONS.md)
 
 ## How this plan works
@@ -19,6 +19,67 @@ Rules that hold for every phase:
 - A phase is not done until its Console pages work against the real backend.
 
 Sizing is relative effort, not a commitment. `M` ≈ a solid week of focused work.
+
+---
+
+## Where we are · 2026-09-01
+
+**The engine is through Phase 3 and well into Phase 4. Nothing that has a
+Console page has been started.** The `api` package holds one empty
+`__init__.py` and `frontend/` is an empty directory, so by this plan's own
+rule — *a phase is not done until its Console pages work against the real
+backend* — no phase past 0 is closed. Everything below the API line runs:
+`garuda seed`, `garuda check` and `garuda run` build the whole engine, load
+strategies, evaluate rules, size and place orders, manage trades and square
+off.
+
+| Phase | State | What is missing |
+|---|---|---|
+| 0 Foundations | **Done** | — |
+| 1 Vertical slice | Engine done, no UI | The API and the frontend strip. Everything else runs, including the paper broker, the order state machine, the journal and replay. |
+| 2 Market data | Partly | Fyers and Dhan feeds; `FeedRouter` and provider failover; Console pages. Synthetics, option chains, expiries, Black-Scholes and candle history are done. |
+| 3 Strategy engine | Largely done | Console pages; cross-day strategy state. Specs, config resolution, rules, direction, selectors, indicators, tranches and hedging all run. |
+| 4 Live execution and RMS | Substantially done | The adapter contract suite; the order-fill escalation ladder; four exit policies (below); Console pages. |
+| 5–10 | Not started | — |
+
+Catalogue as it stands: **12 rules · 6 selectors · 7 direction rules ·
+11 indicators · 5 synthetics · 15 RMS checks**.
+
+### What has deliberately diverged from this plan
+
+- **No `EXTERNAL_SIGNAL` and no market-data rules engine** (Phase 2). The
+  reference computes straddle and IV conditions in market data and fires a
+  signal into the core. Here market data publishes synthetic *instruments*
+  and the strategy's own rules read them, so there is one rule engine rather
+  than two. See `STRATEGY_RULES.md` §6.
+- **Candle history is cached in memory, not Postgres** (Phase 2). Settled
+  days are fetched once and today is refreshed when stale. The reference
+  keeps a SQLite store; a second store to keep consistent was not worth it.
+- **11 indicators, not 16.** The five absent are ones nothing in the
+  reference's own configured strategies uses. Adding one costs no rule: the
+  `indicator` rule takes any registered name.
+
+### The honest gaps inside "substantially done"
+
+- **15 of 29 breach types have a check behind them.** The rest are
+  vocabulary: `PRICE_FREAK`, `VOLATILITY_CIRCUIT`, `MARGIN_INSUFFICIENT`,
+  `DEPTH_INSUFFICIENT`, `POSITION_TOTAL_EXCEEDED` and the others have no
+  check and are raised by nothing. They are named so a ported configuration
+  is refused rather than silently ignored.
+- **Nothing raises a kill switch automatically.** Operator-set switches load
+  and fire; the reference also raises them from a daily loss, a volatility
+  circuit or a rejection rate, with a state machine for re-firing.
+  `DailyLossCheck` refuses at the limit instead.
+- **Four of five trailing modes.** `HEIKIN_ASHI` needs a candle transform
+  nothing else uses and is refused by name.
+- **Four exit policies are vocabulary only.** `MAX_HOLDING`, `SIGNAL_FLIP`,
+  `PORTFOLIO_STOP_LOSS` and decay are exit reasons nothing raises. Built and
+  running: stop-loss, target, trailing stop, time-based, the venue cut-off,
+  square-off, the group's combined stop and target, and configured exit
+  rules.
+- **The `*_policy` tables are not read**, and that is correct rather than
+  missing: they are Console-side templates with no key from a strategy. See
+  `TRADE_MANAGEMENT.md`.
 
 ---
 
