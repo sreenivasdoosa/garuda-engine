@@ -14,7 +14,6 @@ export interface Broker {
   description?: string;
   provider?: string;
   useDealerAPIs: boolean;
-  isBOCOBlocked: boolean;
   useCommonApp: boolean;
   commonAppKey?: string;
   commonAppSecret?: string;
@@ -60,7 +59,6 @@ export interface CreateBrokerRequest {
   description?: string;
   provider?: string;
   useDealerAPIs?: boolean;
-  isBOCOBlocked?: boolean;
   useCommonApp?: boolean;
   commonAppKey?: string;
   commonAppSecret?: string;

@@ -347,20 +347,6 @@ export const exchangeHelpContent: Record<string, HelpArticle> = {
     },
   }),
 
-  'eventDay.isBOCOBlocked': ex({
-    fieldKey: 'eventDay.isBOCOBlocked',
-    title: 'BOCO Blocked',
-    category: 'Event Days',
-    description: [
-      'When enabled, **Bracket Orders (BO)** and **Cover Orders (CO)** are blocked on this event day. This is common on high-volatility days like budget or election results where exchanges may restrict these order types.',
-    ],
-    defaultValue: 'false',
-    example: {
-      title: 'Example',
-      content:
-        'On Budget Day, NSE often restricts BO/CO orders. Enable this flag for the budget date to prevent the system from placing these order types.',
-    },
-  }),
 
   'eventDay.capitalPercentage': ex({
     fieldKey: 'eventDay.capitalPercentage',

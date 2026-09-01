@@ -286,21 +286,6 @@ export const brokerHelpContent: Record<string, HelpArticle> = {
     defaultValue: 'false',
   }),
 
-  'broker.isBOCOBlocked': broker({
-    fieldKey: 'broker.isBOCOBlocked',
-    title: 'BOCO Blocked',
-    category: 'Feature Flags',
-    description: [
-      'When enabled, **Bracket Orders (BO)** and **Cover Orders (CO)** are blocked for this broker. These are special order types that include built-in stop-loss and/or target levels.',
-      'Some brokers temporarily or permanently disable BO/CO during volatile market conditions or for specific segments.',
-    ],
-    example: {
-      title: 'When This Applies',
-      content:
-        'During highly volatile sessions (e.g., budget day, election results), exchanges or brokers may block BO/CO orders. Enable this flag to prevent the system from attempting these order types.',
-    },
-    defaultValue: 'false',
-  }),
 
   'broker.mtfInterestRatePerAnnum': broker({
     fieldKey: 'broker.mtfInterestRatePerAnnum',

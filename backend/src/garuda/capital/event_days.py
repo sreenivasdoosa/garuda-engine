@@ -35,6 +35,17 @@ from garuda.domain.errors import DomainError
 FULL_SIZE = Decimal(100)
 
 
+def as_written(percentage: Decimal) -> str:
+    """`50` rather than `50.000000`.
+
+    The column is NUMERIC(20, 6), so a whole number arrives with six decimal
+    places. `:g` keeps them and `normalize()` turns 50 into 5E+1, so neither
+    is usable in a message an operator reads.
+    """
+    whole = percentage.to_integral_value()
+    return str(whole) if percentage == whole else str(percentage.normalize())
+
+
 def _checked(percentage: Decimal, what: str) -> Decimal:
     if percentage < 0:
         raise DomainError(f"{what}: capital percentage {percentage} is negative")
@@ -121,14 +132,14 @@ class EventDays:
             event = f" ({named.name})" if named is not None and named.name else ""
             return (
                 f"event day {day}{event} on {exchange}: {strategy} is configured for "
-                f"{override.capital_percentage:g}% of normal size"
+                f"{as_written(override.capital_percentage)}% of normal size"
             )
         event_day = self.days.get((day, exchange))
         if event_day is not None:
             title = f" ({event_day.name})" if event_day.name else ""
             return (
                 f"event day {day}{title} on {exchange}: "
-                f"{event_day.capital_percentage:g}% of normal size"
+                f"{as_written(event_day.capital_percentage)}% of normal size"
             )
         return None
 

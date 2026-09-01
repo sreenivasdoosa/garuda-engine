@@ -29,7 +29,7 @@ DEFAULT_WORTHLESS_OPTION_PRICE = Decimal("0.5")
 
 #: Products squared off by the exchange itself at the end of the day, and so
 #: subject to the broker's earlier cut-off.
-_INTRADAY_PRODUCTS = frozenset({ProductType.MIS, ProductType.CO, ProductType.BO})
+_INTRADAY_PRODUCTS = frozenset({ProductType.MIS})
 
 
 @dataclass(frozen=True, slots=True)

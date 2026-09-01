@@ -101,7 +101,6 @@ export interface EventDay {
   exchange?: string;
   eventDate: string;
   eventName: string;
-  isBOCOBlocked: boolean;
   capitalPercentage: number;
 }
 
@@ -109,7 +108,6 @@ export interface CreateEventDayRequest {
   exchange: string;
   eventDate: string;
   eventName: string;
-  isBOCOBlocked?: boolean;
   capitalPercentage?: number;
 }
 

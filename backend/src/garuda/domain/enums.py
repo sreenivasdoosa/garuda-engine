@@ -89,8 +89,9 @@ class ProductType(StrEnum):
     NRML = "NRML"  # carry-forward derivatives
     CNC = "CNC"  # delivery equity
     MTF = "MTF"  # margin trade funding — equity delivery on broker funding
-    CO = "CO"  # cover order
-    BO = "BO"  # bracket order
+    # Cover and bracket orders are deliberately absent. Both carry a broker-side
+    # stop the engine cannot see or move, which puts the exit outside the
+    # trailing and square-off logic that owns every other position.
 
 
 class OrderType(StrEnum):

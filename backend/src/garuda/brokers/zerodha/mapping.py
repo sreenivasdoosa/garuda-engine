@@ -31,23 +31,15 @@ _ORDER_TYPES: dict[OrderType, str] = {
     OrderType.SL_MARKET: "SL-M",
 }
 
-#: Cover and bracket orders are placed under the MIS product and distinguished
-#: by their *variety*, not by a product of their own.
 _PRODUCTS: dict[ProductType, str] = {
     ProductType.MIS: "MIS",
-    ProductType.CO: "MIS",
-    ProductType.BO: "MIS",
     ProductType.NRML: "NRML",
     ProductType.CNC: "CNC",
     ProductType.MTF: "MTF",
 }
 
-#: The endpoint an order is placed under. Regular unless it is a cover or
-#: bracket order, which Kite routes separately.
-_VARIETIES: dict[ProductType, str] = {
-    ProductType.CO: "co",
-    ProductType.BO: "bo",
-}
+#: Every order goes under the regular variety. Kite routes cover and bracket
+#: orders separately, and garuda places neither.
 VARIETY_REGULAR = "regular"
 
 #: Day orders only. The engine has no concept of an order that outlives the
@@ -62,10 +54,6 @@ def order_type_to_kite(order_type: OrderType) -> str:
 
 def product_to_kite(product: ProductType) -> str:
     return _PRODUCTS[product]
-
-
-def variety_for(product: ProductType) -> str:
-    return _VARIETIES.get(product, VARIETY_REGULAR)
 
 
 def side_to_kite(side: Side) -> str:
@@ -86,8 +74,6 @@ _PRODUCTS_FROM_KITE: dict[str, ProductType] = {
     "NRML": ProductType.NRML,
     "CNC": ProductType.CNC,
     "MTF": ProductType.MTF,
-    "CO": ProductType.CO,
-    "BO": ProductType.BO,
 }
 
 #: Kite's own status strings. Anything absent is a defect to be alerted, not a

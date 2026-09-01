@@ -180,14 +180,15 @@ class TestPlacing:
         await broker.place(a_request(nifty_call, OrderType.MARKET))
         assert "price" not in kite.form()
 
-    async def test_a_cover_order_uses_its_own_variety(
+    async def test_every_order_goes_under_the_regular_variety(
         self, broker: ZerodhaBroker, kite: FakeKite, nifty_call: Instrument
     ) -> None:
-        """Kite distinguishes cover and bracket by endpoint, not by product."""
-        kite.answer({"status": "success", "data": {"order_id": "1"}})
-        await broker.place(a_request(nifty_call, product=ProductType.CO))
-        assert str(kite.last.url).endswith("/orders/co")
-        assert kite.form()["product"] == "MIS"
+        """Kite routes cover and bracket orders to their own endpoints. Garuda
+        places neither, so there is one endpoint and no choice to make."""
+        for product in ProductType:
+            kite.answer({"status": "success", "data": {"order_id": "1"}})
+            await broker.place(a_request(nifty_call, product=product))
+            assert str(kite.last.url).endswith("/orders/regular"), product
 
     async def test_a_price_never_goes_out_in_scientific_notation(
         self, broker: ZerodhaBroker, kite: FakeKite, nifty_call: Instrument

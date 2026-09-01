@@ -24,13 +24,13 @@ from typing import Any
 
 from garuda.brokers.zerodha.mapping import (
     VALIDITY_DAY,
+    VARIETY_REGULAR,
     order_type_to_kite,
     product_from_kite,
     product_to_kite,
     side_from_kite,
     side_to_kite,
     status_from_kite,
-    variety_for,
 )
 from garuda.brokers.zerodha.rest import KiteClient
 from garuda.domain.client import TradingClientId
@@ -105,8 +105,7 @@ class ZerodhaBroker:
         if request.trigger_price is not None:
             form["trigger_price"] = _plain(request.trigger_price)
 
-        variety = variety_for(request.product)
-        data = await self._client.post(f"/orders/{variety}", form)
+        data = await self._client.post(f"/orders/{VARIETY_REGULAR}", form)
         order_id = _text(data, "order_id")
         if not order_id:
             raise OrderRejectedError(f"{tag}: Kite accepted the order but returned no order id")

@@ -326,7 +326,6 @@ class EventDaysRow(Base):
     event_date: Mapped[str] = mapped_column(String(10), primary_key=True)
     exchange_code: Mapped[str] = mapped_column(String(10), primary_key=True)
     event_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    bo_co_blocked: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     capital_percentage: Mapped[Decimal | None] = mapped_column(Numeric(20, 6), nullable=True)
 
 
@@ -404,7 +403,6 @@ class BrokersRow(Base):
     use_dealer_apis: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     server_url: Mapped[str | None] = mapped_column(String(100), nullable=True)
     data_server_url: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    bo_co_blocked: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     market_data_app_key: Mapped[str | None] = mapped_column(String(50), nullable=True)
     market_data_app_secret: Mapped[str | None] = mapped_column(String(50), nullable=True)
     web_socket_enabled: Mapped[bool | None] = mapped_column(Boolean, nullable=True)

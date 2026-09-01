@@ -49,7 +49,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_INTERVAL = timedelta(seconds=5)
 
 #: Products the venue closes itself at the end of the day.
-_INTRADAY_PRODUCTS = frozenset({ProductType.MIS, ProductType.CO, ProductType.BO})
+_INTRADAY_PRODUCTS = frozenset({ProductType.MIS})
 
 #: Fetches the broker's order book for this account.
 type FetchOrders = Callable[[], Awaitable[Sequence[BrokerOrder]]]

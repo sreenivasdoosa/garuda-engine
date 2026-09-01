@@ -109,7 +109,6 @@ const Broker: React.FC<BrokerProps> = ({
         description: broker.description,
         provider: broker.provider,
         useDealerAPIs: broker.useDealerAPIs,
-        isBOCOBlocked: broker.isBOCOBlocked,
         // useCommonApp: broker.useCommonApp, // Deprecated — no longer supported per regulations
         commonAppKey: broker.commonAppKey,
         commonAppSecret: broker.commonAppSecret,
@@ -151,7 +150,6 @@ const Broker: React.FC<BrokerProps> = ({
       setFormData({
         name: '',
         enabled: true,
-        isBOCOBlocked: true,
       });
     }
   }, [broker, show]);
@@ -164,7 +162,6 @@ const Broker: React.FC<BrokerProps> = ({
     if (isCreateMode) {
       const defaults: Partial<CreateBrokerRequest> = {
         provider: bt.provider,
-        isBOCOBlocked: true,
         enabled: true,
       };
       if (bt.fixedName) {
