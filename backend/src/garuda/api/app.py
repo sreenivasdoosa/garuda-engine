@@ -24,7 +24,13 @@ from pydantic import BaseModel
 from garuda.api import envelope
 from garuda.api.credentials import AdminCredentials
 from garuda.api.envelope import ok
-from garuda.api.routers import event_days, exchanges, holidays, special_trading_days
+from garuda.api.routers import (
+    event_days,
+    exchanges,
+    holidays,
+    special_trading_days,
+    symbols,
+)
 from garuda.api.tokens import issue, read
 from garuda.config.settings import Settings, load_settings
 from garuda.core.clock import LiveClock
@@ -153,5 +159,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(holidays.build(sessions))
     app.include_router(special_trading_days.build(sessions))
     app.include_router(event_days.build(sessions))
+    app.include_router(symbols.build(sessions))
 
     return app
