@@ -50,15 +50,7 @@ export const exchangeService = {
     return api.delete(API_ENDPOINTS.EXCHANGES.DETAILS(code));
   },
 
-  // Get holidays for an exchange
-  async getHolidays(code: string): Promise<Holiday[]> {
-    return api.get<Holiday[]>(API_ENDPOINTS.EXCHANGES.HOLIDAYS(code));
-  },
 
-  // Get event days for an exchange
-  async getEventDays(code: string): Promise<EventDay[]> {
-    return api.get<EventDay[]>(API_ENDPOINTS.EXCHANGES.EVENT_DAYS(code));
-  },
 };
 
 // ==================== HOLIDAYS ====================

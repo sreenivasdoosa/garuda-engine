@@ -21,8 +21,6 @@ export interface HolidaysProps {
   title?: string;
   /** Hide sync button for view-only users */
   hideSync?: boolean;
-  /** Allow add/delete operations */
-  canEdit?: boolean;
 }
 
 const currentYear = new Date().getFullYear();
@@ -30,7 +28,6 @@ const currentYear = new Date().getFullYear();
 const Holidays: React.FC<HolidaysProps> = ({
   title = 'Holidays',
   hideSync = false,
-  canEdit = false,
 }) => {
   const [selectedExchange, setSelectedExchange] = useState<string>('ALL');
   const [selectedYear, setSelectedYear] = useState<number>(currentYear);
@@ -216,7 +213,7 @@ const Holidays: React.FC<HolidaysProps> = ({
       header: 'Description',
       render: (h) => <span>{h.description || '-'}</span>,
     },
-    ...(canEdit ? [{
+    {
       key: 'actions' as const,
       header: '',
       render: (h: Holiday) => (
@@ -229,7 +226,7 @@ const Holidays: React.FC<HolidaysProps> = ({
           <BsTrash />
         </Button>
       ),
-    }] : []),
+    },
   ];
 
   if (error) {
@@ -262,12 +259,10 @@ const Holidays: React.FC<HolidaysProps> = ({
                 )}
               </Button>
             )}
-            {canEdit && (
-              <Button variant="primary" size="sm" onClick={handleOpenAddModal}>
+            <Button variant="primary" size="sm" onClick={handleOpenAddModal}>
                 <BsPlus className="me-1" />
                 Add Holiday
               </Button>
-            )}
           </div>
         </Card.Header>
         <Card.Body>

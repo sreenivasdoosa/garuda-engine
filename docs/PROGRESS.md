@@ -94,7 +94,7 @@ configuration is refused loudly rather than silently ignored.
 | **1 trailing mode** | `HEIKIN_ASHI` — needs a candle transform, a wick search and a distance cap that nothing else uses |
 | **Automatic kill switches** | Operator-set switches load and fire. The reference also raises them from a daily loss, a volatility circuit or a rejection rate, with a state machine for when one may re-fire. `DailyLossCheck` refuses at the limit instead. |
 | **The `*_policy` tables** | Not read, and that is correct: they are Console-side templates with no key from a strategy. See `TRADE_MANAGEMENT.md`. |
-| **Most of the API** | Serving now: config, login, profile, change-password, health, and exchanges (full CRUD). Every other page still calls endpoints nothing serves. `GET /api/exchanges/market-status` is the one exchange route still missing: it needs the built trading calendars, which live in `composition` — above `api` — so it lands with the Terminal, its only caller. |
+| **Most of the API** | Serving now: config, login, profile, change-password, health, exchanges and holidays (full CRUD). Every other page still calls endpoints nothing serves. `GET /api/exchanges/market-status` is the one exchange route still missing: it needs the built trading calendars, which live in `composition` — above `api` — so it lands with the Terminal, its only caller. |
 | **Users, in the Console** | The pages that scope by *user* -- the user selector, event days, recompute, subscriptions, the config tree -- still speak of users. In garuda that concept is the trading client, and the rename waits on the API defining its shape. |
 
 ---
@@ -119,6 +119,7 @@ Newest first. One line per chunk of work, not per commit.
 
 | Date | What landed |
 |---|---|
+| 2026-09-01 | Holidays served: list per exchange, create, edit the description, delete. A holiday against an exchange that does not exist is refused, because the venue loader groups them by code and one that matches nothing leaves the day open. And the page's Add and Delete buttons appeared for the first time — they were gated on a `canEdit` prop defaulting to `false` that nobody passed, the permission strip's leftover; the same defect was in Special Trading Days and Symbols. |
 | 2026-09-01 | Timezone on the exchanges form is a searchable select over every IANA zone the server knows, grouped by region, and an unknown zone is refused at the API instead of raising in `ZoneInfo` at startup. |
 | 2026-09-01 | Currency and segments on the exchanges page — table, form and view — with the option lists served from the engine's own enums rather than copied into the UI. Both are now refused at the API when they are wrong, because the venue loader refuses them at startup, which is a long way from the form that typed them. |
 | 2026-09-01 | One flat `/api`, and the first page served for real. The Console called three prefixes it inherited — `/apis` (v1), `/api/v2` and a couple of bare ones; there is one API here, so a version in the path says nothing. Exchanges is the first page whose endpoints exist: list, fetch, create, partial update and delete, with 18 behavioural tests. The SSO handshake went with it (token, refresh, userinfo, the OAuth config) — unreachable, since sign-in issues one access token and nothing else. |

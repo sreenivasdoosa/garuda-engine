@@ -86,9 +86,7 @@ export interface AgentHealthResponse {
 interface CreateHolidayRequest {
   exchange: string;
   date: string;
-  name?: string;
   description?: string;
-  fullDay?: boolean;
 }
 
 // ==================== USER MANAGEMENT ====================
@@ -823,15 +821,7 @@ export const exchangeService = {
     return api.delete(API_ENDPOINTS.EXCHANGES.DETAILS(code));
   },
 
-  // Get holidays
-  async getHolidays(code: string): Promise<Holiday[]> {
-    return api.get<Holiday[]>(API_ENDPOINTS.EXCHANGES.HOLIDAYS(code));
-  },
 
-  // Get event days
-  async getEventDays(code: string): Promise<EventDay[]> {
-    return api.get<EventDay[]>(API_ENDPOINTS.EXCHANGES.EVENT_DAYS(code));
-  },
 };
 
 // ==================== HOLIDAYS ====================

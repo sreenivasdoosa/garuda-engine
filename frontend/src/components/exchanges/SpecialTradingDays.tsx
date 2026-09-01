@@ -19,15 +19,12 @@ import type { SpecialTradingDay } from '@/services/admin/v2AdminService';
 export interface SpecialTradingDaysProps {
   /** Card title */
   title?: string;
-  /** Allow add/edit/delete operations */
-  canEdit?: boolean;
 }
 
 const currentYear = new Date().getFullYear();
 
 const SpecialTradingDays: React.FC<SpecialTradingDaysProps> = ({
   title = 'Special Trading Days',
-  canEdit = false,
 }) => {
   const [selectedExchange, setSelectedExchange] = useState<string>('ALL');
   const [selectedYear, setSelectedYear] = useState<number>(currentYear);
@@ -203,7 +200,7 @@ const SpecialTradingDays: React.FC<SpecialTradingDaysProps> = ({
         ? <Badge bg="info">{d.marketOpen || '?'} - {d.marketClose || '?'}</Badge>
         : <span className="text-ink-soft">Default</span>,
     },
-    ...(canEdit ? [{
+    {
       key: 'actions' as const,
       header: '',
       render: (d: SpecialTradingDay) => (
@@ -226,7 +223,7 @@ const SpecialTradingDays: React.FC<SpecialTradingDaysProps> = ({
           </Button>
         </div>
       ),
-    }] : []),
+    },
   ];
 
   if (error) {
@@ -248,12 +245,10 @@ const SpecialTradingDays: React.FC<SpecialTradingDaysProps> = ({
         <Card.Header className="flex justify-between items-center">
           <h5 className="mb-0">{title}</h5>
           <div className="flex items-center gap-2">
-            {canEdit && (
-              <Button variant="primary" size="sm" onClick={handleOpenAddModal}>
+            <Button variant="primary" size="sm" onClick={handleOpenAddModal}>
                 <BsPlus className="me-1" />
                 Add Special Trading Day
               </Button>
-            )}
           </div>
         </Card.Header>
         <Card.Body>

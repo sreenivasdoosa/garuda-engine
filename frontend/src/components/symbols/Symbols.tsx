@@ -22,8 +22,6 @@ import Symbol from './Symbol';
 export interface SymbolsProps {
   /** Card title */
   title?: string;
-  /** Whether user can edit/create/delete (Standalone mode) */
-  canEdit?: boolean;
   /** Read-only mode - shows View button instead of Edit */
   readOnly?: boolean;
   /** Hide sync button */
@@ -36,7 +34,6 @@ export interface SymbolsProps {
 
 const Symbols: React.FC<SymbolsProps> = ({
   title = 'Symbols',
-  canEdit = false,
   readOnly = false,
   hideSync = false,
   viewModeOnClick = false,
@@ -229,9 +226,7 @@ const Symbols: React.FC<SymbolsProps> = ({
             <Button variant="outline-secondary" size="sm" onClick={(ev) => { ev.stopPropagation(); handleViewClick(s); }}><BsEye /></Button>
           )}
           <Button variant="outline-primary" size="sm" onClick={(ev) => { ev.stopPropagation(); setSelectedSymbol(s); setModalMode(readOnly ? 'view' : 'edit'); setShowModal(true); }} title={readOnly ? 'View' : 'Edit'}>{readOnly ? <BsEye /> : <BsPencil />}</Button>
-          {canEdit && (
-            <Button variant="outline-danger" size="sm" onClick={(ev) => { ev.stopPropagation(); setSelectedSymbol(s); setShowDeleteConfirm(true); }} title="Delete"><BsTrash /></Button>
-          )}
+          <Button variant="outline-danger" size="sm" onClick={(ev) => { ev.stopPropagation(); setSelectedSymbol(s); setShowDeleteConfirm(true); }} title="Delete"><BsTrash /></Button>
         </div>
       ),
     },
@@ -267,8 +262,7 @@ const Symbols: React.FC<SymbolsProps> = ({
                 )}
               </Button>
             )}
-            {canEdit && (
-              <Button
+            <Button
                 variant="primary"
                 size="sm"
                 onClick={() => { setSelectedSymbol(null); setModalMode('create'); setShowModal(true); }}
@@ -276,7 +270,6 @@ const Symbols: React.FC<SymbolsProps> = ({
                 <BsPlus className="me-1" />
                 Add Symbol
               </Button>
-            )}
           </div>
         </Card.Header>
         <Card.Body>
