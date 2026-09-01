@@ -898,6 +898,7 @@ html:not(.dark) .console-shell {
   gap: 0.4rem;
   flex-shrink: 0;
   padding: 0.4rem 0.7rem;
+  padding-bottom: 0.5rem;
   border-radius: $border-radius;
   font-size: $font-size-xs;
   font-weight: $font-weight-medium;
@@ -920,14 +921,33 @@ html:not(.dark) .console-shell {
     box-shadow: inset 0 0 0 1px rgb(var(--c-hairline));
 
     svg { opacity: 1; }
+
+    // Inside the pill rather than under it: both rows scroll sideways, so
+    // anything hanging below the box gets clipped by the overflow.
+    &::after {
+      content: '';
+      position: absolute;
+      left: 0.7rem;
+      right: 0.7rem;
+      bottom: 0.22rem;
+      height: 2px;
+      border-radius: 2px;
+      background: var(--brand-gradient);
+    }
   }
 }
 
 // The pages row is the subordinate of the two, so it is drawn smaller. Same
 // pill, same colours -- less of it.
 .section-page {
-  padding: 0.2rem 0.55rem;
+  padding: 0.2rem 0.55rem 0.42rem;
   gap: 0.35rem;
+
+  &.is-active::after {
+    left: 0.55rem;
+    right: 0.55rem;
+    bottom: 0.16rem;
+  }
 }
 
 // The pages of the current section.
