@@ -3,7 +3,7 @@ import type { HelpArticle } from '@/types/help';
 const ed = (article: Omit<HelpArticle, 'fieldKey'> & { fieldKey: string }): HelpArticle => article;
 
 export const eventDaysHelpContent: Record<string, HelpArticle> = {
-  'eventDays.overview': ex({
+  'eventDays.overview': ed({
     fieldKey: 'eventDays.overview',
     title: 'Event Days',
     category: 'Overview',
@@ -28,7 +28,7 @@ export const eventDaysHelpContent: Record<string, HelpArticle> = {
     ],
   }),
 
-  'eventDays.rounding': ex({
+  'eventDays.rounding': ed({
     fieldKey: 'eventDays.rounding',
     title: 'How the reduction rounds',
     category: 'Overview',
