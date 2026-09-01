@@ -33,6 +33,7 @@ from garuda.domain.trade_state import TradeExitReason, TradeState
 from garuda.protocols.broker import OrderRejectedError
 from garuda.rms.checks import default_checks
 from garuda.rms.gate import Breach, RiskContext, RiskGate
+from garuda.rms.killswitch import ActiveKillSwitch, KillSwitch, KillSwitchScope
 from garuda.rms.limits import RiskLimits
 from garuda.rms.scope import LimitBook, LimitScope, ScopedLimits
 
@@ -827,3 +828,83 @@ async def test_an_order_with_no_known_instrument_is_refused_before_recording(
         await place(an_order())
 
     assert recorded.written == []
+
+
+# -- the kill switch, which could never fire before -------------------------
+
+
+def halted(*scopes: KillSwitchScope) -> KillSwitch:
+    return KillSwitch(tuple(ActiveKillSwitch(scope, reason="operator halted") for scope in scopes))
+
+
+async def test_an_entry_is_refused_while_a_kill_switch_is_on(
+    stock: Instrument,
+) -> None:
+    """`RiskContext.kill_switch_reason` defaulted to None and nothing supplied
+    it, so the check had never once refused an order."""
+    placed: list[OrderRequest] = []
+    place = gated(
+        _accepting(placed),
+        gate=RiskGate(default_checks()),
+        limits=everywhere(RiskLimits()),
+        instruments=lambda instrument: stock,
+        quotes=lambda instrument: a_quote(),
+        clock=ReplayClock(NOW),
+        label="Appa",
+        kill_switch=halted(KillSwitchScope()),
+    )
+
+    with pytest.raises(OrderRejectedError, match="operator halted"):
+        await place(an_order())
+
+    assert placed == []
+
+
+async def test_an_exit_goes_out_while_a_kill_switch_is_on(stock: Instrument) -> None:
+    """The one an operator would guess wrong. A kill switch stops an account
+    taking risk and must never stop it closing."""
+    placed: list[OrderRequest] = []
+    place = gated(
+        _accepting(placed),
+        gate=RiskGate(default_checks()),
+        limits=everywhere(RiskLimits()),
+        instruments=lambda instrument: stock,
+        quotes=lambda instrument: a_quote(),
+        clock=ReplayClock(NOW),
+        label="Appa",
+        kill_switch=halted(KillSwitchScope()),
+        is_exit=True,
+    )
+
+    await place(an_order())
+
+    assert len(placed) == 1
+
+
+async def test_a_switch_on_another_account_does_not_stop_this_one(
+    stock: Instrument,
+) -> None:
+    placed: list[OrderRequest] = []
+    place = gated(
+        _accepting(placed),
+        gate=RiskGate(default_checks()),
+        limits=everywhere(RiskLimits()),
+        instruments=lambda instrument: stock,
+        quotes=lambda instrument: a_quote(),
+        clock=ReplayClock(NOW),
+        label="Appa",
+        kill_switch=halted(KillSwitchScope(trading_client="amma")),
+    )
+
+    await place(an_order())
+
+    assert len(placed) == 1
+
+
+async def test_nothing_stopped_is_the_default(stock: Instrument) -> None:
+    """An engine with no switches set does not need to be told so."""
+    placed: list[OrderRequest] = []
+
+    await wrap(stock, quote=a_quote(), placed=placed)(an_order())
+
+    assert len(placed) == 1

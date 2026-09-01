@@ -32,7 +32,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Awaitable, Callable, Sequence
-from datetime import timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -48,6 +48,12 @@ from garuda.persistence.uow import UnitOfWork
 from garuda.protocols.broker import OrderRejectedError
 from garuda.protocols.clock import Clock
 from garuda.rms.gate import RiskContext, RiskGate
+from garuda.rms.killswitch import (
+    NOTHING_STOPPED,
+    ActiveKillSwitch,
+    KillSwitch,
+    KillSwitchScope,
+)
 from garuda.rms.limits import RiskLimits
 from garuda.rms.scope import NO_LIMITS, SEGMENT_KINDS, LimitBook, LimitScope, ScopedLimits
 
@@ -86,6 +92,7 @@ def gated(
     open_quantity: OpenQuantity | None = None,
     committed_quantity: CommittedQuantity | None = None,
     breaches: BreachStore | None = None,
+    kill_switch: KillSwitch = NOTHING_STOPPED,
     is_exit: bool = False,
 ) -> PlaceOrder:
     """Wrap a placement so the risk gate sees it first.
@@ -117,6 +124,7 @@ def gated(
                 # as "always open", which is how a check can look configured
                 # and never once fire.
                 market_open=instrument.exchange.is_open(now),
+                kill_switch_reason=kill_switch.reason_for(instrument, request.trading_client),
                 quote=quotes(request.instrument),
                 realized_pnl_today=realized_today() if realized_today is not None else None,
                 # Supplied whether or not this is an exit. The check owns the
@@ -182,6 +190,50 @@ async def load_limits(
     )
     logger.info("risk configuration: %d active rows", len(book))
     return book
+
+
+async def load_kill_switches(
+    sessions: async_sessionmaker[AsyncSession], *, today: date
+) -> KillSwitch:
+    """Every switch an operator set and has not removed, for today.
+
+    Keyed by day in the reference and read the same way here: a stop is a
+    decision about a session, and one left behind from a bad Tuesday must not
+    still be stopping Wednesday. Removing one is a timestamp rather than a
+    delete, so the record of what was stopped survives the day it applied to.
+
+    A switch whose source is switched off in `kill_switch_types` does not
+    apply. That is what makes them typed: a class of switch can be disabled
+    without losing the switches.
+    """
+    async with UnitOfWork(sessions) as uow:
+        rows = await uow.repositories.kill_switches.all()
+        types = await uow.repositories.kill_switch_types.all()
+
+    disabled = {row.source for row in types if not row.enabled}
+    switches = tuple(
+        ActiveKillSwitch(
+            scope=KillSwitchScope(
+                trading_client=row.trading_client_id or None,
+                exchange=row.exchange or None,
+                symbol=row.symbol or None,
+            ),
+            reason=row.reason,
+            source=row.source,
+        )
+        for row in rows
+        if row.active
+        and row.removed_at is None
+        and row.created_date == today
+        and row.source not in disabled
+    )
+    if switches:
+        logger.warning(
+            "%d kill switch(es) in force: %s",
+            len(switches),
+            "; ".join(str(switch) for switch in switches),
+        )
+    return KillSwitch(switches)
 
 
 def _scope_of(row: RmsConfigRow) -> LimitScope:

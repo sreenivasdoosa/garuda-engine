@@ -21,7 +21,6 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Protocol, runtime_checkable
 
-from garuda.domain.client import TradingClientId
 from garuda.domain.instrument import Instrument
 from garuda.domain.market import Tick
 from garuda.domain.money import Money
@@ -153,28 +152,3 @@ class RiskGate:
             if breach is not None:
                 breaches.append(breach)
         return RiskDecision(breaches=tuple(breaches))
-
-
-@dataclass(frozen=True, slots=True)
-class KillSwitch:
-    """A scoped stop.
-
-    Global first, then per trading client. An operator hitting the global one
-    at 09:20 expects nothing further to leave the process, whatever any
-    strategy thinks.
-    """
-
-    global_reason: str | None = None
-    client_reasons: frozenset[tuple[TradingClientId, str]] = field(default_factory=frozenset)
-
-    def reason_for(self, client: TradingClientId) -> str | None:
-        if self.global_reason is not None:
-            return f"global kill switch: {self.global_reason}"
-        for held, reason in self.client_reasons:
-            if held == client:
-                return f"kill switch on {client}: {reason}"
-        return None
-
-    @property
-    def is_active(self) -> bool:
-        return self.global_reason is not None or bool(self.client_reasons)

@@ -67,7 +67,7 @@ class LimitScope:
             return False
         if self.kind is not None and self.kind is not instrument.kind:
             return False
-        return self.symbol is None or self.symbol in _names(instrument)
+        return self.symbol is None or self.symbol in names_of(instrument)
 
     @property
     def specificity(self) -> int:
@@ -85,7 +85,7 @@ class LimitScope:
         )
 
 
-def _names(instrument: Instrument) -> tuple[str, ...]:
+def names_of(instrument: Instrument) -> tuple[str, ...]:
     """What a symbol-scoped row could plausibly name.
 
     A row saying CRUDEOIL is about every crude option, not about one strike,

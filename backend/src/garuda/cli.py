@@ -18,6 +18,7 @@ import sys
 from collections.abc import Mapping
 from contextlib import suppress
 from dataclasses import dataclass
+from datetime import date, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -28,7 +29,7 @@ from garuda.capital import CapitalLotAllocator, Sizer
 from garuda.composition.accounts import build_resolver
 from garuda.composition.engine import Engine, build_engine
 from garuda.composition.instruments import build_loader, load_symbols
-from garuda.composition.risk import load_limits
+from garuda.composition.risk import load_kill_switches, load_limits
 from garuda.composition.runtime import Runtime, start
 from garuda.composition.strategies import Loaded, load_strategies
 from garuda.composition.strategy_context import MarketView
@@ -111,6 +112,9 @@ async def _build(settings: Settings, clock: Clock) -> _Assembled:
         http=trading_client_factory(None),
     )
     limits = await load_limits(sessions)
+    # The venue's day, not the server's: a switch set on Tuesday evening in
+    # one timezone must not still be stopping Wednesday in another.
+    stopped = await load_kill_switches(sessions, today=_trading_day(venues, clock.now()))
     engine = build_engine(
         sessions=sessions,
         resolver=resolver,
@@ -119,6 +123,7 @@ async def _build(settings: Settings, clock: Clock) -> _Assembled:
         now=clock.now(),
         connector=websocket_connector(),
         limits=limits,
+        kill_switch=stopped,
     )
     strategies = await load_strategies(sessions)
     _report(strategies)
@@ -161,6 +166,14 @@ def _report(strategies: Loaded) -> None:
     )
     for name, why in sorted(strategies.refused.items()):
         logger.warning("%s will not be traded: %s", name, why)
+
+
+def _trading_day(venues: Venues, now: datetime) -> date:
+    """Which session a kill switch belongs to, on the venue's own clock."""
+    exchanges = venues.all
+    if exchanges:
+        return exchanges[0].trading_day_for(now)
+    return now.astimezone(FALLBACK_TIMEZONE).date()
 
 
 def _timezone(venues: Venues) -> ZoneInfo:

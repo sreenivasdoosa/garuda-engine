@@ -522,11 +522,28 @@ nothing left the engine, so a store that is down costs the audit trail rather
 than the refusal.
 
 The kill switch is the one an operator would guess wrong: it stops an account
-taking risk and must never stop it closing. It is also not yet reachable —
-`kill_switches` is a table with no runtime service behind it, so nothing sets
-the reason the check reads. The market-open check *is* reachable: the gate
-asks the venue's own calendar, which it did not before, and an order outside
-the session is now refused by name rather than by the broker an hour later.
+taking risk and must never stop it closing. It is reachable now — the switches
+an operator set for today are loaded and resolved per order, scoped to
+everything, a venue, an underlying or one account, with the widest that
+applies giving the reason. "Everything is stopped" is a better answer than
+"this account is stopped" when both are true.
+
+Keyed by day, as the reference keys them: a stop is a decision about a
+session, and one left behind from a bad Tuesday must not still be stopping
+Wednesday. Removing one is a timestamp rather than a delete, so the record of
+what was stopped survives the day it applied to. A switch whose source is
+switched off in `kill_switch_types` does not apply — that is what makes them
+typed, and it lets a class of switch be disabled without losing the switches.
+
+**Nothing raises one automatically.** The reference also creates them from a
+daily loss, a volatility circuit or a rejection rate, with a state machine
+deciding when an automatic switch may re-fire after an operator stands it
+down. None of that is built: `DailyLossCheck` refuses at the limit instead,
+which stops the same orders without the state machine.
+
+There is no broker scope. Stopping every account at one broker is what
+`brokers.stopped` does, and two places deciding the same thing means the wrong
+one wins on the day they disagree.
 
 A refusal is raised as `OrderRejectedError`, which is what trade management
 already reads as "no order exists, so a later attempt may safely send a fresh

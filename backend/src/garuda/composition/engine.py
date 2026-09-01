@@ -66,6 +66,7 @@ from garuda.protocols.clock import Clock
 from garuda.protocols.feed import MarketDataFeed
 from garuda.rms.checks import default_checks
 from garuda.rms.gate import RiskGate
+from garuda.rms.killswitch import NOTHING_STOPPED, KillSwitch
 from garuda.rms.scope import NO_LIMITS, LimitBook
 from garuda.trademgmt.client import TradingClientManager
 from garuda.trademgmt.coordination import LegCoordinator
@@ -173,6 +174,7 @@ def build_engine(
     now: datetime,
     connector: Connector,
     limits: LimitBook | None = None,
+    kill_switch: KillSwitch = NOTHING_STOPPED,
 ) -> Engine:
     """Build every part the current configuration allows.
 
@@ -216,6 +218,7 @@ def build_engine(
             clock,
             limits or NO_LIMITS,
             parts.candles,
+            kill_switch,
         )
 
     loops = TradeLoops(clock, alerts)
@@ -334,6 +337,7 @@ def _build_client(
     clock: Clock,
     limits: LimitBook,
     candles: CandleCache | None,
+    kill_switch: KillSwitch,
 ) -> ClientParts:
     """One account's broker, its book, and everything that acts on them."""
     http = trading_client_factory(credentials.static_ip)
@@ -396,6 +400,7 @@ def _build_client(
         label=account.label,
         realized_today=realised_today(book.trades),
         breaches=BreachStore(sessions, label=account.label),
+        kill_switch=kill_switch,
     )
     # Both are gated; they differ in which checks have any business stopping
     # them. A stop-loss must go out on the day a loss limit was reached, and a

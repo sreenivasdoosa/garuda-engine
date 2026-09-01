@@ -17,10 +17,12 @@ from garuda.domain.instrument import Instrument
 from garuda.domain.market import DepthLevel, Tick
 from garuda.domain.order import ClientOrderId, OrderRequest, Side
 from garuda.rms import (
+    ActiveKillSwitch,
     Breach,
     BreachFamily,
     BreachType,
     KillSwitch,
+    KillSwitchScope,
     RiskContext,
     RiskGate,
     RiskLimits,
@@ -109,18 +111,118 @@ class TestKillSwitch:
     def test_no_switch_says_nothing(self, nifty_call):
         assert KillSwitchCheck()(context(nifty_call)) is None
 
-    def test_the_global_switch_covers_every_client(self):
-        switch = KillSwitch(global_reason="market-wide halt")
-        assert switch.reason_for(CLIENT) is not None
-        assert switch.reason_for(TradingClientId("someone-else")) is not None
-
-    def test_a_client_switch_covers_only_that_client(self):
-        switch = KillSwitch(client_reasons=frozenset({(CLIENT, "margin call")}))
-        assert switch.reason_for(CLIENT) is not None
-        assert switch.reason_for(TradingClientId("someone-else")) is None
-
     def test_a_fresh_switch_is_inactive(self):
         assert not KillSwitch().is_active
+
+
+def stopped(*scopes: KillSwitchScope) -> KillSwitch:
+    return KillSwitch(tuple(ActiveKillSwitch(scope, reason="operator said so") for scope in scopes))
+
+
+class TestWhatAKillSwitchStops:
+    """Scoped. An operator stops one account, one venue, one underlying, or
+    everything, and the widest that applies explains the refusal."""
+
+    def test_a_global_switch_stops_every_account(self, nifty_call):
+        switch = stopped(KillSwitchScope())
+
+        assert switch.reason_for(nifty_call, CLIENT) is not None
+        assert switch.reason_for(nifty_call, TradingClientId("someone-else")) is not None
+
+    def test_an_account_switch_stops_only_that_account(self, nifty_call):
+        switch = stopped(KillSwitchScope(trading_client=CLIENT.value))
+
+        assert switch.reason_for(nifty_call, CLIENT) is not None
+        assert switch.reason_for(nifty_call, TradingClientId("someone-else")) is None
+
+    def test_a_venue_switch_stops_only_that_venue(self, nifty_call):
+        switch = stopped(KillSwitchScope(exchange=nifty_call.exchange.code))
+
+        assert switch.reason_for(nifty_call, CLIENT) is not None
+
+    def test_a_switch_on_another_venue_does_not_apply(self, nifty_call):
+        switch = stopped(KillSwitchScope(exchange="MCX"))
+
+        assert switch.reason_for(nifty_call, CLIENT) is None
+
+    def test_a_symbol_switch_reaches_the_underlyings_options(self, nifty_call):
+        """A stop on NIFTY is a stop on every NIFTY option, not on one
+        strike -- the same reading a symbol-scoped risk limit gets."""
+        switch = stopped(KillSwitchScope(symbol="NIFTY"))
+
+        assert switch.reason_for(nifty_call, CLIENT) is not None
+
+    def test_a_switch_on_another_underlying_does_not_apply(self, nifty_call):
+        switch = stopped(KillSwitchScope(symbol="BANKNIFTY"))
+
+        assert switch.reason_for(nifty_call, CLIENT) is None
+
+    def test_the_widest_switch_explains_it(self, nifty_call):
+        """ "Everything is stopped" is a better answer than "this account is
+        stopped" when both are true."""
+        switch = stopped(
+            KillSwitchScope(trading_client=CLIENT.value),
+            KillSwitchScope(),
+        )
+
+        reason = switch.reason_for(nifty_call, CLIENT)
+
+        assert reason is not None
+        assert "everything" in reason
+
+    def test_everything_is_wider_than_a_venue(self, nifty_call):
+        """Listed venue-first, so order cannot be what decides it."""
+        switch = stopped(
+            KillSwitchScope(exchange=nifty_call.exchange.code),
+            KillSwitchScope(),
+        )
+
+        reason = switch.reason_for(nifty_call, CLIENT)
+
+        assert reason is not None
+        assert "everything" in reason
+
+    def test_a_venue_is_wider_than_an_underlying(self, nifty_call):
+        """Stopping NSE stops every NIFTY option and much else besides, so it
+        is the better explanation of the two."""
+        switch = stopped(
+            KillSwitchScope(symbol="NIFTY"),
+            KillSwitchScope(exchange=nifty_call.exchange.code),
+        )
+
+        reason = switch.reason_for(nifty_call, CLIENT)
+
+        assert reason is not None
+        assert "exchange" in reason
+        assert "symbol" not in reason
+
+    def test_an_underlying_is_wider_than_an_account(self, nifty_call):
+        switch = stopped(
+            KillSwitchScope(trading_client=CLIENT.value),
+            KillSwitchScope(symbol="NIFTY"),
+        )
+
+        reason = switch.reason_for(nifty_call, CLIENT)
+
+        assert reason is not None
+        assert "symbol" in reason
+        assert "account" not in reason
+
+    def test_nothing_set_stops_nothing(self, nifty_call):
+        assert KillSwitch().reason_for(nifty_call, CLIENT) is None
+
+    def test_the_reason_carries_the_operators_words(self, nifty_call):
+        switch = KillSwitch((ActiveKillSwitch(KillSwitchScope(), reason="margin call"),))
+
+        reason = switch.reason_for(nifty_call, CLIENT)
+
+        assert reason is not None
+        assert "margin call" in reason
+
+    def test_a_switch_with_no_reason_still_stops(self, nifty_call):
+        switch = KillSwitch((ActiveKillSwitch(KillSwitchScope()),))
+
+        assert switch.reason_for(nifty_call, CLIENT) is not None
 
 
 class TestPriceQuality:
