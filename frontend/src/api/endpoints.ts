@@ -601,6 +601,17 @@ export const API_ENDPOINTS = {
     BY_STRATEGY: (strategy: string) => `/api/engine/breakout-watches?strategy=${strategy}`,
   },
 
+  // Data providers: who supplies ticks, quotes and candles.
+  DATA_PROVIDERS: {
+    BASE: '/api/data-providers',
+    LIST: '/api/data-providers',
+    ACTIVE: '/api/data-providers/active',
+    DETAILS: (provider: string) => `/api/data-providers/${provider}`,
+    LOGIN: (provider: string) => `/api/data-providers/${provider}/login`,
+    LOGOUT: (provider: string) => `/api/data-providers/${provider}/logout`,
+    BORROWABLE: (provider: string) => `/api/data-providers/${provider}/borrowable`,
+  },
+
   // Stock universes (equity watchlists). Backed by StockUniverseServletV2.
   ENGINE_UNIVERSES: {
     BASE: '/api/engine/universes',

@@ -106,6 +106,21 @@ class SessionResolver:
     def accounts(self) -> Sequence[Account]:
         return list(self._accounts.values())
 
+    def configured(self, trading_client: TradingClientId) -> Account | None:
+        """The account, or None. For callers that treat absence as an answer
+        rather than as a failure -- a data provider naming a deleted client
+        reports a configuration problem, it does not stop trading."""
+        return self._accounts.get(trading_client)
+
+    def session_of(self, trading_client: TradingClientId) -> BrokerSession | None:
+        """The account's session as stored, without the expiry check.
+
+        `credentials_for` is what trading goes through and it refuses a stale
+        session. This is for reporting whether a login has happened at all,
+        which is a different question and the one both Console pages ask.
+        """
+        return self._sessions.get(trading_client)
+
     def account(self, trading_client: TradingClientId) -> Account:
         found = self._accounts.get(trading_client)
         if found is None:

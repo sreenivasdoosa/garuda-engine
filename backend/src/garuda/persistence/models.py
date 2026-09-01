@@ -318,6 +318,100 @@ class SpecialTradingDaysRow(Base):
     market_close: Mapped[dt.time | None] = mapped_column(Time, nullable=True)
 
 
+class DataProvidersRow(Base):
+    """One market-data provider, and where its credentials come from.
+
+    A **trading client** places orders; a **data provider** supplies prices.
+    Often the same broker account does both -- Zerodha, Fyers and Dhan issue
+    one app key that covers trading and market data alike -- and then this row
+    points at the trading client rather than holding a second copy of its
+    credentials, so one login serves both and neither page can show a stale
+    answer about the other.
+
+    Where they differ, it holds its own. XTS issues a separate market-data key
+    and secret from its trading ones. TrueData is not a broker at all: no
+    orders, only prices, so there is no trading client to point at.
+
+    Rate limits are columns rather than settings in a file: an operator
+    tuning how hard the engine leans on their broker should not have to find
+    a file and restart. Vendor endpoints are not here -- they are facts about
+    someone else's API and live in the adapter, where a typo cannot be
+    mistaken for an outage.
+    """
+
+    __tablename__ = "data_providers"
+
+    #: Lower-case, and the same name the active-provider settings hold:
+    #: zerodha, fyers, dhan, xts, truedata.
+    provider: Mapped[str] = mapped_column(String(20), primary_key=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+
+    #: TRADING_CLIENT to borrow one's credentials, OWN to hold its own.
+    credential_source: Mapped[str] = mapped_column(String(20))
+
+    #: The account whose app key and session this provider rides on.
+    #:
+    #: RESTRICT rather than CASCADE: deleting an account that market data
+    #: depends on must fail loudly, not silently stop every strategy's prices.
+    trading_client_id: Mapped[str | None] = mapped_column(
+        String(64), ForeignKey("trading_clients.id", ondelete="RESTRICT"), nullable=True
+    )
+
+    #: Own credentials, used only when `credential_source` is OWN. The secret
+    #: is encrypted at rest; see garuda.persistence.secrets.
+    api_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    api_secret_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: The account a returned token must belong to, checked after login so a
+    #: session for the wrong account is refused rather than used.
+    client_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    #: What was registered in the vendor's console. Recorded so the Console can
+    #: show the operator what to paste and flag a mismatch; never transmitted,
+    #: because the vendor redirects to what it has on file.
+    redirect_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+    #: Vendor-assigned per subscription rather than global -- TrueData hands
+    #: each account its own ports.
+    websocket_port: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    history_port: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    #: Minimum spacing between calls of each kind, in milliseconds. Zero means
+    #: no gate.
+    quote_min_interval_ms: Mapped[int] = mapped_column(Integer, default=0, server_default=text("0"))
+    history_min_interval_ms: Mapped[int] = mapped_column(
+        Integer, default=0, server_default=text("0")
+    )
+    #: How many instruments go in one quote request, where the provider batches.
+    batch_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    created_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    updated_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class DataProviderSessionsRow(Base):
+    """The access token a provider is currently logged in with.
+
+    One row per provider, so a restart reuses a token that is still good
+    rather than logging in again -- which matters because some brokers
+    rate-limit the login itself, and re-authenticating on every restart
+    leaves a window with no market data at all.
+
+    A provider borrowing a trading client's credentials does **not** get a row
+    here: its session is that client's session, read from `broker_sessions`.
+    Two rows would be two things to keep in step, and they would disagree the
+    first time one was refreshed without the other.
+    """
+
+    __tablename__ = "data_provider_sessions"
+
+    provider: Mapped[str] = mapped_column(
+        String(20), ForeignKey("data_providers.provider", ondelete="CASCADE"), primary_key=True
+    )
+    #: Who the token belongs to, as the provider reported it at login.
+    client_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    access_token_encrypted: Mapped[str] = mapped_column(Text)
+    obtained_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True))
+
+
 class EventDaysRow(Base):
     """EVENT_DAYS in the reference engine."""
 
@@ -1802,17 +1896,6 @@ class AlertsRow(Base):
     message: Mapped[str] = mapped_column(Text)
     unique_key: Mapped[str | None] = mapped_column(String(200), nullable=True)
     occurrences: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
-
-
-class DataProviderSessionsRow(Base):
-    """DATA_PROVIDER_SESSIONS in the reference engine."""
-
-    __tablename__ = "data_provider_sessions"
-
-    provider: Mapped[str] = mapped_column(String(20), primary_key=True)
-    client_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    access_token: Mapped[str | None] = mapped_column(Text, nullable=True)
-    last_updated: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class RulesRow(Base):

@@ -159,12 +159,16 @@ class DailySymbolClosePricesRepository(Repository[models.DailySymbolClosePricesR
     model = models.DailySymbolClosePricesRow
 
 
-class DataProviderSessionsRepository(Repository[models.DataProviderSessionsRow]):
-    model = models.DataProviderSessionsRow
-
-
 class EodPnlReportsRepository(Repository[models.EodPnlReportsRow]):
     model = models.EodPnlReportsRow
+
+
+class DataProvidersRepository(Repository[models.DataProvidersRow]):
+    model = models.DataProvidersRow
+
+
+class DataProviderSessionsRepository(Repository[models.DataProviderSessionsRow]):
+    model = models.DataProviderSessionsRow
 
 
 class EventDaysRepository(Repository[models.EventDaysRow]):
@@ -656,12 +660,16 @@ class Repositories:
         return self.of(DailySymbolClosePricesRepository)
 
     @property
-    def data_provider_sessions(self) -> DataProviderSessionsRepository:
-        return self.of(DataProviderSessionsRepository)
-
-    @property
     def eod_pnl_reports(self) -> EodPnlReportsRepository:
         return self.of(EodPnlReportsRepository)
+
+    @property
+    def data_providers(self) -> DataProvidersRepository:
+        return self.of(DataProvidersRepository)
+
+    @property
+    def data_provider_sessions(self) -> DataProviderSessionsRepository:
+        return self.of(DataProviderSessionsRepository)
 
     @property
     def event_days(self) -> EventDaysRepository:

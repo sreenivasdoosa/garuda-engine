@@ -25,6 +25,7 @@ from garuda.api import envelope
 from garuda.api.credentials import AdminCredentials
 from garuda.api.envelope import ok
 from garuda.api.routers import (
+    data_providers,
     event_days,
     exchanges,
     holidays,
@@ -36,6 +37,7 @@ from garuda.api.tokens import issue, read
 from garuda.config.settings import Settings, load_settings
 from garuda.core.clock import LiveClock
 from garuda.persistence.engine import create_engine, create_session_factory
+from garuda.persistence.secrets import SecretBox
 
 logger = logging.getLogger(__name__)
 
@@ -162,5 +164,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(event_days.build(sessions))
     app.include_router(symbols.build(sessions))
     app.include_router(universes.build(sessions, LiveClock()))
+    app.include_router(
+        data_providers.build(sessions, SecretBox(config.secret_key.get_secret_value()), LiveClock())
+    )
 
     return app
