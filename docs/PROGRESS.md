@@ -146,12 +146,31 @@ Newest first. One line per chunk of work, not per commit.
 
 In value order. **Ask before starting anything with a Console page.**
 
-1. **The API.** The Console is stripped and building; nothing serves it. This
-   is now the only thing between the engine and a usable product. See
+1. **The rest of the API**, one page at a time. Serving so far: config, auth,
+   health, exchanges, holidays, special trading days, event days, symbols and
+   stock universes. Everything else still calls endpoints nothing answers.
+   Next in the market group: data providers. See
    [`API_AND_CONSOLE.md`](API_AND_CONSOLE.md).
-2. **Repoint the Console at the new API**, and inline the permission checks.
-   The pages still call the reference's endpoints and still branch on a
-   permission shim.
-3. **`HEIKIN_ASHI` trailing.** The last trailing mode.
-4. **Phase 4 leftovers that are not UI**: the adapter contract test suite, the
+
+2. **Read the stock universe in the strategy engine.** Both tables and
+   `strategy_definitions.universe_id` exist, the endpoints serve them, and
+   nothing resolves a universe into anything. The reference does it in
+   `SubscriptionLoader`: a universe-bound definition expands to one
+   subscription per member, for equity strategies and for universe-driven
+   F&O/combo strategies alike. Until that lands, a universe is a list an
+   operator can curate and no strategy trades from — so the work belongs with
+   the strategy engine pages, not before them.
+
+   Two things to settle when it does: whether an inactive universe means its
+   subscriptions vanish or merely stop entering, and what happens to an open
+   position when a symbol leaves the list mid-day. Neither has an obvious
+   answer and both cost money if guessed.
+
+3. **The users → trading clients rename in the Console.** The pages that scope
+   by *user* still say so. Waiting on the API defining the trading-client wire
+   shape.
+
+4. **`HEIKIN_ASHI` trailing.** The last trailing mode.
+
+5. **Phase 4 leftovers that are not UI**: the adapter contract test suite, the
    order-fill escalation ladder, and the four exit policies above.
