@@ -19,7 +19,7 @@ from decimal import Decimal
 
 import pytest
 
-from garuda.composition.risk import PlaceOrder, gated, realised_today
+from garuda.composition.risk import PlaceOrder, _limits_from, gated, realised_today
 from garuda.core.clock import ReplayClock
 from garuda.domain import Currency, Direction, Money, OrderType, ProductType
 from garuda.domain.client import TradingClientId
@@ -30,11 +30,13 @@ from garuda.domain.market import DepthLevel, Tick
 from garuda.domain.order import BrokerOrderId, ClientOrderId, OrderRequest, Side
 from garuda.domain.trade import Trade, TradeId
 from garuda.domain.trade_state import TradeExitReason, TradeState
+from garuda.persistence.models import RmsConfigRow
 from garuda.protocols.broker import OrderRejectedError
 from garuda.rms.checks import default_checks
 from garuda.rms.gate import Breach, RiskContext, RiskGate
 from garuda.rms.killswitch import ActiveKillSwitch, KillSwitch, KillSwitchScope
 from garuda.rms.limits import RiskLimits
+from garuda.rms.rates import OrderRates
 from garuda.rms.scope import LimitBook, LimitScope, ScopedLimits
 
 #: 10:30 IST on a Monday — inside the session, because the gate now asks the
@@ -908,3 +910,144 @@ async def test_nothing_stopped_is_the_default(stock: Instrument) -> None:
     await wrap(stock, quote=a_quote(), placed=placed)(an_order())
 
     assert len(placed) == 1
+
+
+# -- what is counted, and when ----------------------------------------------
+
+
+def counting(
+    stock: Instrument,
+    rates: OrderRates,
+    *,
+    limits: RiskLimits | None = None,
+    placed: list[OrderRequest] | None = None,
+    fails: Exception | None = None,
+) -> PlaceOrder:
+    async def place(request: OrderRequest) -> BrokerOrderId:
+        if fails is not None:
+            raise fails
+        if placed is not None:
+            placed.append(request)
+        return BrokerOrderId("250901000001")
+
+    return gated(
+        place,
+        gate=RiskGate(default_checks()),
+        limits=everywhere(limits or RiskLimits()),
+        instruments=lambda instrument: stock,
+        quotes=lambda instrument: a_quote(),
+        clock=ReplayClock(NOW),
+        label="Appa",
+        rates=rates,
+    )
+
+
+async def test_an_order_that_went_out_is_counted(stock: Instrument) -> None:
+    rates = OrderRates()
+
+    await counting(stock, rates)(an_order())
+
+    assert rates.counted(CLIENT, STOCK, NOW).today == 1
+
+
+async def test_an_order_the_gate_refused_is_not_counted(stock: Instrument) -> None:
+    """A request that was never made used no rate. The reference counts one
+    as soon as its pre-trade checks pass, before the position and loss checks
+    have run, and its own comment says what that cost."""
+    rates = OrderRates()
+    place = counting(stock, rates, limits=RiskLimits(max_order_quantity=5))
+
+    with pytest.raises(OrderRejectedError):
+        await place(an_order(10))
+
+    assert rates.counted(CLIENT, STOCK, NOW).today == 0
+
+
+async def test_an_order_the_broker_refused_is_still_counted(stock: Instrument) -> None:
+    """It was sent, and it cost a slot at the broker whatever came back."""
+    rates = OrderRates()
+    place = counting(stock, rates, fails=OrderRejectedError("the broker said no"))
+
+    with pytest.raises(OrderRejectedError):
+        await place(an_order())
+
+    assert rates.counted(CLIENT, STOCK, NOW).today == 1
+
+
+async def test_the_ceiling_stops_the_next_order(stock: Instrument) -> None:
+    rates = OrderRates()
+    placed: list[OrderRequest] = []
+    place = counting(stock, rates, limits=RiskLimits(max_orders_per_second=2), placed=placed)
+
+    await place(an_order())
+    await place(an_order())
+    with pytest.raises(OrderRejectedError, match="already sent this second"):
+        await place(an_order())
+
+    assert len(placed) == 2
+
+
+# -- the columns a limit comes from -----------------------------------------
+
+
+def a_config_row(**fields: object) -> RmsConfigRow:
+    return RmsConfigRow(config_level="GLOBAL", **fields)
+
+
+def test_every_column_with_a_check_behind_it_is_mapped() -> None:
+    """Deliberately partial: a column with no check is not mapped, because a
+    limit that reads as configured and is never enforced is worse than one
+    plainly absent. This pins what *is* wired, so a mapping lost in an edit
+    does not read as an unconfigured limit."""
+    row = a_config_row(
+        max_order_qty=500,
+        max_order_value=Decimal(1_000_000),
+        max_daily_loss_amount=Decimal(40_000),
+        stale_price_seconds=45,
+        max_bid_ask_spread_pct=Decimal(5),
+        min_volume_today=10_000,
+        max_position_qty_per_symbol=1_500,
+        max_orders_per_second=10,
+        max_orders_per_minute=60,
+        max_orders_per_day=500,
+        max_orders_per_symbol_per_day=20,
+    )
+
+    limits = _limits_from(row, Currency.INR)
+
+    assert limits == RiskLimits(
+        max_order_quantity=500,
+        max_order_value=rupees("1000000"),
+        max_daily_loss=rupees("40000"),
+        stale_quote_after=timedelta(seconds=45),
+        max_spread_fraction=Decimal("0.05"),
+        min_volume=10_000,
+        max_position_quantity_per_symbol=1_500,
+        max_orders_per_second=10,
+        max_orders_per_minute=60,
+        max_orders_per_day=500,
+        max_orders_per_instrument_per_day=20,
+    )
+
+
+def test_a_row_that_configures_nothing_enforces_nothing() -> None:
+    assert _limits_from(a_config_row(), Currency.INR) == RiskLimits()
+
+
+def test_a_row_saying_nothing_about_staleness_keeps_the_default() -> None:
+    """The one limit whose default is not "off". Everywhere else a null
+    column means not enforced; a row saying nothing must not be how the
+    staleness check gets switched off, because an old quote is the failure
+    the check exists for."""
+    limits = _limits_from(a_config_row(max_order_qty=5), Currency.INR)
+
+    assert limits.stale_quote_after == RiskLimits().stale_quote_after
+    assert limits.stale_quote_after is not None
+
+
+def test_a_spread_is_read_as_a_fraction_not_a_percentage() -> None:
+    """The column is per cent and the limit is a fraction. Five per cent read
+    as five would let a spread five hundred per cent wide through."""
+    limits = _limits_from(a_config_row(max_bid_ask_spread_pct=Decimal("0.25")), Currency.INR)
+
+    assert limits.max_spread_fraction == Decimal("0.0025")

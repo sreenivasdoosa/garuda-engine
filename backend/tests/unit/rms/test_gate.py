@@ -29,9 +29,11 @@ from garuda.rms import (
     default_checks,
 )
 from garuda.rms.checks import (
+    BrokerRateCheck,
     ExitQuantityCheck,
     FreezeQuantityCheck,
     KillSwitchCheck,
+    OrderCountCheck,
     OrderQuantityCheck,
     OrderValueCheck,
     PositionQuantityCheck,
@@ -41,6 +43,7 @@ from garuda.rms.checks import (
     StaleQuoteCheck,
     VolumeCheck,
 )
+from garuda.rms.rates import OrderCounts
 
 T0 = datetime(2026, 8, 27, 9, 20, tzinfo=UTC)
 CLIENT = TradingClientId("appa-zerodha")
@@ -526,3 +529,103 @@ class TestPositionQuantity:
     def test_nothing_supplied_means_no_opinion(self, nifty_call):
         at_hand = context(nifty_call, limits=RiskLimits(max_position_quantity_per_symbol=10))
         assert PositionQuantityCheck()(at_hand) is None
+
+
+class TestOrderRate:
+    """Two limits with different owners: the broker's ceiling per second, and
+    the operator's policy per minute, per day and per instrument."""
+
+    def test_below_the_brokers_ceiling_passes(self, nifty_call):
+        at_hand = context(
+            nifty_call,
+            limits=RiskLimits(max_orders_per_second=10),
+            orders=OrderCounts(this_second=9),
+        )
+        assert BrokerRateCheck()(at_hand) is None
+
+    def test_at_the_brokers_ceiling_vetoes(self, nifty_call):
+        """Ten already sent and the broker takes ten: the eleventh is refused
+        there, so it is refused here with a reason instead."""
+        breach = BrokerRateCheck()(
+            context(
+                nifty_call,
+                limits=RiskLimits(max_orders_per_second=10),
+                orders=OrderCounts(this_second=10),
+            )
+        )
+        assert breach is not None
+        assert breach.type is BreachType.ORDER_RATE_EXCEEDED
+
+    def test_the_brokers_ceiling_stops_an_exit_too(self, nifty_call):
+        """Unlike every other cap. The broker refuses it either way, and a
+        refused exit is not a lost one -- the square-off queue keeps trying."""
+        at_hand = context(
+            nifty_call,
+            limits=RiskLimits(max_orders_per_second=10),
+            orders=OrderCounts(this_second=10),
+            is_exit=True,
+        )
+
+        assert not RiskGate(default_checks()).evaluate(at_hand).allowed
+
+    def test_no_ceiling_configured_says_nothing(self, nifty_call):
+        assert BrokerRateCheck()(context(nifty_call, orders=OrderCounts(this_second=500))) is None
+
+    def test_nothing_counting_says_nothing(self, nifty_call):
+        at_hand = context(nifty_call, limits=RiskLimits(max_orders_per_second=1))
+        assert BrokerRateCheck()(at_hand) is None
+
+    def test_the_minute_cap_vetoes(self, nifty_call):
+        breach = OrderCountCheck()(
+            context(
+                nifty_call,
+                limits=RiskLimits(max_orders_per_minute=30),
+                orders=OrderCounts(this_minute=30),
+            )
+        )
+        assert breach is not None
+
+    def test_the_daily_cap_vetoes(self, nifty_call):
+        breach = OrderCountCheck()(
+            context(
+                nifty_call,
+                limits=RiskLimits(max_orders_per_day=500),
+                orders=OrderCounts(today=500),
+            )
+        )
+        assert breach is not None
+
+    def test_the_per_instrument_daily_cap_vetoes(self, nifty_call):
+        breach = OrderCountCheck()(
+            context(
+                nifty_call,
+                limits=RiskLimits(max_orders_per_instrument_per_day=20),
+                orders=OrderCounts(today_on_instrument=20),
+            )
+        )
+        assert breach is not None
+        assert nifty_call.trading_symbol in breach.detail
+
+    def test_a_count_below_every_cap_passes(self, nifty_call):
+        at_hand = context(
+            nifty_call,
+            limits=RiskLimits(
+                max_orders_per_minute=30,
+                max_orders_per_day=500,
+                max_orders_per_instrument_per_day=20,
+            ),
+            orders=OrderCounts(this_minute=29, today=499, today_on_instrument=19),
+        )
+        assert OrderCountCheck()(at_hand) is None
+
+    def test_the_operators_caps_never_stop_an_exit(self, nifty_call):
+        """An account that has spent its daily orders must still be able to
+        close what it has open."""
+        at_hand = context(
+            nifty_call,
+            limits=RiskLimits(max_orders_per_day=1),
+            orders=OrderCounts(today=5000),
+            is_exit=True,
+        )
+
+        assert RiskGate(default_checks()).evaluate(at_hand).allowed

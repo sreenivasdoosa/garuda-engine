@@ -55,6 +55,7 @@ from garuda.rms.killswitch import (
     KillSwitchScope,
 )
 from garuda.rms.limits import RiskLimits
+from garuda.rms.rates import OrderRates
 from garuda.rms.scope import NO_LIMITS, SEGMENT_KINDS, LimitBook, LimitScope, ScopedLimits
 
 logger = logging.getLogger(__name__)
@@ -93,6 +94,7 @@ def gated(
     committed_quantity: CommittedQuantity | None = None,
     breaches: BreachStore | None = None,
     kill_switch: KillSwitch = NOTHING_STOPPED,
+    rates: OrderRates | None = None,
     is_exit: bool = False,
 ) -> PlaceOrder:
     """Wrap a placement so the risk gate sees it first.
@@ -140,6 +142,11 @@ def gated(
                     if committed_quantity is not None
                     else None
                 ),
+                orders=(
+                    rates.counted(request.trading_client, request.instrument, now)
+                    if rates is not None
+                    else None
+                ),
                 is_exit=is_exit,
             )
         )
@@ -162,6 +169,12 @@ def gated(
                 )
             raise OrderRejectedError(decision.reason)
 
+        if rates is not None:
+            # Counted here, where the request leaves for the broker, rather
+            # than when the checks passed: a request that was never made used
+            # no rate. Before the call rather than after, because an order the
+            # broker rejects was still sent and still cost a slot.
+            rates.record(request.trading_client, request.instrument, now)
         return await place(request)
 
     return place_if_allowed
@@ -274,10 +287,18 @@ def _limits_from(row: RmsConfigRow, currency: Currency) -> RiskLimits:
         max_order_value=_money(row.max_order_value, currency),
         max_daily_loss=_money(row.max_daily_loss_amount, currency),
         max_position_quantity_per_symbol=row.max_position_qty_per_symbol,
+        max_orders_per_second=row.max_orders_per_second,
+        max_orders_per_minute=row.max_orders_per_minute,
+        max_orders_per_day=row.max_orders_per_day,
+        max_orders_per_instrument_per_day=row.max_orders_per_symbol_per_day,
+        # The one limit whose default is not "off". Everywhere else a null
+        # column means not enforced; here it means the row said nothing, and
+        # a row saying nothing must not be how the staleness check gets
+        # switched off -- an old quote is the failure the check exists for.
         stale_quote_after=(
             timedelta(seconds=row.stale_price_seconds)
             if row.stale_price_seconds is not None
-            else None
+            else RiskLimits().stale_quote_after
         ),
         max_spread_fraction=(
             row.max_bid_ask_spread_pct / Decimal(100)

@@ -489,6 +489,29 @@ through a chain of fallbacks, because its exits reach the validator with no
 link to the trade they close; here the book is in process and the number is
 exact, so the fallbacks are not ported.
 
+**Two rate limits, with different owners.** Orders per second is the broker's
+ceiling: Kite refuses the eleventh in a second whatever anyone here thinks, so
+counting is about failing early with a clear reason rather than about policy —
+and it therefore guards exits, like the freeze quantity and the market being
+open. Orders per minute, per day and per day on one instrument are the
+operator's policy about how much trading to do, so they stand down on an exit:
+an account that has spent its daily orders must still be able to close.
+
+**Only orders that were actually sent are counted.** The reference counts one
+as soon as its pre-trade checks pass, before the position and loss checks have
+run, so an order refused later still consumes a slot; its own comment says as
+much about the daily counter, which it moved to count after every check for
+exactly that reason, while leaving the per-second and per-minute counters
+where they were. Here the count happens once, where the request leaves for the
+broker. Before the call rather than after, because an order the broker rejects
+was still sent and still cost a slot.
+
+The counters are in memory and per process, which is what a rate limit is: a
+restart has sent nothing this second. The daily count is the one a restart
+genuinely loses, and losing it errs towards letting the account keep trading
+rather than locking it out on a counter it cannot verify — the broker's own
+daily cap is the backstop.
+
 One more check runs on entries only and needed the book to exist: a cap on
 how much of one instrument may be held one way at once. It is measured against
 what the book holds **plus what it has resting**, because the failure it

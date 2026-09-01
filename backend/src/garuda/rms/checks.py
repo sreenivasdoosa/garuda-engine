@@ -375,6 +375,83 @@ class PositionQuantityCheck:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class BrokerRateCheck:
+    """The broker's own ceiling on orders per second.
+
+    Guards exits, unlike every other cap. Sending past a broker's rate limit
+    gets the order refused there whichever way it points, so stopping it here
+    costs one rejection and gives a clearer reason -- the same argument the
+    freeze quantity and the market being open make. A refused exit is not a
+    lost one either: the square-off queue keeps trying.
+    """
+
+    breach_type: BreachType = BreachType.ORDER_RATE_EXCEEDED
+
+    @property
+    def guards_exits(self) -> bool:
+        """The broker refuses it either way."""
+        return True
+
+    def __call__(self, context: RiskContext) -> Breach | None:
+        limit = context.limits.max_orders_per_second
+        counts = context.orders
+        if limit is None or counts is None or counts.this_second < limit:
+            return None
+        return Breach(
+            self.breach_type,
+            f"{counts.this_second} orders already sent this second, and the broker takes {limit}",
+            current=f"{counts.this_second}/sec",
+            limit=f"{limit}/sec",
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class OrderCountCheck:
+    """How much trading an operator will have this account do.
+
+    Three windows, checked narrowest allowance first so the message names the
+    one actually reached. Entries only: a cap on how much trading to do has
+    nothing to say about getting out of what is already on, and an account
+    that has spent its daily orders must still be able to close.
+
+    A restart forgets the day's count. That errs towards letting the account
+    keep trading rather than locking it out on a counter it cannot verify,
+    and the broker's own daily cap is the backstop.
+    """
+
+    breach_type: BreachType = BreachType.ORDER_RATE_EXCEEDED
+
+    @property
+    def guards_exits(self) -> bool:
+        """A cap on how much to trade is about taking risk on."""
+        return False
+
+    def __call__(self, context: RiskContext) -> Breach | None:
+        counts = context.orders
+        if counts is None:
+            return None
+
+        limits = context.limits
+        for count, limit, window in (
+            (counts.this_minute, limits.max_orders_per_minute, "minute"),
+            (counts.today, limits.max_orders_per_day, "day"),
+            (
+                counts.today_on_instrument,
+                limits.max_orders_per_instrument_per_day,
+                f"day on {context.instrument.trading_symbol}",
+            ),
+        ):
+            if limit is not None and count >= limit:
+                return Breach(
+                    self.breach_type,
+                    f"{count} orders already sent this {window}, and the limit is {limit}",
+                    current=f"{count}/{window}",
+                    limit=f"{limit}/{window}",
+                )
+        return None
+
+
 def default_checks() -> tuple[
     KillSwitchCheck,
     MarketOpenCheck,
@@ -385,6 +462,8 @@ def default_checks() -> tuple[
     StaleQuoteCheck,
     OrderQuantityCheck,
     OrderValueCheck,
+    BrokerRateCheck,
+    OrderCountCheck,
     PositionQuantityCheck,
     FreezeQuantityCheck,
     SpreadCheck,
@@ -405,6 +484,8 @@ def default_checks() -> tuple[
         StaleQuoteCheck(),
         OrderQuantityCheck(),
         OrderValueCheck(),
+        BrokerRateCheck(),
+        OrderCountCheck(),
         PositionQuantityCheck(),
         FreezeQuantityCheck(),
         SpreadCheck(),

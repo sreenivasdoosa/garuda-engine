@@ -28,6 +28,7 @@ from garuda.domain.order import OrderRequest
 from garuda.domain.position import Position
 from garuda.rms.breaches import BreachType
 from garuda.rms.limits import RiskLimits
+from garuda.rms.rates import OrderCounts
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,6 +76,9 @@ class RiskContext:
     #: would take on, for a cap on position size. None when the placing path
     #: did not supply one.
     committed_quantity: int | None = None
+    #: What this account has already sent, per window. None when the placing
+    #: path does not count, which reads as "no bound available".
+    orders: OrderCounts | None = None
     #: Whether this order is leaving a position rather than taking one.
     #:
     #: An exit is checked, but not by everything: a limit that stops an

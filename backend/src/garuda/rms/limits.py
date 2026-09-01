@@ -34,6 +34,14 @@ class RiskLimits:
     #: Spread as a fraction of the last traded price, e.g. 0.05 for 5%.
     max_spread_fraction: Decimal | None = None
     min_volume: int | None = None
+    #: The broker's own ceiling. Sending past it gets the order refused there,
+    #: so this is about failing early with a reason rather than about policy.
+    max_orders_per_second: int | None = None
+    #: How much trading an operator will have this account do. Policy, which
+    #: the broker has no opinion about.
+    max_orders_per_minute: int | None = None
+    max_orders_per_day: int | None = None
+    max_orders_per_instrument_per_day: int | None = None
 
     def merged_with(self, override: RiskLimits) -> RiskLimits:
         """Layer a narrower scope over a wider one.
@@ -51,6 +59,13 @@ class RiskLimits:
             stale_quote_after=_pick(self.stale_quote_after, override.stale_quote_after),
             max_spread_fraction=_pick(self.max_spread_fraction, override.max_spread_fraction),
             min_volume=_pick(self.min_volume, override.min_volume),
+            max_orders_per_second=_pick(self.max_orders_per_second, override.max_orders_per_second),
+            max_orders_per_minute=_pick(self.max_orders_per_minute, override.max_orders_per_minute),
+            max_orders_per_day=_pick(self.max_orders_per_day, override.max_orders_per_day),
+            max_orders_per_instrument_per_day=_pick(
+                self.max_orders_per_instrument_per_day,
+                override.max_orders_per_instrument_per_day,
+            ),
         )
 
 

@@ -67,6 +67,7 @@ from garuda.protocols.feed import MarketDataFeed
 from garuda.rms.checks import default_checks
 from garuda.rms.gate import RiskGate
 from garuda.rms.killswitch import NOTHING_STOPPED, KillSwitch
+from garuda.rms.rates import OrderRates
 from garuda.rms.scope import NO_LIMITS, LimitBook
 from garuda.trademgmt.client import TradingClientManager
 from garuda.trademgmt.coordination import LegCoordinator
@@ -390,6 +391,10 @@ def _build_client(
     tracker = TradeTracker(book, broker.cancel, clock, alerts)
 
     gate = RiskGate(default_checks())
+    # One tracker for the account, shared by the entry and exit placements:
+    # a broker's rate limit is on the connection, not on what the order was
+    # for, and two counters would let an account send twice the limit.
+    rates = OrderRates()
     watching = partial(
         gated,
         gate=gate,
@@ -401,6 +406,7 @@ def _build_client(
         realized_today=realised_today(book.trades),
         breaches=BreachStore(sessions, label=account.label),
         kill_switch=kill_switch,
+        rates=rates,
     )
     # Both are gated; they differ in which checks have any business stopping
     # them. A stop-loss must go out on the day a loss limit was reached, and a
