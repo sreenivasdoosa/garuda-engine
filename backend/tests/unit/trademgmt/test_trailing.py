@@ -9,8 +9,9 @@ from dataclasses import replace
 from decimal import Decimal
 
 from garuda.alerts.manager import AlertManager
+from garuda.core.clock import ReplayClock
 from garuda.domain import Direction
-from garuda.domain.market import Tick
+from garuda.domain.market import BarInterval, Tick
 from garuda.domain.order import BrokerOrderId
 from garuda.domain.trade import Protection, Trade
 from garuda.domain.trade_orders import OrderRole
@@ -19,7 +20,7 @@ from garuda.domain.trailing import GapUnit, TrailConfig, TrailingMode
 from garuda.protocols.broker import OrderChanges
 from garuda.trademgmt.client import TradingClientManager
 from garuda.trademgmt.dedup import InstrumentLookup
-from garuda.trademgmt.trailing import TrailingService, TrailOutcome
+from garuda.trademgmt.trailing import CandleView, TrailingService, TrailOutcome
 from garuda.trademgmt.trailing_rules import (
     improves,
     risk_multiple_stop,
@@ -59,6 +60,7 @@ def build(
     alerts: AlertManager,
     orders: FakeOrders,
     *,
+    market: CandleView | None = None,
     max_modifications: int = 20,
 ) -> tuple[TrailingService, TradingClientManager]:
     book = TradingClientManager(CLIENT, LABEL, instruments, alerts)
@@ -69,6 +71,8 @@ def build(
         orders.place,
         instruments,
         alerts,
+        ReplayClock(TODAY),
+        market=market,
         max_modifications=max_modifications,
     )
     return service, book
@@ -563,3 +567,310 @@ class TestWhatEachRuleMeasuresFrom:
 
         assert result.outcome is TrailOutcome.HELD
         assert orders.modified == []
+
+
+# -- the candle modes -------------------------------------------------------
+
+
+class FakeCandles:
+    """A candle view that answers from what a test set."""
+
+    def __init__(self, line: str | None = None, close: str | None = None) -> None:
+        self._line = rupees(line) if line is not None else None
+        self._close = rupees(close) if close is not None else None
+        self.asked: list[tuple[str, str, dict[str, object]]] = []
+
+    def indicator(self, instrument, interval, name, params):
+        self.asked.append((name, interval.value, dict(params)))
+        return self._line
+
+    def last_close(self, instrument, interval):
+        return self._close
+
+
+def candle_trade(mode: TrailingMode, **shape: object) -> Trade:
+    return trailing_trade(trail=TrailConfig(mode=mode, **shape))  # type: ignore[arg-type]
+
+
+class TestCandleModes:
+    """Trailing off closed bars, the way the reference engine's other three
+    modes do. Only the risk-multiple mode needs no history."""
+
+    async def test_the_average_true_range_puts_the_stop_a_multiple_away(
+        self, instruments: InstrumentLookup, alerts: AlertManager
+    ) -> None:
+        """ATR is a distance, not a level: the stop sits that far below the
+        close for a long. Range 5, multiplier 4, close 130, so 110."""
+        orders = FakeOrders()
+        market = FakeCandles(line="5", close="130")
+        service, book = build(instruments, alerts, orders, market=market)
+        trade = candle_trade(TrailingMode.ATR, multiplier=Decimal(4), period=21)
+        book.add_trade(trade)
+        book.link_order(STOP_ORDER, trade.id, OrderRole.STOP)
+
+        result = await service.on_tick(trade, a_tick("130"))
+
+        assert result.outcome is TrailOutcome.MOVED
+        assert result.to_stop == rupees("110")
+
+    async def test_the_moving_average_puts_the_stop_just_under_it(
+        self, instruments: InstrumentLookup, alerts: AlertManager
+    ) -> None:
+        """EMA is a level and the stop rides behind it. 100 less a 1% buffer."""
+        orders = FakeOrders()
+        market = FakeCandles(line="100", close="130")
+        service, book = build(instruments, alerts, orders, market=market)
+        trade = candle_trade(TrailingMode.EMA, buffer_percent=Decimal(1))
+        book.add_trade(trade)
+        book.link_order(STOP_ORDER, trade.id, OrderRole.STOP)
+
+        result = await service.on_tick(trade, a_tick("130"))
+
+        assert result.to_stop == rupees("99")
+
+    async def test_the_supertrend_trails_while_the_close_is_above_it(
+        self, instruments: InstrumentLookup, alerts: AlertManager
+    ) -> None:
+        orders = FakeOrders()
+        market = FakeCandles(line="105", close="130")
+        service, book = build(instruments, alerts, orders, market=market)
+        trade = candle_trade(TrailingMode.SUPER_TREND)
+        book.add_trade(trade)
+        book.link_order(STOP_ORDER, trade.id, OrderRole.STOP)
+
+        result = await service.on_tick(trade, a_tick("130"))
+
+        assert result.to_stop == rupees("105")
+
+    async def test_the_supertrend_does_not_trail_from_the_wrong_side(
+        self, instruments: InstrumentLookup, alerts: AlertManager
+    ) -> None:
+        """It flips sides with the trend. On the wrong side the line is where
+        the opposite position's stop would go, and following it would put a
+        long's stop above the price."""
+        orders = FakeOrders()
+        market = FakeCandles(line="140", close="130")
+        service, book = build(instruments, alerts, orders, market=market)
+        trade = candle_trade(TrailingMode.SUPER_TREND)
+        book.add_trade(trade)
+        book.link_order(STOP_ORDER, trade.id, OrderRole.STOP)
+
+        result = await service.on_tick(trade, a_tick("130"))
+
+        assert result.outcome is TrailOutcome.HELD
+        assert orders.modified == []
+
+    async def test_a_candle_level_that_would_loosen_is_still_refused(
+        self, instruments: InstrumentLookup, alerts: AlertManager
+    ) -> None:
+        """The rule that is not negotiable. A widening range loosens an ATR
+        level, and a stop that can move away from the price is not a stop."""
+        orders = FakeOrders()
+        market = FakeCandles(line="30", close="130")
+        service, book = build(instruments, alerts, orders, market=market)
+        trade = candle_trade(TrailingMode.ATR, multiplier=Decimal(4))
+        book.add_trade(trade)
+        book.link_order(STOP_ORDER, trade.id, OrderRole.STOP)
+
+        result = await service.on_tick(trade, a_tick("130"))
+
+        assert result.outcome is TrailOutcome.HELD
+        assert orders.modified == []
+
+    async def test_a_mode_with_no_history_source_holds_and_says_so(
+        self, instruments: InstrumentLookup, alerts: AlertManager
+    ) -> None:
+        """No account provides market data, so there are no bars. Named
+        rather than ignored."""
+        orders = FakeOrders()
+        service, book = build(instruments, alerts, orders, market=None)
+        trade = candle_trade(TrailingMode.ATR)
+        book.add_trade(trade)
+
+        result = await service.on_tick(trade, a_tick("130"))
+
+        assert result.outcome is TrailOutcome.UNSUPPORTED
+
+    async def test_a_mode_this_engine_cannot_compute_holds_and_says_so(
+        self, instruments: InstrumentLookup, alerts: AlertManager
+    ) -> None:
+        """Heikin-Ashi needs a candle transform this engine does not have.
+        Refused by name rather than trailed some other way."""
+        orders = FakeOrders()
+        service, book = build(instruments, alerts, orders, market=FakeCandles("100", "130"))
+        trade = candle_trade(TrailingMode.HEIKIN_ASHI)
+        book.add_trade(trade)
+
+        result = await service.on_tick(trade, a_tick("130"))
+
+        assert result.outcome is TrailOutcome.UNSUPPORTED
+
+    async def test_the_bars_are_only_read_every_so_often(
+        self, instruments: InstrumentLookup, alerts: AlertManager
+    ) -> None:
+        """A candle level cannot move until a bar closes, so asking on every
+        tick is a hundred bars of arithmetic for an answer that has not
+        changed."""
+        orders = FakeOrders()
+        market = FakeCandles(line="5", close="130")
+        service, book = build(instruments, alerts, orders, market=market)
+        trade = candle_trade(TrailingMode.ATR)
+        book.add_trade(trade)
+        book.link_order(STOP_ORDER, trade.id, OrderRole.STOP)
+
+        await service.on_tick(trade, a_tick("130"))
+        await service.on_tick(trade, a_tick("131"))
+        await service.on_tick(trade, a_tick("132"))
+
+        assert len(market.asked) == 1
+
+    async def test_the_risk_multiple_mode_reads_no_bars(
+        self, instruments: InstrumentLookup, alerts: AlertManager
+    ) -> None:
+        """It needs nothing but the price, and must not be throttled with the
+        ones that do."""
+        orders = FakeOrders()
+        market = FakeCandles(line="5", close="130")
+        service, book = build(instruments, alerts, orders, market=market)
+        trade = trailing_trade()
+        book.add_trade(trade)
+        book.link_order(STOP_ORDER, trade.id, OrderRole.STOP)
+
+        await service.on_tick(trade, a_tick("115"))
+
+        assert market.asked == []
+
+    async def test_a_short_supertrend_does_not_trail_from_the_wrong_side(
+        self, instruments: InstrumentLookup, alerts: AlertManager
+    ) -> None:
+        """The mirror. A short trails a SuperTrend above it, and below it the
+        line is the long's stop."""
+        orders = FakeOrders()
+        market = FakeCandles(line="90", close="100")
+        service, book = build(instruments, alerts, orders, market=market)
+        trade = replace(
+            candle_trade(TrailingMode.SUPER_TREND),
+            direction=Direction.SHORT,
+            protection=Protection(
+                stop_loss=rupees("110"),
+                initial_stop_loss=rupees("110"),
+                is_trailing=True,
+                trail=TrailConfig(mode=TrailingMode.SUPER_TREND),
+                dont_place_stop_loss_order=True,
+            ),
+        )
+        book.add_trade(trade)
+
+        result = await service.on_tick(trade, a_tick("100"))
+
+        assert result.outcome is TrailOutcome.HELD
+
+    async def test_a_reach_past_the_whole_price_is_not_a_stop(
+        self, instruments: InstrumentLookup, alerts: AlertManager
+    ) -> None:
+        """A wide range on a cheap option puts the level at or below nothing,
+        which is not a price."""
+        orders = FakeOrders()
+        market = FakeCandles(line="40", close="130")
+        service, book = build(instruments, alerts, orders, market=market)
+        trade = candle_trade(TrailingMode.ATR, multiplier=Decimal(4))
+        book.add_trade(trade)
+        book.link_order(STOP_ORDER, trade.id, OrderRole.STOP)
+
+        result = await service.on_tick(trade, a_tick("130"))
+
+        assert result.outcome is TrailOutcome.HELD
+
+    async def test_a_mode_with_no_bars_yet_holds(
+        self, instruments: InstrumentLookup, alerts: AlertManager
+    ) -> None:
+        """A morning, before the history has been fetched. Not a fault, and
+        not a reason to move a stop."""
+        orders = FakeOrders()
+        service, book = build(instruments, alerts, orders, market=FakeCandles())
+        trade = candle_trade(TrailingMode.ATR)
+        book.add_trade(trade)
+        book.link_order(STOP_ORDER, trade.id, OrderRole.STOP)
+
+        result = await service.on_tick(trade, a_tick("130"))
+
+        assert result.outcome is TrailOutcome.HELD
+        assert orders.modified == []
+
+    async def test_a_close_with_no_indicator_holds(
+        self, instruments: InstrumentLookup, alerts: AlertManager
+    ) -> None:
+        """Enough bars to have a close and not enough for the indicator."""
+        orders = FakeOrders()
+        service, book = build(instruments, alerts, orders, market=FakeCandles(close="130"))
+        trade = candle_trade(TrailingMode.ATR)
+        book.add_trade(trade)
+        book.link_order(STOP_ORDER, trade.id, OrderRole.STOP)
+
+        result = await service.on_tick(trade, a_tick("130"))
+
+        assert result.outcome is TrailOutcome.HELD
+
+    async def test_an_indicator_with_no_close_holds(
+        self, instruments: InstrumentLookup, alerts: AlertManager
+    ) -> None:
+        """The two are separate questions to the view, and ATR needs both --
+        it is a distance, and a distance from nowhere is not a level."""
+        orders = FakeOrders()
+        service, book = build(instruments, alerts, orders, market=FakeCandles(line="5"))
+        trade = candle_trade(TrailingMode.ATR)
+        book.add_trade(trade)
+        book.link_order(STOP_ORDER, trade.id, OrderRole.STOP)
+
+        result = await service.on_tick(trade, a_tick("130"))
+
+        assert result.outcome is TrailOutcome.HELD
+
+    async def test_each_mode_asks_its_indicator_for_the_right_shape(
+        self, instruments: InstrumentLookup, alerts: AlertManager
+    ) -> None:
+        """The reference engine's defaults, so a row that names neither period
+        nor multiplier trails the way it did there."""
+        for mode, expected in (
+            (TrailingMode.ATR, ("atr", {"period": 21, "multiplier": Decimal(4)})),
+            (TrailingMode.EMA, ("ema", {"period": 13})),
+            (TrailingMode.SUPER_TREND, ("supertrend", {"period": 10, "multiplier": Decimal(3)})),
+        ):
+            orders = FakeOrders()
+            market = FakeCandles(line="100", close="130")
+            service, book = build(instruments, alerts, orders, market=market)
+            trade = candle_trade(mode)
+            book.add_trade(trade)
+
+            await service.on_tick(trade, a_tick("130"))
+
+            name, _, params = market.asked[0]
+            assert (name, params) == expected
+
+    async def test_a_configured_shape_beats_the_default(
+        self, instruments: InstrumentLookup, alerts: AlertManager
+    ) -> None:
+        orders = FakeOrders()
+        market = FakeCandles(line="100", close="130")
+        service, book = build(instruments, alerts, orders, market=market)
+        trade = candle_trade(TrailingMode.ATR, period=7, multiplier=Decimal("1.5"))
+        book.add_trade(trade)
+
+        await service.on_tick(trade, a_tick("130"))
+
+        _, _, params = market.asked[0]
+        assert params == {"period": 7, "multiplier": Decimal("1.5")}
+
+    async def test_the_bars_read_are_the_ones_the_row_names(
+        self, instruments: InstrumentLookup, alerts: AlertManager
+    ) -> None:
+        orders = FakeOrders()
+        market = FakeCandles(line="100", close="130")
+        service, book = build(instruments, alerts, orders, market=market)
+        trade = candle_trade(TrailingMode.EMA, interval=BarInterval.FIVE_MINUTES)
+        book.add_trade(trade)
+
+        await service.on_tick(trade, a_tick("130"))
+
+        _, interval, _ = market.asked[0]
+        assert interval == "5m"

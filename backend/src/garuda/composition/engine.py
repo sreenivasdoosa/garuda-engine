@@ -38,7 +38,9 @@ from garuda.brokers.websocket import Connector
 from garuda.brokers.zerodha.account import ZerodhaAccountStream
 from garuda.brokers.zerodha.broker import ZerodhaBroker
 from garuda.brokers.zerodha.feed import ZerodhaFeed
+from garuda.brokers.zerodha.history import ZerodhaHistory
 from garuda.brokers.zerodha.rest import KiteClient
+from garuda.composition.candle_view import CachedCandles
 from garuda.composition.risk import gated, realised_today
 from garuda.composition.venues import Venues
 from garuda.core.bus import InProcessEventBus
@@ -50,6 +52,7 @@ from garuda.domain.instrument import Instrument, InstrumentId
 from garuda.domain.market import PriceBand, Tick
 from garuda.domain.order import BrokerOrderId, ClientOrderId
 from garuda.domain.trade import Trade
+from garuda.marketdata.history import CandleCache
 from garuda.marketdata.hub import TickHub
 from garuda.marketdata.loader import InstrumentRegistryHolder
 from garuda.marketdata.registry import InstrumentRegistry
@@ -115,6 +118,11 @@ class EngineParts:
     registry: TaskRegistry
     clock: Clock
     market_data: MarketDataService | None = None
+    #: Closed-bar history, on the same account that carries the feed: both are
+    #: its session, and without one there is neither. None when no account is
+    #: nominated, which makes every candle rule read UNAVAILABLE and every
+    #: candle trailing mode hold its stop -- the truth in both cases.
+    candles: CandleCache | None = None
     clients: dict[TradingClientId, ClientParts] = field(default_factory=dict)
     loops: TradeLoops | None = None
     #: Every configured account, trading or not, so that one which cannot
@@ -186,6 +194,7 @@ def build_engine(
         clock=clock,
     )
     parts.market_data = _build_market_data(resolver, instruments, hub, clock, now, connector)
+    parts.candles = _build_candles(resolver, instruments, clock, now)
 
     for account in resolver.accounts:
         parts.accounts[account.id] = account
@@ -205,6 +214,7 @@ def build_engine(
             alerts,
             clock,
             limits or NO_LIMITS,
+            parts.candles,
         )
 
     loops = TradeLoops(clock, alerts)
@@ -287,6 +297,31 @@ def _build_market_data(
     return MarketDataService(hub, FeedSupervisor(hub, open_feed, clock), clock)
 
 
+def _build_candles(
+    resolver: SessionResolver,
+    instruments: InstrumentRegistryHolder,
+    clock: Clock,
+    now: datetime,
+) -> CandleCache | None:
+    """History from whichever account provides market data.
+
+    Built here rather than above the engine because it needs the instrument
+    registry, which the engine holds and replaces whole every morning.
+    """
+    try:
+        credentials = resolver.market_data_credentials(now)
+    except SessionUnavailableError as error:
+        logger.warning("no candle history and no indicators: %s", error)
+        return None
+
+    http = trading_client_factory(credentials.static_ip)
+    source = ZerodhaHistory(
+        KiteClient(credentials.api_key, credentials.access_token, http),
+        _registry_for(instruments, credentials.broker),
+    )
+    return CandleCache(source=source, clock=clock)
+
+
 def _build_client(
     account: Account,
     credentials: Credentials,
@@ -297,6 +332,7 @@ def _build_client(
     alerts: AlertManager,
     clock: Clock,
     limits: LimitBook,
+    candles: CandleCache | None,
 ) -> ClientParts:
     """One account's broker, its book, and everything that acts on them."""
     http = trading_client_factory(credentials.static_ip)
@@ -415,6 +451,8 @@ def _build_client(
         place_replacement_stop,
         instrument,
         alerts,
+        clock,
+        market=CachedCandles(candles) if candles is not None else None,
     )
     coordinator = LegCoordinator(book, square_off.request, alerts)
     return ClientParts(

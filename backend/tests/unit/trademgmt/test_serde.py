@@ -13,6 +13,7 @@ from datetime import timedelta
 from decimal import Decimal
 
 from garuda.domain.intent import LegRole
+from garuda.domain.market import BarInterval
 from garuda.domain.trade import (
     CorporateActionState,
     ExitAttempts,
@@ -63,6 +64,10 @@ def a_rich_trade() -> Trade:
                 gap_unit=GapUnit.PERCENTAGE,
                 trail_to_cost_gap=Decimal(2),
                 trail_to_cost_unit=GapUnit.PERCENTAGE,
+                interval=BarInterval.FIFTEEN_MINUTES,
+                period=7,
+                multiplier=Decimal("1.5"),
+                buffer_percent=Decimal("0.2"),
             ),
             trigger_to_limit_gap_percent=Decimal("2.5"),
         ),

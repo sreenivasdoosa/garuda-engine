@@ -15,7 +15,7 @@ import asyncio
 import logging
 import signal
 import sys
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
@@ -24,8 +24,6 @@ from zoneinfo import ZoneInfo
 from garuda.brokers.routing import trading_client_factory
 from garuda.brokers.sessions import Credentials, SessionResolver, SessionUnavailableError
 from garuda.brokers.websocket import websocket_connector
-from garuda.brokers.zerodha.history import ZerodhaHistory
-from garuda.brokers.zerodha.rest import KiteClient
 from garuda.capital import CapitalLotAllocator, Sizer
 from garuda.composition.accounts import build_resolver
 from garuda.composition.engine import Engine, build_engine
@@ -45,7 +43,6 @@ from garuda.domain.symbol import SymbolInfo
 from garuda.engine.signals import SignalFactory
 from garuda.engine.strategy import StrategyRunner
 from garuda.engine.tranches import TrancheLedger
-from garuda.marketdata.history import CandleCache
 from garuda.marketdata.loader import InstrumentLoader
 from garuda.marketdata.registry import InstrumentRegistry
 from garuda.marketdata.synthetics import Synthetic, SyntheticPublisher, for_symbols
@@ -222,26 +219,6 @@ async def _seed() -> int:
     return 0
 
 
-def _candles(
-    assembled: _Assembled, registry: Callable[[], InstrumentRegistry], clock: Clock
-) -> CandleCache | None:
-    """History from whichever account provides market data.
-
-    None when no account does: the same account that carries the feed carries
-    the history, because both are its session, and without one there is
-    neither. Every candle rule then reads UNAVAILABLE, which is the truth.
-    """
-    credentials = assembled.market_data
-    if credentials is None:
-        logger.warning("no market data account, so no candle history and no indicators")
-        return None
-    http = trading_client_factory(credentials.static_ip)
-    source = ZerodhaHistory(
-        KiteClient(credentials.api_key, credentials.access_token, http), registry
-    )
-    return CandleCache(source=source, clock=clock)
-
-
 def _strategy_loop(assembled: _Assembled, clock: Clock) -> StrategyLoop | None:
     """The loop that looks for entries, if anything is subscribed.
 
@@ -271,7 +248,9 @@ def _strategy_loop(assembled: _Assembled, clock: Clock) -> StrategyLoop | None:
         registry=registry,
         symbols=assembled.symbols,
         timezone=venue.timezone,
-        candles=_candles(assembled, registry, clock),
+        # The engine's, not one of its own: a strategy trailing by SuperTrend
+        # and a rule testing SuperTrend must see the same bars.
+        candles=engine.parts.candles,
     )
 
     async def deliver(batch: object) -> bool:

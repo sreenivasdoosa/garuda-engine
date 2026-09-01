@@ -12,12 +12,15 @@ everything the position had earned.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from decimal import ROUND_DOWN, ROUND_UP, Decimal
 
 from garuda.domain.enums import Direction
 from garuda.domain.instrument import Instrument
 from garuda.domain.money import Money
-from garuda.domain.trailing import GapUnit, TrailConfig
+from garuda.domain.trailing import GapUnit, TrailConfig, TrailingMode
+
+HUNDRED = Decimal(100)
 
 
 def initial_risk(entry: Money, initial_stop: Money) -> Decimal:
@@ -135,3 +138,104 @@ def trail_to_cost_stop(
     if profit < threshold:
         return None
     return instrument.quantize_price(entry)
+
+
+@dataclass(frozen=True, slots=True)
+class CandleMode:
+    """Which indicator a trailing mode reads, and how it is shaped by default.
+
+    The defaults are the reference engine's, so a row that names neither
+    period nor multiplier trails the way it did there.
+    """
+
+    indicator: str
+    period: int
+    multiplier: Decimal | None = None
+    buffer_percent: Decimal = Decimal(0)
+
+
+#: The modes that read closed bars. A mode absent here is one this engine
+#: cannot compute, and the caller reports it by name rather than trailing some
+#: other way.
+CANDLE_MODES: dict[TrailingMode, CandleMode] = {
+    TrailingMode.ATR: CandleMode("atr", period=21, multiplier=Decimal(4)),
+    TrailingMode.EMA: CandleMode("ema", period=13, buffer_percent=Decimal("0.05")),
+    TrailingMode.SUPER_TREND: CandleMode("supertrend", period=10, multiplier=Decimal(3)),
+}
+
+
+def indicator_for(config: TrailConfig) -> tuple[str, dict[str, object]] | None:
+    """Which indicator a candle mode reads, and with what parameters."""
+    mode = CANDLE_MODES.get(config.mode)
+    if mode is None:
+        return None
+
+    params: dict[str, object] = {"period": config.period or mode.period}
+    if mode.multiplier is not None:
+        params["multiplier"] = config.multiplier or mode.multiplier
+    return mode.indicator, params
+
+
+def reach_of(config: TrailConfig) -> Decimal:
+    """The ATR multiple, from the row or from the mode's default."""
+    mode = CANDLE_MODES[TrailingMode.ATR]
+    multiplier = config.multiplier or mode.multiplier
+    return multiplier if multiplier is not None else Decimal(4)
+
+
+def buffer_of(config: TrailConfig) -> Decimal:
+    """How far off the line the stop sits, as a per cent of it."""
+    if config.buffer_percent is not None:
+        return config.buffer_percent
+    mode = CANDLE_MODES.get(config.mode)
+    return mode.buffer_percent if mode is not None else Decimal(0)
+
+
+def candle_stop(
+    *,
+    direction: Direction,
+    line: Money,
+    last_close: Money,
+    config: TrailConfig,
+    instrument: Instrument,
+) -> Money | None:
+    """Where a candle mode puts the stop, given the indicator it reads.
+
+    Each mode reads one number off closed bars and places the stop a buffer
+    away from it, on the losing side. What differs between them is which
+    number, and whether the price has to be on the right side of it:
+
+    * **ATR** is a distance, not a level, so the stop sits that far from the
+      close. A widening range therefore loosens the level -- which the caller
+      refuses, so a volatile bar cannot give back what the position earned.
+    * **EMA** and **SuperTrend** are levels, and the stop rides just behind.
+    * **SuperTrend** flips sides with the trend, so it only trails while the
+      close is on the favourable side of it. On the wrong side the line is
+      where the *opposite* position's stop would go, and following it would
+      put a long's stop above the price.
+
+    ``None`` when the mode does not apply right now, which is not the same as
+    a level that would loosen -- the caller refuses those separately. A wide
+    range on a cheap option reaches past the whole premium and puts a long's
+    level below nothing; that is refused there too, because a level below
+    nothing is below the stop it would replace.
+    """
+    long_way = direction is Direction.LONG
+    buffer = line * (buffer_of(config) / HUNDRED)
+
+    if config.mode is TrailingMode.ATR:
+        reach = line * reach_of(config)
+        level = last_close - reach if long_way else last_close + reach
+    elif config.mode is TrailingMode.SUPER_TREND:
+        if (long_way and last_close <= line) or (not long_way and last_close >= line):
+            return None
+        level = line - buffer if long_way else line + buffer
+    else:
+        level = line - buffer if long_way else line + buffer
+
+    return instrument.quantize_price(
+        level,
+        # Toward the entry, so rounding never places the stop further away
+        # than the calculation intended.
+        rounding=ROUND_DOWN if long_way else ROUND_UP,
+    )

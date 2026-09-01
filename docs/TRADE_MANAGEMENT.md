@@ -409,6 +409,39 @@ are: a leg is what survives a restart, and a group is not an entity that can
 hold anything. Written only when it moves, so the persistence sweep has
 nothing to write on a tick that changed nothing.
 
+### Trailing a stop off closed bars
+
+Four of the reference's five trailing modes are built. `RISK_MULTIPLE` needs
+nothing but the price and runs on every tick; `ATR`, `EMA` and `SUPER_TREND`
+read an indicator over closed bars and are recomputed at most every fifteen
+seconds per trade — their level cannot move until a bar closes, so asking on
+every tick is a hundred bars of arithmetic for an answer that has not changed.
+The reference holds the same interval for the same reason.
+
+**The mode chooses the calculator.** A strategy trailing by ATR is not also
+trailing by risk multiples: they are different strategies, and offering both
+would take whichever happened to be tighter, which is neither. Trail-to-cost
+is not a mode but a flag, and applies whichever mode is running.
+
+What each mode reads differs in one way that matters. ATR is a *distance*, so
+the stop sits that far from the close and a widening range loosens the level —
+refused, because a stop that can move away from the price is not a stop. EMA
+and SuperTrend are *levels*, and the stop rides a buffer behind. SuperTrend
+flips sides with the trend, so it only trails while the close is on the
+favourable side of it: on the wrong side the line is where the *opposite*
+position's stop would go.
+
+`HEIKIN_ASHI` is not built. It needs a Heikin-Ashi candle transform, a search
+back for the most recent candle with a wick on the right side, and a cap on
+how far the stop may sit from the extreme — none of which anything else uses.
+A strategy configured for it is refused by name and keeps its stop.
+
+The candle history is the engine's own `CandleCache`, the same one the rules
+read, so a strategy trailing by SuperTrend and a rule testing SuperTrend see
+the same bars. Trade management sits below market data, so it takes a narrow
+`CandleView` rather than importing a cache — the way it already takes quotes
+and instruments.
+
 ### One pass over what is open, every tick
 
 Entry asks what a price means for a signal. A second pass asks what it means

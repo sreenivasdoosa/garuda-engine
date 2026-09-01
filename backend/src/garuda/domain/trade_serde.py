@@ -26,6 +26,7 @@ from garuda.domain.enums import Direction, ProductType
 from garuda.domain.instrument import InstrumentId
 from garuda.domain.intent import LegRole
 from garuda.domain.journal import decode_money, encode_money
+from garuda.domain.market import BarInterval
 from garuda.domain.money import Money
 from garuda.domain.trade import (
     CorporateActionState,
@@ -451,6 +452,10 @@ def _trail(config: TrailConfig | None) -> dict[str, object] | None:
         "gap_unit": config.gap_unit.value,
         "trail_to_cost_gap": _decimal(config.trail_to_cost_gap),
         "trail_to_cost_unit": config.trail_to_cost_unit.value,
+        "interval": config.interval.value,
+        "period": config.period,
+        "multiplier": _decimal(config.multiplier),
+        "buffer_percent": _decimal(config.buffer_percent),
     }
 
 
@@ -464,4 +469,12 @@ def _read_trail(raw: object) -> TrailConfig | None:
         gap_unit=GapUnit(raw.get("gap_unit", GapUnit.ABSOLUTE)),
         trail_to_cost_gap=_read_decimal(raw.get("trail_to_cost_gap")),
         trail_to_cost_unit=GapUnit(raw.get("trail_to_cost_unit", GapUnit.RISK_MULTIPLE)),
+        interval=BarInterval(raw.get("interval", BarInterval.ONE_MINUTE)),
+        period=_read_int(raw.get("period")),
+        multiplier=_read_decimal(raw.get("multiplier")),
+        buffer_percent=_read_decimal(raw.get("buffer_percent")),
     )
+
+
+def _read_int(value: object) -> int | None:
+    return int(str(value)) if value is not None else None

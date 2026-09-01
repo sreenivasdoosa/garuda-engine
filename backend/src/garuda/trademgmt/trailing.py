@@ -21,30 +21,62 @@ mode or the tracked level goes stale.
 from __future__ import annotations
 
 import logging
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, replace
+from datetime import datetime, timedelta
 from decimal import Decimal
 from enum import StrEnum
+from typing import Protocol, runtime_checkable
 
 from garuda.alerts.manager import AlertManager
 from garuda.domain.alert import EntityType
 from garuda.domain.instrument import Instrument, InstrumentId
-from garuda.domain.market import Tick
+from garuda.domain.market import BarInterval, Tick
 from garuda.domain.money import Money
 from garuda.domain.order import BrokerOrderId
-from garuda.domain.trade import Trade
+from garuda.domain.trade import Trade, TradeId
 from garuda.domain.trade_orders import OrderRole
 from garuda.domain.trailing import TrailConfig
 from garuda.protocols.broker import OrderChanges
+from garuda.protocols.clock import Clock
 from garuda.trademgmt.client import TradingClientManager
 from garuda.trademgmt.protective_rules import stop_order_shape, trigger_to_limit_gap
 from garuda.trademgmt.trailing_rules import (
+    candle_stop,
     improves,
+    indicator_for,
     risk_multiple_stop,
     trail_to_cost_stop,
 )
 
 logger = logging.getLogger(__name__)
+
+#: How often a candle mode is recomputed for one trade. Its level cannot move
+#: until a bar closes, so asking on every tick is a hundred bars of arithmetic
+#: for an answer that has not changed. The reference engine holds the same
+#: interval for the same reason.
+CANDLE_CHECK_INTERVAL = timedelta(seconds=15)
+
+
+@runtime_checkable
+class CandleView(Protocol):
+    """The closed-bar history a candle trailing mode reads.
+
+    A protocol rather than an import: trade management sits below market data,
+    and takes what it needs through a narrow view the way it already takes
+    quotes and instruments.
+    """
+
+    def indicator(
+        self,
+        instrument: InstrumentId,
+        interval: BarInterval,
+        name: str,
+        params: Mapping[str, object],
+    ) -> Money | None: ...
+
+    def last_close(self, instrument: InstrumentId, interval: BarInterval) -> Money | None: ...
+
 
 #: How many times one order may be modified before it is replaced instead.
 #: Brokers cap this; going past it is a refusal, not a slow modify.
@@ -101,7 +133,9 @@ class TrailingService:
         place_stop: PlaceStop,
         instruments: InstrumentLookup,
         alerts: AlertManager,
+        clock: Clock,
         *,
+        market: CandleView | None = None,
         max_modifications: int = MAX_ORDER_MODIFICATIONS,
     ) -> None:
         self._book = book
@@ -110,7 +144,11 @@ class TrailingService:
         self._place_stop = place_stop
         self._instruments = instruments
         self._alerts = alerts
+        self._clock = clock
+        self._market = market
         self._max_modifications = max_modifications
+        #: When each trade's candle mode was last recomputed. See `_too_soon`.
+        self._checked: dict[TradeId, datetime] = {}
         #: Modifications sent per order. Reset by a restart, which at worst
         #: costs one refused modify before the replace path takes over.
         self._modifications: dict[BrokerOrderId, int] = {}
@@ -141,18 +179,14 @@ class TrailingService:
             return TrailResult(TrailOutcome.HELD, trade, detail="nothing to trail from")
 
         if config.mode.needs_candles:
-            # Named rather than ignored: a strategy configured for a mode this
-            # engine cannot compute must not silently trail some other way.
-            await self._alerts.warning(
-                EntityType.STRATEGY,
-                self._book.label,
-                "trailing",
-                f"{trade.strategy} asks to trail by {config.mode}, which needs candle "
-                f"history this engine does not have yet. {trade.instrument} keeps its "
-                f"stop where it is.",
-                key=f"trail-unsupported:{trade.strategy}:{config.mode}",
-            )
-            return TrailResult(TrailOutcome.UNSUPPORTED, trade, detail=str(config.mode))
+            unsupported = await self._refuse_unsupported(trade, config)
+            if unsupported is not None:
+                return unsupported
+            if self._too_soon(trade):
+                # Candle modes read a hundred bars and an indicator over them,
+                # for a level that cannot move until a bar closes. Every tick
+                # is work for an answer that has not changed.
+                return TrailResult(TrailOutcome.HELD, trade, current, detail="checked moments ago")
 
         proposed = self._proposed_stop(trade, config, instrument, entry, initial, tick)
         if proposed is None or not improves(trade.direction, proposed, current):
@@ -169,25 +203,36 @@ class TrailingService:
         initial: Money,
         tick: Tick,
     ) -> Money | None:
-        """The tightest level either rule allows.
+        """The tightest level the configured mode and trail-to-cost allow.
 
-        Trail-to-cost and step trailing are not alternatives: a position may
-        earn break-even before it earns its first step, and later earn steps
-        beyond break-even. Whichever is tighter wins.
+        **The mode chooses the calculator.** A strategy configured to trail by
+        ATR is not also trailing by risk multiples: they are different
+        strategies, and offering both would take whichever happened to be
+        tighter, which is neither of them.
+
+        Trail-to-cost is not a mode, it is a flag, and it applies whichever
+        mode is running: a position may earn break-even before it earns its
+        first step, and later earn steps beyond break-even. Whichever is
+        tighter wins.
         """
         extreme = (
             trade.high_since_entry if trade.direction.sign > 0 else trade.low_since_entry
         ) or tick.last_price
 
-        candidates = [
-            risk_multiple_stop(
+        by_mode = (
+            self._candle_stop(trade, config, instrument)
+            if config.mode.needs_candles
+            else risk_multiple_stop(
                 direction=trade.direction,
                 entry=entry,
                 initial_stop=initial,
                 extreme=extreme,
                 config=config,
                 instrument=instrument,
-            ),
+            )
+        )
+        candidates = [
+            by_mode,
             trail_to_cost_stop(
                 direction=trade.direction,
                 entry=entry,
@@ -201,6 +246,69 @@ class TrailingService:
         if not offered:
             return None
         return max(offered) if trade.direction.sign > 0 else min(offered)
+
+    async def _refuse_unsupported(self, trade: Trade, config: TrailConfig) -> TrailResult | None:
+        """Say so, once, for a mode this engine cannot compute.
+
+        Named rather than ignored: a strategy configured for a mode that is
+        not built must not silently trail some other way. Heikin-Ashi is the
+        one left -- it needs a candle transform this engine does not have.
+        """
+        if indicator_for(config) is not None and self._market is not None:
+            return None
+
+        why = (
+            f"{trade.strategy} asks to trail by {config.mode}, which this engine cannot "
+            f"compute. {trade.instrument} keeps its stop where it is."
+            if indicator_for(config) is None
+            else f"{trade.strategy} asks to trail by {config.mode}, which needs candle "
+            f"history this account has no source for. {trade.instrument} keeps its stop "
+            f"where it is."
+        )
+        await self._alerts.warning(
+            EntityType.STRATEGY,
+            self._book.label,
+            "trailing",
+            why,
+            key=f"trail-unsupported:{trade.strategy}:{config.mode}",
+        )
+        return TrailResult(TrailOutcome.UNSUPPORTED, trade, detail=str(config.mode))
+
+    def _too_soon(self, trade: Trade) -> bool:
+        """Whether this trade's candle mode was recomputed a moment ago.
+
+        A rate limit, not a level: losing it on a restart costs one extra
+        computation. The reference engine holds the same interval for the same
+        reason.
+        """
+        now = self._clock.now()
+        last = self._checked.get(trade.id)
+        if last is not None and now - last < CANDLE_CHECK_INTERVAL:
+            return True
+        self._checked[trade.id] = now
+        return False
+
+    def _candle_stop(
+        self, trade: Trade, config: TrailConfig, instrument: Instrument
+    ) -> Money | None:
+        """The level a candle mode puts the stop at, or None."""
+        wanted = indicator_for(config)
+        if wanted is None or self._market is None:
+            return None
+
+        name, params = wanted
+        line = self._market.indicator(trade.instrument, config.interval, name, params)
+        last_close = self._market.last_close(trade.instrument, config.interval)
+        if line is None or last_close is None:
+            return None
+
+        return candle_stop(
+            direction=trade.direction,
+            line=line,
+            last_close=last_close,
+            config=config,
+            instrument=instrument,
+        )
 
     async def _move_stop(
         self, trade: Trade, current: Money, proposed: Money, instrument: Instrument

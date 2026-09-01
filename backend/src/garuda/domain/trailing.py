@@ -13,16 +13,18 @@ from dataclasses import dataclass
 from decimal import Decimal
 from enum import StrEnum
 
+from garuda.domain.market import BarInterval
+
 
 class TrailingMode(StrEnum):
     """How a stop follows the price.
 
-    Only ``RISK_MULTIPLE`` is implemented. It needs nothing but the price,
-    while the rest need candle history threaded into the trailing pass -- the
-    history and the indicators themselves now exist (`marketdata/history.py`,
-    `engine/indicators.py`), so what is missing is the wiring rather than the
-    arithmetic. They are named here so a configuration carrying one is refused
-    loudly rather than silently trailing some other way.
+    ``RISK_MULTIPLE`` needs nothing but the price. ``ATR``, ``EMA`` and
+    ``SUPER_TREND`` read closed bars through the trailing pass's candle view.
+    ``HEIKIN_ASHI`` and ``CUSTOM`` are named and not built -- the first needs
+    a candle transform this engine does not have -- so that a configuration
+    carrying one is refused by name rather than silently trailing some other
+    way.
     """
 
     RISK_MULTIPLE = "RISK_MULTIPLE"
@@ -60,3 +62,14 @@ class TrailConfig:
     #: Profit at which the stop moves to break even, once.
     trail_to_cost_gap: Decimal | None = None
     trail_to_cost_unit: GapUnit = GapUnit.RISK_MULTIPLE
+    #: Which bars the candle-based modes read. One minute is what the
+    #: reference engine uses for all of them.
+    interval: BarInterval = BarInterval.ONE_MINUTE
+    #: The indicator's own shape. `period` and `multiplier` mean what they
+    #: mean to the indicator; the defaults differ by mode and are the
+    #: reference's, so a row that names neither trails the way it did there.
+    period: int | None = None
+    multiplier: Decimal | None = None
+    #: How far off the indicator the stop sits, as a per cent of it. Keeps a
+    #: stop from resting exactly on a line the price is about to touch.
+    buffer_percent: Decimal | None = None

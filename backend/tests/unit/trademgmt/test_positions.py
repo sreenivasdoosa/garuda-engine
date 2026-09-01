@@ -13,6 +13,7 @@ from decimal import Decimal
 import pytest
 
 from garuda.alerts.manager import AlertManager
+from garuda.core.clock import ReplayClock
 from garuda.domain import Direction
 from garuda.domain.instrument import InstrumentId
 from garuda.domain.market import Tick
@@ -78,6 +79,7 @@ def watch(
         _unused_place,
         instruments,
         alerts,
+        ReplayClock(TODAY),
     )
     quotes = {
         instrument: Tick(instrument=instrument, last_price=rupees(price), timestamp=TODAY)

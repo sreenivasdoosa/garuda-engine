@@ -21,6 +21,7 @@ from garuda.domain.enums import (
 )
 from garuda.domain.exchange import Exchange
 from garuda.domain.instrument import Instrument, InstrumentId
+from garuda.domain.market import BarInterval
 from garuda.domain.trade import Protection
 from garuda.domain.trailing import GapUnit, TrailConfig, TrailingMode
 from garuda.engine.config import ConfigLayer, ResolvedConfig, resolve
@@ -554,3 +555,102 @@ class TestHowTheGroupsStopFollows:
                 instrument=option,
                 entry=rupees("150"),
             )
+
+
+class TestWhatACandleModeReads:
+    def test_the_bars_default_to_one_minute(self, option: Instrument) -> None:
+        """Which is what the reference engine uses for every trailing mode,
+        and offers no way to change."""
+        protection = protection_from(
+            configured(trail_sl=True, trail_sl_type="ATR"),
+            direction=Direction.SHORT,
+            instrument=option,
+            entry=rupees("150"),
+        )
+
+        assert protection.trail is not None
+        assert protection.trail.interval is BarInterval.ONE_MINUTE
+
+    def test_the_bars_can_be_named(self, option: Instrument) -> None:
+        protection = protection_from(
+            configured(trail_sl=True, trail_sl_type="ATR", trail_config='{"interval": "5minute"}'),
+            direction=Direction.SHORT,
+            instrument=option,
+            entry=rupees("150"),
+        )
+
+        assert protection.trail is not None
+        assert protection.trail.interval is BarInterval.FIVE_MINUTES
+
+    def test_the_engines_own_spelling_of_an_interval_is_read_too(self, option: Instrument) -> None:
+        protection = protection_from(
+            configured(trail_sl=True, trail_sl_type="ATR", trail_config='{"interval": "15m"}'),
+            direction=Direction.SHORT,
+            instrument=option,
+            entry=rupees("150"),
+        )
+
+        assert protection.trail is not None
+        assert protection.trail.interval is BarInterval.FIFTEEN_MINUTES
+
+    def test_an_interval_the_engine_does_not_carry_is_refused(self, option: Instrument) -> None:
+        with pytest.raises(DomainError, match="not an interval"):
+            protection_from(
+                configured(
+                    trail_sl=True, trail_sl_type="ATR", trail_config='{"interval": "2minute"}'
+                ),
+                direction=Direction.SHORT,
+                instrument=option,
+                entry=rupees("150"),
+            )
+
+    def test_the_indicators_shape_is_read(self, option: Instrument) -> None:
+        protection = protection_from(
+            configured(
+                trail_sl=True,
+                trail_sl_type="ATR",
+                trail_config='{"period": 7, "multiplier": 1.5, "bufferPercentage": 0.2}',
+            ),
+            direction=Direction.SHORT,
+            instrument=option,
+            entry=rupees("150"),
+        )
+
+        assert protection.trail is not None
+        assert protection.trail.period == 7
+        assert protection.trail.multiplier == Decimal("1.5")
+        assert protection.trail.buffer_percent == Decimal("0.2")
+
+    def test_a_period_that_is_not_a_whole_number_of_bars_is_refused(
+        self, option: Instrument
+    ) -> None:
+        with pytest.raises(DomainError, match="whole number of bars"):
+            protection_from(
+                configured(trail_sl=True, trail_sl_type="ATR", trail_config='{"period": "seven"}'),
+                direction=Direction.SHORT,
+                instrument=option,
+                entry=rupees("150"),
+            )
+
+    def test_a_period_of_nothing_is_refused(self, option: Instrument) -> None:
+        with pytest.raises(DomainError, match="not a period"):
+            protection_from(
+                configured(trail_sl=True, trail_sl_type="ATR", trail_config='{"period": 0}'),
+                direction=Direction.SHORT,
+                instrument=option,
+                entry=rupees("150"),
+            )
+
+    def test_a_row_naming_nothing_leaves_the_mode_to_its_defaults(self, option: Instrument) -> None:
+        """So a row that names neither period nor multiplier trails the way it
+        did in the reference."""
+        protection = protection_from(
+            configured(trail_sl=True, trail_sl_type="SUPER_TREND"),
+            direction=Direction.SHORT,
+            instrument=option,
+            entry=rupees("150"),
+        )
+
+        assert protection.trail is not None
+        assert protection.trail.period is None
+        assert protection.trail.multiplier is None

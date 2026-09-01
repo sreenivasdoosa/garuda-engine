@@ -27,10 +27,12 @@ from garuda.domain.enums import Direction
 from garuda.domain.errors import DomainError
 from garuda.domain.instrument import Instrument
 from garuda.domain.intent import Intent
+from garuda.domain.market import BarInterval
 from garuda.domain.money import Money
 from garuda.domain.trade import Protection
 from garuda.domain.trailing import GapUnit, TrailConfig, TrailingMode
 from garuda.engine.config import ResolvedConfig
+from garuda.engine.rules.translate import INTERVALS
 
 HUNDRED = Decimal(100)
 
@@ -113,7 +115,46 @@ def trail_from(config: ResolvedConfig) -> TrailConfig | None:
         stop_move_gap=_gap(gaps, "slMoveGap", "stop_move_gap"),
         gap_unit=_gap_unit(gaps.get("trailMode") or gaps.get("gap_unit")),
         trail_to_cost_gap=_gap(gaps, "trailToCostGap", "trail_to_cost_gap"),
+        # What a candle mode reads. Absent for the risk-multiple mode, which
+        # needs no bars: each field falls back to the mode's own default.
+        interval=_bar_interval(gaps.get("interval")),
+        period=_period(gaps.get("period")),
+        multiplier=_gap(gaps, "multiplier"),
+        buffer_percent=_gap(gaps, "bufferPercentage", "buffer_percent"),
     )
+
+
+def _period(named: object) -> int | None:
+    """How many bars an indicator looks back over."""
+    if named is None:
+        return None
+    try:
+        period = int(str(named))
+    except ValueError:
+        raise DomainError(f"trail_config period {named!r} is not a whole number of bars") from None
+    if period < 1:
+        raise DomainError(f"trail_config period {named!r} is not a period")
+    return period
+
+
+def _bar_interval(named: object) -> BarInterval:
+    """Which bars a candle mode reads. One minute unless the row says.
+
+    The reference engine uses one-minute bars for every trailing mode and
+    offers no way to change it; the field exists so a strategy can, and
+    defaults to what it did.
+    """
+    if named is None:
+        return BarInterval.ONE_MINUTE
+    key = str(named).strip().lower()
+    if key in INTERVALS:
+        return INTERVALS[key]
+    try:
+        return BarInterval(key)
+    except ValueError:
+        raise DomainError(
+            f"trail_config interval {named!r} is not an interval this engine carries"
+        ) from None
 
 
 def _trailing_mode(config: ResolvedConfig) -> TrailingMode:
