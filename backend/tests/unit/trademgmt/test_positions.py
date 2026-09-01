@@ -16,7 +16,7 @@ from garuda.alerts.manager import AlertManager
 from garuda.domain import Direction
 from garuda.domain.instrument import InstrumentId
 from garuda.domain.market import Tick
-from garuda.domain.trade import Protection, Trade
+from garuda.domain.trade import Protection, Trade, TradeId
 from garuda.domain.trade_state import TradeExitReason
 from garuda.domain.trailing import TrailConfig
 from garuda.trademgmt.client import TradingClientManager
@@ -405,3 +405,149 @@ async def test_a_group_whose_legs_have_all_left_is_not_checked(
 
     assert report.groups_checked == 0
     assert square_off.requested == []
+
+
+# -- the group's stop, moved by the group's own profit ----------------------
+
+TRAILING = Protection(
+    combined_stop_loss_percent=Decimal(10),
+    combined_trail_profit_gap=Decimal(10),
+    combined_trail_stop_move_gap=Decimal(10),
+)
+
+
+async def test_the_groups_best_is_written_onto_every_leg(
+    book: TradingClientManager, alerts: AlertManager, instruments: InstrumentLookup
+) -> None:
+    """On every leg, because the group is not an entity that can hold it and
+    a leg is what survives a restart."""
+    book.add_trade(entered("t-call", CALL, "150", protection=TRAILING))
+    book.add_trade(entered("t-put", PUT, "120", protection=TRAILING))
+    square_off = RecordingSquareOff()
+    subject = watch(book, alerts, {CALL: "140", PUT: "110"}, square_off, instruments)
+
+    report = await subject.on_tick(a_tick(CALL, "140"))
+
+    assert report.watermarks == 2
+    for trade_id in ("t-call", "t-put"):
+        leg = book.trade(TradeId(trade_id))
+        assert leg is not None
+        assert leg.protection.combined_high_water == rupees("1500")
+
+
+async def test_the_best_is_not_rewritten_when_it_has_not_moved(
+    book: TradingClientManager, alerts: AlertManager, instruments: InstrumentLookup
+) -> None:
+    """The persistence sweep diffs what it writes, and a value rewritten every
+    tick would be a row written every sweep."""
+    book.add_trade(entered("t-call", CALL, "150", protection=TRAILING))
+    book.add_trade(entered("t-put", PUT, "120", protection=TRAILING))
+    square_off = RecordingSquareOff()
+    subject = watch(book, alerts, {CALL: "140", PUT: "110"}, square_off, instruments)
+
+    await subject.on_tick(a_tick(CALL, "140"))
+    again = await subject.on_tick(a_tick(CALL, "140"))
+
+    assert again.watermarks == 0
+
+
+async def test_a_group_giving_back_its_gain_comes_out_on_the_trail(
+    book: TradingClientManager, alerts: AlertManager, instruments: InstrumentLookup
+) -> None:
+    """Two ticks: one that earns a step, one that gives it back. The group
+    exits well inside its fixed stop, which is the point of a trail."""
+    book.add_trade(entered("t-call", CALL, "150", protection=TRAILING))
+    book.add_trade(entered("t-put", PUT, "120", protection=TRAILING))
+    square_off = RecordingSquareOff()
+
+    earning = watch(book, alerts, {CALL: "137", PUT: "106"}, square_off, instruments)
+    await earning.on_tick(a_tick(CALL, "137"))
+
+    giving_back = watch(book, alerts, {CALL: "152", PUT: "122"}, square_off, instruments)
+    await giving_back.on_tick(a_tick(CALL, "152"))
+
+    assert {trade for trade, _ in square_off.requested} == {"t-call", "t-put"}
+    assert [reason for _, reason in square_off.requested] == [
+        TradeExitReason.GROUP_STOP_LOSS,
+        TradeExitReason.GROUP_STOP_LOSS,
+    ]
+
+
+async def test_a_group_that_never_earned_a_step_is_not_trailed_out(
+    book: TradingClientManager, alerts: AlertManager, instruments: InstrumentLookup
+) -> None:
+    """A small loss is inside both the fixed stop and any floor the trail
+    could have set, because no step was ever earned."""
+    book.add_trade(entered("t-call", CALL, "150", protection=TRAILING))
+    book.add_trade(entered("t-put", PUT, "120", protection=TRAILING))
+    square_off = RecordingSquareOff()
+    subject = watch(book, alerts, {CALL: "152", PUT: "122"}, square_off, instruments)
+
+    await subject.on_tick(a_tick(CALL, "152"))
+
+    assert square_off.requested == []
+
+
+async def test_the_groups_best_is_the_highest_any_leg_remembers(
+    book: TradingClientManager, alerts: AlertManager, instruments: InstrumentLookup
+) -> None:
+    """Not the first one asked. The book indexes by set, and a leg written a
+    tick before the others is not wrong, only behind."""
+    book.add_trade(
+        replace(
+            entered("t-call", CALL, "150", protection=TRAILING),
+            protection=replace(TRAILING, combined_high_water=rupees("500")),
+        )
+    )
+    book.add_trade(
+        replace(
+            entered("t-put", PUT, "120", protection=TRAILING),
+            protection=replace(TRAILING, combined_high_water=rupees("2025")),
+        )
+    )
+    square_off = RecordingSquareOff()
+    subject = watch(book, alerts, {CALL: "152", PUT: "122"}, square_off, instruments)
+
+    await subject.on_tick(a_tick(CALL, "152"))
+
+    # The floor after one 2,025 step is break even, and the group is below it.
+    assert {trade for trade, _ in square_off.requested} == {"t-call", "t-put"}
+
+
+async def test_a_group_no_longer_trailing_keeps_what_its_legs_remember(
+    book: TradingClientManager, alerts: AlertManager, instruments: InstrumentLookup
+) -> None:
+    """Configuration changed and the trail was turned off. The legs still
+    carry the old high-water mark, and overwriting it with nothing would
+    discard what a restart is meant to recover."""
+    settled = Protection(combined_stop_loss_percent=Decimal(10), combined_high_water=rupees("2025"))
+    book.add_trade(entered("t-call", CALL, "150", protection=settled))
+    book.add_trade(entered("t-put", PUT, "120", protection=settled))
+    square_off = RecordingSquareOff()
+    subject = watch(book, alerts, {CALL: "152", PUT: "122"}, square_off, instruments)
+
+    report = await subject.on_tick(a_tick(CALL, "152"))
+
+    assert report.watermarks == 0
+    leg = book.trade(TradeId("t-call"))
+    assert leg is not None
+    assert leg.protection.combined_high_water == rupees("2025")
+
+
+async def test_the_best_survives_a_leg_that_has_forgotten_it(
+    book: TradingClientManager, alerts: AlertManager, instruments: InstrumentLookup
+) -> None:
+    """A leg entered later carries no history. The group's best is the
+    highest any leg remembers, not the first one asked."""
+    remembering = replace(
+        entered("t-call", CALL, "150", protection=TRAILING),
+        protection=replace(TRAILING, combined_high_water=rupees("2025")),
+    )
+    book.add_trade(remembering)
+    book.add_trade(entered("t-put", PUT, "120", protection=TRAILING))
+    square_off = RecordingSquareOff()
+    subject = watch(book, alerts, {CALL: "152", PUT: "122"}, square_off, instruments)
+
+    await subject.on_tick(a_tick(CALL, "152"))
+
+    assert {trade for trade, _ in square_off.requested} == {"t-call", "t-put"}

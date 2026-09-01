@@ -120,6 +120,14 @@ def encode_trade(trade: Trade) -> str:
                 "target": _money(protection.target),
                 "combined_stop_loss_percent": _decimal(protection.combined_stop_loss_percent),
                 "combined_target_percent": _decimal(protection.combined_target_percent),
+                "combined_trail_profit_gap": _decimal(protection.combined_trail_profit_gap),
+                "combined_trail_stop_move_gap": _decimal(protection.combined_trail_stop_move_gap),
+                "combined_trail_unit": (
+                    protection.combined_trail_unit.value
+                    if protection.combined_trail_unit is not None
+                    else None
+                ),
+                "combined_high_water": _money(protection.combined_high_water),
                 "no_stop_loss": protection.no_stop_loss,
                 "no_target": protection.no_target,
                 "dont_place_stop_loss_order": protection.dont_place_stop_loss_order,
@@ -206,6 +214,16 @@ def decode_trade(payload: str) -> Trade:
             target=_read_money(protection.get("target")),
             combined_stop_loss_percent=_read_decimal(protection.get("combined_stop_loss_percent")),
             combined_target_percent=_read_decimal(protection.get("combined_target_percent")),
+            combined_trail_profit_gap=_read_decimal(protection.get("combined_trail_profit_gap")),
+            combined_trail_stop_move_gap=_read_decimal(
+                protection.get("combined_trail_stop_move_gap")
+            ),
+            combined_trail_unit=(
+                GapUnit(unit)
+                if (unit := protection.get("combined_trail_unit")) is not None
+                else None
+            ),
+            combined_high_water=_read_money(protection.get("combined_high_water")),
             no_stop_loss=protection.get("no_stop_loss", False),
             no_target=protection.get("no_target", False),
             dont_place_stop_loss_order=protection.get("dont_place_stop_loss_order", False),

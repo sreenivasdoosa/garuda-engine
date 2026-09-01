@@ -11,10 +11,15 @@ from __future__ import annotations
 from dataclasses import replace
 from decimal import Decimal
 
+import pytest
+
 from garuda.domain import Direction, Money
+from garuda.domain.errors import DomainError
 from garuda.domain.trade import Protection, Trade
 from garuda.domain.trade_state import TradeExitReason
+from garuda.domain.trailing import GapUnit
 from garuda.trademgmt.combined_rules import (
+    CombinedDecision,
     CombinedOutcome,
     GroupLevels,
     PriceOf,
@@ -22,6 +27,7 @@ from garuda.trademgmt.combined_rules import (
     evaluate,
     levels_of,
     net_premium,
+    trailing_floor,
 )
 
 from .conftest import CALL, PUT, TODAY, a_trade, rupees
@@ -368,3 +374,212 @@ def test_a_group_is_valued_on_what_is_left_after_a_leg_closes() -> None:
     )
 
     assert decision.outcome is CombinedOutcome.STOP
+
+
+# -- the group's stop, moved by the group's own profit ----------------------
+
+#: 10% of the 20,250 taken in is 2,025: one step of profit, and one step of
+#: stop movement. Percentages of the group's premium, which is the reference
+#: engine's default for this trail.
+TRAILING = GroupLevels(
+    stop_loss_percent=Decimal(10),
+    target_percent=Decimal(50),
+    trail_profit_gap=Decimal(10),
+    trail_stop_move_gap=Decimal(10),
+)
+
+
+def at(call: str, put: str, high_water: str | None = None) -> CombinedDecision:
+    return evaluate(
+        straddle(),
+        TRAILING,
+        entry_of=entry_of,
+        current_of=priced(call=call, put=put),
+        high_water=rupees(high_water) if high_water is not None else None,
+    )
+
+
+def test_below_the_first_step_the_configured_stop_stands() -> None:
+    """That is what makes it a trail rather than a second stop."""
+    assert trailing_floor(rupees("20250"), TRAILING, rupees("2024")) is None
+
+
+def test_one_step_earned_moves_the_stop_one_step() -> None:
+    """Down 2,025 at the start; one step of 2,025 earned puts the floor at
+    nothing, which is break even."""
+    floor = trailing_floor(rupees("20250"), TRAILING, rupees("2025"))
+
+    assert floor == rupees("0")
+
+
+def test_two_steps_earned_puts_the_floor_in_profit() -> None:
+    floor = trailing_floor(rupees("20250"), TRAILING, rupees("4050"))
+
+    assert floor == rupees("2025")
+
+
+def test_steps_are_whole_so_the_floor_does_not_jitter() -> None:
+    """A stop that drifts on noise is one that fires on noise."""
+    assert trailing_floor(rupees("20250"), TRAILING, rupees("4049")) == rupees("0")
+
+
+def test_a_group_with_no_trail_configured_has_no_floor() -> None:
+    assert trailing_floor(rupees("20250"), TEN_PERCENT, rupees("9999")) is None
+
+
+def test_a_trail_with_no_fixed_stop_has_nothing_to_move() -> None:
+    """The trail walks the configured level up rather than inventing one."""
+    levels = GroupLevels(
+        target_percent=Decimal(50),
+        trail_profit_gap=Decimal(10),
+        trail_stop_move_gap=Decimal(10),
+    )
+
+    assert not levels.is_trailing
+    assert trailing_floor(rupees("20250"), levels, rupees("9999")) is None
+
+
+def test_a_profit_gap_with_no_move_gap_never_moves_the_stop() -> None:
+    """Half a trail is not a trail: nothing says how far the stop goes."""
+    levels = GroupLevels(stop_loss_percent=Decimal(10), trail_profit_gap=Decimal(10))
+
+    assert not levels.is_trailing
+    assert trailing_floor(rupees("20250"), levels, rupees("9999")) is None
+
+
+def test_a_move_gap_with_no_profit_gap_never_earns_a_step() -> None:
+    """The other half: nothing says what earns the move."""
+    levels = GroupLevels(stop_loss_percent=Decimal(10), trail_stop_move_gap=Decimal(10))
+
+    assert not levels.is_trailing
+    assert trailing_floor(rupees("20250"), levels, rupees("9999")) is None
+
+
+def test_a_gap_in_money_rather_than_per_cent() -> None:
+    """The reference's absolute mode: the gaps are rupees, not percentages of
+    the premium."""
+    levels = GroupLevels(
+        stop_loss_percent=Decimal(10),
+        trail_profit_gap=Decimal(1000),
+        trail_stop_move_gap=Decimal(500),
+        trail_unit=GapUnit.ABSOLUTE,
+    )
+
+    # Two whole steps of 1,000 earned, so the stop moves 1,000 off the 2,025.
+    assert trailing_floor(rupees("20250"), levels, rupees("2500")) == rupees("-1025")
+
+
+def test_a_trail_measured_in_risk_multiples_is_refused() -> None:
+    """A multiple of the initial risk measures from a leg's entry to its first
+    stop, and a group has neither."""
+    with pytest.raises(DomainError):
+        GroupLevels(
+            stop_loss_percent=Decimal(10),
+            trail_profit_gap=Decimal(1),
+            trail_stop_move_gap=Decimal(1),
+            trail_unit=GapUnit.RISK_MULTIPLE,
+        )
+
+
+def test_a_gap_of_nothing_is_refused() -> None:
+    with pytest.raises(DomainError):
+        GroupLevels(stop_loss_percent=Decimal(10), trail_profit_gap=Decimal(0))
+
+
+# -- the trail in an evaluation --------------------------------------------
+
+
+def test_a_group_that_has_earned_nothing_is_not_trailed() -> None:
+    decision = at("150", "120")
+
+    assert decision.outcome is CombinedOutcome.HOLD
+    assert decision.high_water == rupees("0")
+
+
+def test_the_high_water_mark_rises_with_the_group() -> None:
+    """Carried back rather than kept, so the caller can put it on the legs."""
+    decision = at("140", "110")
+
+    assert decision.result == rupees("1500")
+    assert decision.high_water == rupees("1500")
+
+
+def test_the_high_water_mark_never_falls() -> None:
+    decision = at("150", "120", high_water="5000")
+
+    assert decision.result == rupees("0")
+    assert decision.high_water == rupees("5000")
+
+
+def test_giving_back_a_gain_past_the_trailed_floor_exits() -> None:
+    """Up 2,025 at its best, so the floor is break even. Back to a loss and
+    the group comes out on the trail, well inside the fixed stop."""
+    decision = at("152", "122", high_water="2025")
+
+    assert decision.outcome is CombinedOutcome.TRAIL_STOP
+    assert decision.exit_reason is TradeExitReason.GROUP_STOP_LOSS
+
+
+def test_sitting_exactly_on_the_trailed_floor_exits() -> None:
+    """A floor is a level the group may not be at, the same way its stop is.
+    One step earned puts the floor at break even; back to exactly break even
+    and it comes out."""
+    decision = at("150", "120", high_water="2025")
+
+    assert decision.result == rupees("0")
+    assert decision.outcome is CombinedOutcome.TRAIL_STOP
+
+
+def test_a_group_only_ever_in_loss_remembers_no_gain() -> None:
+    """The watermark floors at nothing, which is what the reference means by
+    starting it at zero rather than at the first reading. A negative one would
+    be written to the legs and persisted for no purpose."""
+    decision = at("160", "130")
+
+    assert decision.result == rupees("-1500")
+    assert decision.high_water == rupees("0")
+
+
+def test_holding_above_the_trailed_floor_stays_in() -> None:
+    decision = at("145", "118", high_water="2025")
+
+    assert decision.outcome is CombinedOutcome.HOLD
+
+
+def test_the_fixed_stop_is_checked_before_the_trailed_one() -> None:
+    """A group past its configured stop is out on that, whatever the trail
+    says -- which is the order the reference checks them in."""
+    decision = at("170", "127", high_water="2025")
+
+    assert decision.outcome is CombinedOutcome.STOP
+
+
+def test_the_trail_is_checked_before_the_target() -> None:
+    """A group walking away from its target is out on the trail rather than
+    left to run at it."""
+    levels = GroupLevels(
+        stop_loss_percent=Decimal(10),
+        target_percent=Decimal(1),
+        trail_profit_gap=Decimal(10),
+        trail_stop_move_gap=Decimal(20),
+    )
+    # The floor after one step is +2,025, and the target is only 202.50, so
+    # both are true at once and the trail has to win.
+    decision = evaluate(
+        straddle(),
+        levels,
+        entry_of=entry_of,
+        current_of=priced(call="140", put="118"),
+        high_water=rupees("2100"),
+    )
+
+    assert decision.outcome is CombinedOutcome.TRAIL_STOP
+
+
+def test_a_group_with_no_trail_still_reports_no_high_water() -> None:
+    """Nothing to remember, so nothing is written back to the legs."""
+    decision = evaluate(
+        straddle(), TEN_PERCENT, entry_of=entry_of, current_of=priced(call="140", put="110")
+    )
+
+    assert decision.high_water is None

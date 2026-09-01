@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from garuda.alerts.manager import AlertManager
 from garuda.domain.alert import EntityType
@@ -72,6 +72,8 @@ class WatchReport:
     #: makes each tick cost what the whole day has traded.
     watched: int = 0
     trailed: int = 0
+    #: Legs whose record of the group's best was moved up.
+    watermarks: int = 0
     groups_checked: int = 0
     groups_exited: int = 0
     unavailable: list[str] = field(default_factory=list)
@@ -145,7 +147,9 @@ class PositionWatch:
             levels,
             entry_of=lambda trade: trade.entry,
             current_of=self._last_price,
+            high_water=_high_water_of(legs),
         )
+        self._remember(legs, decision.high_water, report)
 
         if decision.outcome is CombinedOutcome.UNAVAILABLE:
             # Named rather than swallowed. A group whose level cannot be
@@ -194,9 +198,41 @@ class PositionWatch:
         for leg in legs:
             await self._square_off.request(leg, reason)
 
+    def _remember(self, legs: list[Trade], best: Money | None, report: WatchReport) -> None:
+        """Put the group's high-water mark back on its legs.
+
+        On every leg, because the group is not an entity that can hold it and
+        a leg is what survives a restart. Written only when it moves: the
+        persistence sweep diffs what it writes, and a value rewritten every
+        tick would be a row written every sweep.
+        """
+        if best is None:
+            return
+        for leg in legs:
+            if leg.protection.combined_high_water == best:
+                continue
+            self._book.replace_trade(
+                replace(leg, protection=replace(leg.protection, combined_high_water=best))
+            )
+            report.watermarks += 1
+
     def _last_price(self, trade: Trade) -> Money | None:
         quote = self._quotes(trade.instrument)
         return quote.last_price if quote is not None else None
+
+
+def _high_water_of(legs: list[Trade]) -> Money | None:
+    """The best any leg remembers the group being.
+
+    The highest rather than the first: a leg entered later carries no history,
+    and a leg written a tick before the others is not wrong, only behind.
+    """
+    seen = [
+        leg.protection.combined_high_water
+        for leg in legs
+        if leg.protection.combined_high_water is not None
+    ]
+    return max(seen) if seen else None
 
 
 def _groups_of(trades: list[Trade]) -> list[GroupKey]:

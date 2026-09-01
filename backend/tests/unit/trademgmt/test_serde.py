@@ -45,6 +45,12 @@ def a_rich_trade() -> Trade:
             # that dropped these would leave the group unprotected.
             combined_stop_loss_percent=Decimal(10),
             combined_target_percent=Decimal("12.5"),
+            combined_trail_profit_gap=Decimal(25),
+            combined_trail_stop_move_gap=Decimal(20),
+            combined_trail_unit=GapUnit.ABSOLUTE,
+            # The group's best. A restart that forgot it would trail from
+            # wherever the group stands now.
+            combined_high_water=rupees("2025"),
             is_trailing=True,
             # How the stop follows: a restart that forgot this would leave a
             # position marked as trailing with nothing telling it how far.

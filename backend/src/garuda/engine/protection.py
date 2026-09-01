@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from decimal import ROUND_DOWN, ROUND_UP, Decimal, InvalidOperation
 
 from garuda.domain.enums import Direction
@@ -45,6 +46,7 @@ def protection_from(
     if entry.amount <= 0:
         raise DomainError(f"{config.strategy}: cannot set levels against an entry price of {entry}")
 
+    combined = _combined_trail(config)
     no_stop = config.flag("no_stop_loss")
     stop_percent = config.percent("sl_percentage")
     target_percent = config.percent("target_percentage")
@@ -72,6 +74,9 @@ def protection_from(
         # well; whichever comes first.
         combined_stop_loss_percent=config.percent("combined_sl_percentage"),
         combined_target_percent=config.percent("combined_target_percentage"),
+        combined_trail_profit_gap=combined.profit_gap,
+        combined_trail_stop_move_gap=combined.stop_move_gap,
+        combined_trail_unit=combined.unit,
         is_trailing=config.flag("trail_sl"),
         trail=trail_from(config),
         trail_to_cost=config.flag("trail_sl_to_cost"),
@@ -124,6 +129,42 @@ def _trailing_mode(config: ResolvedConfig) -> TrailingMode:
         ) from None
 
 
+@dataclass(frozen=True, slots=True)
+class _CombinedTrail:
+    """How a group's stop follows the group's profit. All None when off."""
+
+    profit_gap: Decimal | None = None
+    stop_move_gap: Decimal | None = None
+    unit: GapUnit | None = None
+
+
+def _combined_trail(config: ResolvedConfig) -> _CombinedTrail:
+    """How the group's stop follows the group's own profit.
+
+    Out of the same `trail_config` column the per-leg trail reads, under its
+    own keys -- `combinedProfitGap`, `combinedSlMoveGap`, `combinedTrailMode`
+    -- which is where the reference engine writes them. One column, two
+    trails, and they do not share a gap: a leg trailing on points has nothing
+    to say about a group trailing on per cent of its premium.
+
+    Off unless `combined_trail_sl` says otherwise, and then unit is per cent,
+    which is the reference's default for this trail and the opposite of the
+    per-leg one.
+    """
+    if not config.flag("combined_trail_sl"):
+        return _CombinedTrail()
+
+    gaps = _trail_json(config)
+    return _CombinedTrail(
+        profit_gap=_gap(gaps, "combinedProfitGap", "combined_profit_gap"),
+        stop_move_gap=_gap(gaps, "combinedSlMoveGap", "combined_stop_move_gap"),
+        unit=_gap_unit(
+            gaps.get("combinedTrailMode") or gaps.get("combined_trail_unit"),
+            default=GapUnit.PERCENTAGE,
+        ),
+    )
+
+
 def _trail_json(config: ResolvedConfig) -> Mapping[str, object]:
     """The gaps, from the free-text column the reference writes camelCase into.
 
@@ -167,13 +208,13 @@ def _gap(gaps: Mapping[str, object], *names: str) -> Decimal | None:
     return None
 
 
-def _gap_unit(named: object) -> GapUnit:
-    """What the gaps are in. Absolute unless the row says otherwise.
-
-    The reference spells this `trailMode` and writes it lower case.
+def _gap_unit(named: object, *, default: GapUnit = GapUnit.ABSOLUTE) -> GapUnit:
+    """What the gaps are in. The reference spells this `trailMode` and writes
+    it lower case. The default differs by trail: points for a leg, per cent of
+    the group's premium for a group.
     """
     if named is None:
-        return GapUnit.ABSOLUTE
+        return default
     try:
         return GapUnit(str(named).strip().upper())
     except ValueError:

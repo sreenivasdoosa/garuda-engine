@@ -381,6 +381,34 @@ A group is asked out once. The level stays true on every tick after it is
 crossed, and re-asking would bury the log; the square-off queue is idempotent
 per trade regardless.
 
+**The group's stop trails too**, from `combined_trail_sl` and the
+`combinedProfitGap` / `combinedSlMoveGap` / `combinedTrailMode` keys in the
+same `trail_config` column the per-leg trail reads. One column, two trails,
+and they share no gap: a leg trailing on points has nothing to say about a
+group trailing on per cent of its premium. The group trail is in per cent by
+default and the leg trail in points, which is the reference's default for
+each.
+
+The floor walks up from the configured stop, one move gap per whole profit
+gap the group has earned, measured against the best the group has been. Below
+the first step the configured level stands unmoved — that is what makes it a
+trail rather than a second stop. Whole steps, so the level does not jitter
+with every tick.
+
+Three checks in this order, and the order is the reference's: the configured
+stop, then the trailed one, then the target. A group past its fixed stop is
+out on that whatever the trail says, and a group walking away from its target
+is out on the trail rather than left to run at it.
+
+**Where the high-water mark lives is the one thing decided differently from
+the reference.** It keeps the group's best in a map in memory, so a restart
+loses it and the trail begins again from the configured stop — giving back
+everything the group had earned. Here it is written onto every leg, in
+`Protection.combined_high_water`, the way the group's percentages already
+are: a leg is what survives a restart, and a group is not an entity that can
+hold anything. Written only when it moves, so the persistence sweep has
+nothing to write on a tick that changed nothing.
+
 ### One pass over what is open, every tick
 
 Entry asks what a price means for a signal. A second pass asks what it means

@@ -38,9 +38,11 @@ from dataclasses import dataclass
 from decimal import Decimal
 from enum import StrEnum
 
+from garuda.domain.errors import DomainError
 from garuda.domain.money import Money
 from garuda.domain.trade import Trade
 from garuda.domain.trade_state import TradeExitReason
+from garuda.domain.trailing import GapUnit
 
 HUNDRED = Decimal(100)
 
@@ -55,10 +57,49 @@ class GroupLevels:
 
     stop_loss_percent: Decimal | None = None
     target_percent: Decimal | None = None
+    #: How much profit earns one step of trailing, and how far the group's
+    #: stop moves per step. Both needed, and useless without a stop to move:
+    #: the trail starts from the fixed level and walks it up.
+    trail_profit_gap: Decimal | None = None
+    trail_stop_move_gap: Decimal | None = None
+    #: What those two are in. Per cent of the group's premium by default,
+    #: which is the reference engine's default for the combined trail -- and
+    #: the opposite of the per-leg trail, where a gap is in points unless said
+    #: otherwise.
+    trail_unit: GapUnit = GapUnit.PERCENTAGE
+
+    def __post_init__(self) -> None:
+        if self.trail_unit is GapUnit.RISK_MULTIPLE:
+            # A multiple of the initial risk is a per-leg idea: it measures
+            # from entry to that leg's first stop, and a group has neither.
+            raise DomainError(
+                "a combined trail is in per cent of the group's premium or in money, "
+                "not in multiples of risk"
+            )
+        for name, gap in (
+            ("trail_profit_gap", self.trail_profit_gap),
+            ("trail_stop_move_gap", self.trail_stop_move_gap),
+        ):
+            if gap is not None and gap <= 0:
+                raise DomainError(f"a combined trail's {name} of {gap} is not a gap")
 
     @property
     def is_configured(self) -> bool:
         return self.stop_loss_percent is not None or self.target_percent is not None
+
+    @property
+    def is_trailing(self) -> bool:
+        """Whether the group's stop moves as the group earns.
+
+        All three are needed. A profit gap with no move gap never moves the
+        stop, and either without a fixed stop has nothing to move -- the trail
+        walks the configured level up rather than inventing one.
+        """
+        return (
+            self.trail_profit_gap is not None
+            and self.trail_stop_move_gap is not None
+            and self.stop_loss_percent is not None
+        )
 
     @classmethod
     def of(cls, trade: Trade) -> GroupLevels:
@@ -69,9 +110,13 @@ class GroupLevels:
         percentages are known when the signal is built and gone by the time a
         tick arrives.
         """
+        protection = trade.protection
         return cls(
-            stop_loss_percent=trade.protection.combined_stop_loss_percent,
-            target_percent=trade.protection.combined_target_percent,
+            stop_loss_percent=protection.combined_stop_loss_percent,
+            target_percent=protection.combined_target_percent,
+            trail_profit_gap=protection.combined_trail_profit_gap,
+            trail_stop_move_gap=protection.combined_trail_stop_move_gap,
+            trail_unit=protection.combined_trail_unit or GapUnit.PERCENTAGE,
         )
 
 
@@ -80,6 +125,10 @@ class CombinedOutcome(StrEnum):
 
     HOLD = "HOLD"
     STOP = "STOP"
+    #: Stopped at a level the group's own profit moved, rather than at the one
+    #: it was configured with. The same exit; a different thing to have
+    #: happened, and an operator reads the two differently.
+    TRAIL_STOP = "TRAIL_STOP"
     TARGET = "TARGET"
     #: The arithmetic could not be done: a leg has no price, or the group took
     #: in nothing to measure against. Distinct from HOLD on purpose: one is an
@@ -99,13 +148,19 @@ class CombinedDecision:
     #: Entry less current: positive is profit, in premium terms.
     result: Money | None = None
 
+    #: The best the group has been, for a trail to measure down from. Carried
+    #: out of the decision so the caller can put it back on the legs: a
+    #: restart that forgot it would trail from wherever the group stands now,
+    #: giving back everything it had earned.
+    high_water: Money | None = None
+
     @property
     def is_exit(self) -> bool:
-        return self.outcome in (CombinedOutcome.STOP, CombinedOutcome.TARGET)
+        return self.exit_reason is not None
 
     @property
     def exit_reason(self) -> TradeExitReason | None:
-        if self.outcome is CombinedOutcome.STOP:
+        if self.outcome in (CombinedOutcome.STOP, CombinedOutcome.TRAIL_STOP):
             return TradeExitReason.GROUP_STOP_LOSS
         if self.outcome is CombinedOutcome.TARGET:
             return TradeExitReason.GROUP_TARGET
@@ -151,18 +206,61 @@ def net_premium(trades: Sequence[Trade], price_of: PriceOf) -> Money | None:
     return total
 
 
+def trailing_floor(basis: Money, levels: GroupLevels, high_water: Money) -> Money | None:
+    """The least the group will now accept, given the best it has been.
+
+    None until the first step is earned, which is what makes this a trail
+    rather than a second stop: below one profit gap the configured level
+    stands as it was.
+
+    The level walks up from the configured stop, one move gap per whole
+    profit gap earned. Whole steps, so the level does not jitter with every
+    tick -- a stop that drifts on noise is one that fires on noise.
+    """
+    profit_gap = _in_money(basis, levels.trail_profit_gap, levels.trail_unit)
+    move_gap = _in_money(basis, levels.trail_stop_move_gap, levels.trail_unit)
+    configured = _threshold(basis, levels.stop_loss_percent)
+    if profit_gap is None or move_gap is None or configured is None:
+        # The three `is_trailing` asks for, checked here rather than through
+        # it: leading with `if not levels.is_trailing` would read better and
+        # say the same thing twice, since this has to narrow the types anyway.
+        return None
+
+    if high_water < profit_gap:
+        return None
+    steps = int(high_water.amount / profit_gap.amount)
+    return move_gap * steps - configured
+
+
+def _in_money(basis: Money, gap: Decimal | None, unit: GapUnit) -> Money | None:
+    """A configured gap as an amount, whichever way it was written."""
+    if gap is None:
+        return None
+    if unit is GapUnit.PERCENTAGE:
+        return basis * (gap / HUNDRED)
+    return Money(gap, basis.currency)
+
+
 def evaluate(
     trades: Sequence[Trade],
     levels: GroupLevels,
     *,
     entry_of: PriceOf,
     current_of: PriceOf,
+    high_water: Money | None = None,
 ) -> CombinedDecision:
     """Whether the group has reached a level of its own.
 
-    The stop is checked before the target. Both can be true only if a level is
-    configured at zero or the two overlap, and in that case coming out on the
-    stop is the answer that cannot be regretted.
+    Checked in the order the reference engine checks them, and the order
+    matters: the configured stop first, then the trailed one, then the target.
+    A group past its fixed stop is out on that, whatever the trail says, and a
+    group that has given back its gains is out on the trail rather than left
+    to run to a target it is walking away from.
+
+    ``high_water`` is the best the group has been so far, and the decision
+    carries the updated one back. It is not held here: a rule that kept state
+    between evaluations would lose it on a restart, which is the one moment a
+    trail must not forget.
     """
     if not levels.is_configured:
         return CombinedDecision(CombinedOutcome.HOLD, "no combined level is configured")
@@ -196,30 +294,51 @@ def evaluate(
     result = entry - current
     stop = _threshold(basis, levels.stop_loss_percent)
     target = _threshold(basis, levels.target_percent)
+    best = _best(result, high_water, levels)
+
+    def decided(outcome: CombinedOutcome, detail: str) -> CombinedDecision:
+        return CombinedDecision(
+            outcome,
+            detail,
+            entry=entry,
+            current=current,
+            result=result,
+            high_water=best,
+        )
 
     if stop is not None and result <= -stop:
-        return CombinedDecision(
+        return decided(
             CombinedOutcome.STOP,
             f"the group is down {-result} against {basis} taken in, past the {stop} allowed",
-            entry=entry,
-            current=current,
-            result=result,
         )
+
+    floor = trailing_floor(basis, levels, best) if best is not None else None
+    if floor is not None and result <= floor:
+        return decided(
+            CombinedOutcome.TRAIL_STOP,
+            f"the group is at {result} against {basis} taken in, at or below the {floor} its "
+            f"own best of {best} has moved the stop to",
+        )
+
     if target is not None and result >= target:
-        return CombinedDecision(
+        return decided(
             CombinedOutcome.TARGET,
             f"the group is up {result} against {basis} taken in, at the {target} wanted",
-            entry=entry,
-            current=current,
-            result=result,
         )
-    return CombinedDecision(
-        CombinedOutcome.HOLD,
-        f"the group is at {result} against {basis} taken in",
-        entry=entry,
-        current=current,
-        result=result,
-    )
+    return decided(CombinedOutcome.HOLD, f"the group is at {result} against {basis} taken in")
+
+
+def _best(result: Money, high_water: Money | None, levels: GroupLevels) -> Money | None:
+    """The best the group has been, floored at nothing.
+
+    A group that has only ever been in loss has earned no step, which is what
+    the reference means by starting the watermark at zero rather than at the
+    first reading. The floor is the default: nothing ever stores a negative
+    one, because this is where it would have to come from.
+    """
+    if not levels.is_trailing:
+        return None
+    return max(result, high_water if high_water is not None else Money.zero(result.currency))
 
 
 def _threshold(basis: Money, percent: Decimal | None) -> Money | None:

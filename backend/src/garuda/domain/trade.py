@@ -32,7 +32,7 @@ from garuda.domain.trade_state import (
     TradeState,
     more_urgent,
 )
-from garuda.domain.trailing import TrailConfig
+from garuda.domain.trailing import GapUnit, TrailConfig
 
 
 class IllegalTradeTransitionError(DomainError):
@@ -73,6 +73,17 @@ class Protection:
     #: and gone by the time a tick arrives.
     combined_stop_loss_percent: Decimal | None = None
     combined_target_percent: Decimal | None = None
+    #: How the group's stop follows the group's own profit. Percentages like
+    #: the levels above, and for the same reason.
+    combined_trail_profit_gap: Decimal | None = None
+    combined_trail_stop_move_gap: Decimal | None = None
+    combined_trail_unit: GapUnit | None = None
+    #: The best the group has been, in money. Written back onto every leg as
+    #: it improves: the group is not an entity that can hold it, and a restart
+    #: that forgot it would trail from wherever the group stands now, giving
+    #: back everything it had earned. Every leg carries the same value, the
+    #: way the percentages above already do.
+    combined_high_water: Money | None = None
     #: The strategy asked for no protective order at all. Distinct from having
     #: one that has not been placed yet.
     no_stop_loss: bool = False

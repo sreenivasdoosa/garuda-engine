@@ -459,3 +459,98 @@ class TestHowTheStopFollows:
                 instrument=option,
                 entry=rupees("150"),
             )
+
+
+class TestHowTheGroupsStopFollows:
+    """Out of the same `trail_config` column the per-leg trail reads, under
+    its own keys -- which is where the reference engine writes them."""
+
+    def test_the_group_trail_is_off_unless_asked_for(self, option: Instrument) -> None:
+        protection = protection_from(
+            configured(
+                combined_sl_percentage=Decimal(10),
+                trail_config='{"combinedProfitGap": 10, "combinedSlMoveGap": 5}',
+            ),
+            direction=Direction.SHORT,
+            instrument=option,
+            entry=rupees("150"),
+        )
+
+        assert protection.combined_trail_profit_gap is None
+        assert protection.combined_trail_stop_move_gap is None
+
+    def test_the_group_gaps_are_read_under_their_own_keys(self, option: Instrument) -> None:
+        protection = protection_from(
+            configured(
+                combined_trail_sl=True,
+                combined_sl_percentage=Decimal(10),
+                trail_config='{"combinedProfitGap": 10, "combinedSlMoveGap": 5}',
+            ),
+            direction=Direction.SHORT,
+            instrument=option,
+            entry=rupees("150"),
+        )
+
+        assert protection.combined_trail_profit_gap == Decimal(10)
+        assert protection.combined_trail_stop_move_gap == Decimal(5)
+
+    def test_the_group_trail_is_in_per_cent_by_default(self, option: Instrument) -> None:
+        """The opposite of the per-leg trail, where a gap is in points unless
+        the row says otherwise. This is the reference's default for each."""
+        protection = protection_from(
+            configured(
+                combined_trail_sl=True,
+                trail_config='{"combinedProfitGap": 10, "combinedSlMoveGap": 5}',
+            ),
+            direction=Direction.SHORT,
+            instrument=option,
+            entry=rupees("150"),
+        )
+
+        assert protection.combined_trail_unit is GapUnit.PERCENTAGE
+
+    def test_the_group_trail_can_be_in_money(self, option: Instrument) -> None:
+        protection = protection_from(
+            configured(
+                combined_trail_sl=True,
+                trail_config='{"combinedProfitGap": 1000, "combinedTrailMode": "absolute"}',
+            ),
+            direction=Direction.SHORT,
+            instrument=option,
+            entry=rupees("150"),
+        )
+
+        assert protection.combined_trail_unit is GapUnit.ABSOLUTE
+
+    def test_the_two_trails_do_not_share_a_gap(self, option: Instrument) -> None:
+        """One column, two trails. A leg trailing on points has nothing to say
+        about a group trailing on per cent of its premium."""
+        protection = protection_from(
+            configured(
+                trail_sl=True,
+                combined_trail_sl=True,
+                trail_config=(
+                    '{"profitGap": 10, "slMoveGap": 5, '
+                    '"combinedProfitGap": 25, "combinedSlMoveGap": 20}'
+                ),
+            ),
+            direction=Direction.SHORT,
+            instrument=option,
+            entry=rupees("150"),
+        )
+
+        assert protection.trail is not None
+        assert protection.trail.profit_gap == Decimal(10)
+        assert protection.combined_trail_profit_gap == Decimal(25)
+
+    def test_a_group_trail_mode_nobody_recognises_is_refused(self, option: Instrument) -> None:
+        with pytest.raises(DomainError, match="not a gap unit"):
+            protection_from(
+                configured(
+                    combined_trail_sl=True,
+                    trail_config='{"combinedTrailMode": "sideways"}',
+                ),
+                direction=Direction.SHORT,
+                instrument=option,
+                entry=rupees("150"),
+            )
