@@ -10,7 +10,9 @@
 }
 
 html {
-  font-size: 15px;
+  // The root every rem in the app is measured against, so this is the one
+  // dial that moves all of it -- Tailwind's text-* classes included.
+  font-size: 16px;
 }
 
 body {
@@ -803,7 +805,7 @@ select {
 // from a 240px left rail, so every table lost that much width on every page.
 // ---------------------------------------------------------------------------
 
-$section-nav-height: 42px;
+$section-nav-height: 46px;
 
 .console-shell {
   position: relative;
