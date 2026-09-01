@@ -8,7 +8,7 @@ import {
   BsSliders,
 } from 'react-icons/bs';
 
-import { BrandLogo, GarudaHero } from '@/components/common';
+import { BrandLogo } from '@/components/common';
 
 /**
  * The way in.
@@ -90,16 +90,6 @@ const AuthLayout: React.FC = () => {
         className="pointer-events-none absolute -bottom-52 -right-24 h-[460px] w-[460px] rounded-full blur-[110px]"
         style={{ background: 'radial-gradient(circle, rgba(56,189,248,0.18) 0%, transparent 70%)' }}
       />
-
-      {/* The bird, as the page's ground rather than an element on it: centred,
-          riding above the middle, and faint enough that the copy over it stays
-          the thing you read. */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute left-1/2 top-[13rem] w-[1420px] max-w-[100vw] -translate-x-1/2 -translate-y-1/2 opacity-[0.17] lg:top-[42%] lg:max-w-[135vw]"
-      >
-        <GarudaHero className="h-auto w-full" height={undefined} />
-      </div>
 
       <div className="relative z-[1] mx-auto flex min-h-screen w-full max-w-6xl flex-col px-6 py-10">
         <header className="flex items-center justify-between">
