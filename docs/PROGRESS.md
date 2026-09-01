@@ -130,7 +130,8 @@ Newest first. One line per chunk of work, not per commit.
 In value order. **Ask before starting anything with a Console page.**
 
 1. **The API and the Console.** The biggest chunk left and the one that closes
-   every phase. See `API_AND_CONSOLE.md`.
+   every phase. Proposed in [`API_AND_CONSOLE.md`](API_AND_CONSOLE.md) —
+   26 pages to make work, 17 to delete, 7 to defer — and **not yet agreed**.
 2. **`HEIKIN_ASHI` trailing.** The last trailing mode.
 3. **Phase 4 leftovers that are not UI**: the adapter contract test suite, the
    order-fill escalation ladder, and the four exit policies above.
