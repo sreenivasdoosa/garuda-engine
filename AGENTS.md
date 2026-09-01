@@ -94,6 +94,24 @@ Dropping something is fine and often right; the drops are listed in
    its traffic cannot be routed through the proxy an IP-whitelisted account
    needs, and its errors arrive in the vendor's shapes rather than the engine's
    taxonomy.
+8. **Configuration lives in the database, not the environment.** The only
+   things `.env` may hold are what the process needs *before* it can reach the
+   database: where to bind, where to write logs, the database connection
+   itself, and the two secrets (`GARUDA_JWT_SECRET`, `GARUDA_SECRET_KEY`). An
+   installer generates those once.
+
+   Everything else — broker and data-provider credentials, rate limits, which
+   provider is active, every threshold and offset — is a row an operator edits
+   in the Console. This is not tidiness. The people who run this are not all
+   developers: someone downloading a release to trade their own account should
+   never have to find a file, learn its syntax, and restart a service to
+   change a setting. A setting that requires editing a file is a setting most
+   users will never change.
+
+   Vendor endpoints (`api.kite.trade`, a feed URL, a symbol-master path) are
+   neither: they are facts about someone else's API and belong in code, where
+   a typo cannot take market data down in a way indistinguishable from an
+   outage.
 
 ## Shape of the system
 
