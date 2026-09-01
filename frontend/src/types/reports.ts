@@ -44,7 +44,7 @@ export interface TradeFilter {
   exchange?: string;
   strategy?: string;
   /**
-   * Product filter for GET /api/v2/trades/{tradeType} (sent lower-cased). Since V306 all products
+   * Product filter for GET /api/trades/{tradeType} (sent lower-cased). Since V306 all products
    * live in one TRADES table, so this is a plain row filter — any tradable product is valid.
    */
   tradeType?: TradableProduct;

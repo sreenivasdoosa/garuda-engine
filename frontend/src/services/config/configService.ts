@@ -3,26 +3,16 @@ import { API_ENDPOINTS } from '@/api/endpoints';
 import { setRuntimeWsHost } from '@/config/env';
 import { setClientSidePnl, setShowTerminalPnlChart } from '@/config/featureFlags';
 
-export interface OAuthConfig {
-  authServiceUrl: string;
-  clientId: string;
-  redirectUri: string;
-  authorizeUrl: string;
-  tokenUrl: string;
-  userInfoUrl: string;
-  logoutUrl: string;
-  // Legacy/backward compatibility
-  authorizeEndpoint?: string;
-}
-
+/**
+ * What `GET /api/config` returns, before anyone has signed in.
+ *
+ * Billing, prepaid, the OAuth handshake and the distributed/standalone
+ * switch were all in here; garuda is one deployment shape with one local
+ * account, so none of them had a reader.
+ */
 export interface ServerConfig {
-  isPrepaid: boolean;
-  billingEnabled?: boolean;
   supportedBrokers: string[];
   features: Record<string, boolean>;
-  oauth?: OAuthConfig;
-  deploymentMode?: 'DISTRIBUTED' | 'STANDALONE';
-  authMode?: 'SSO' | 'LOCAL';
   /**
    * Trading asset-class mode this deployment supports (app.trading.mode).
    * Drives equity vs F&O UI gating. Absent = treat as BOTH.
@@ -77,13 +67,6 @@ export interface BuildInfo {
 }
 
 export const configService = {
-  /**
-   * Get OAuth configuration from backend (public endpoint)
-   */
-  async getAuthConfig(): Promise<OAuthConfig> {
-    return api.get<OAuthConfig>(API_ENDPOINTS.AUTH.CONFIG);
-  },
-
   /**
    * Get public server configuration.
    * Side effect: publishes the server-pushed WebSocket host (wsHost) so

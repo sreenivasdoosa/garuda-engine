@@ -27,7 +27,7 @@ export const tradeLogService = {
     if (params.search) qp.append('search', params.search);
 
     const qs = qp.toString();
-    const url = qs ? `${API_ENDPOINTS.V2_TRADE_LOG.BASE}?${qs}` : API_ENDPOINTS.V2_TRADE_LOG.BASE;
+    const url = qs ? `${API_ENDPOINTS.TRADE_LOG.BASE}?${qs}` : API_ENDPOINTS.TRADE_LOG.BASE;
     return api.get<TradeLogPageResponse>(url);
   },
 
@@ -35,13 +35,13 @@ export const tradeLogService = {
    * Full event timeline for one trade, oldest-first.
    */
   async getByTradeId(tradeId: string): Promise<TradeLogEntry[]> {
-    return api.get<TradeLogEntry[]>(API_ENDPOINTS.V2_TRADE_LOG.BY_TRADE(tradeId));
+    return api.get<TradeLogEntry[]>(API_ENDPOINTS.TRADE_LOG.BY_TRADE(tradeId));
   },
 
   /**
    * Distinct filter option values for the dropdowns.
    */
   async getFilters(): Promise<TradeLogFilters> {
-    return api.get<TradeLogFilters>(API_ENDPOINTS.V2_TRADE_LOG.FILTERS);
+    return api.get<TradeLogFilters>(API_ENDPOINTS.TRADE_LOG.FILTERS);
   },
 };

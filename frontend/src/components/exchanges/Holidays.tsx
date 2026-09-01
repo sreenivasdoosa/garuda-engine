@@ -2,7 +2,7 @@
  * Holidays Component
  * Distributed: read-only, synced from Market Data Service
  * Standalone: directly managed with add/delete
- * Uses V2 API: /api/v2/holidays
+ * Uses: /api/holidays
  */
 
 import { useState, useMemo } from 'react';

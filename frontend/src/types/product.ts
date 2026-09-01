@@ -93,7 +93,7 @@ export const toTradableProduct = (product: string | null | undefined): TradableP
 
 /**
  * Scope of a square-off request: one tradable product, or ALL of them.
- * Sent to POST /api/v2/trades/squareoff/{product} lower-cased.
+ * Sent to POST /api/trades/squareoff/{product} lower-cased.
  */
 export type SquareOffProduct = TradableProduct | 'ALL';
 

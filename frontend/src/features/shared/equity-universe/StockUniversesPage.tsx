@@ -6,7 +6,7 @@
  *   and are materialized daily by the NSE downloader job — members are read-only here.
  * - CUSTOM universes are hand-managed watchlists — full CRUD including the member list.
  *
- * Backed by StockUniverseServletV2 at /api/v2/engine/universes (Resource.STRATEGY_ENGINE).
+ * Backed by StockUniverseServletV2 at /api/engine/universes (Resource.STRATEGY_ENGINE).
  */
 
 import { useState } from 'react';

@@ -2,7 +2,7 @@
  * Exchanges Component
  * Table for listing exchanges
  * Reusable across Admin portals
- * Uses V2 API: /api/v2/exchanges
+ * Uses: /api/exchanges
  */
 
 import { useState } from 'react';
@@ -105,20 +105,17 @@ const Exchanges: React.FC<ExchangesProps> = ({
       data: {
         exchange: exchange.exchange,
         exchangeName: exchange.exchangeName,
-        segment: exchange.segment,
+        segments: exchange.segments,
         timezone: exchange.timezone,
         preMarketStart: exchange.preMarketStart,
         preMarketEnd: exchange.preMarketEnd,
         marketOpen: exchange.marketOpen,
         marketClose: exchange.marketClose,
         algoStartMinutesBeforeMarketOpen: exchange.algoStartMinutesBeforeMarketOpen,
-        loginMinutesBeforeMarketOpen: exchange.loginMinutesBeforeMarketOpen,
         intradaySquareOffMinutesBeforeClose: exchange.intradaySquareOffMinutesBeforeClose,
         intradaySquareOffBlockMinutesBeforeClose: exchange.intradaySquareOffBlockMinutesBeforeClose,
-        positionalSquareOffMinutesBeforeClose: exchange.positionalSquareOffMinutesBeforeClose,
         postMarketWindowMinutes: exchange.postMarketWindowMinutes,
         reportMinutesAfterClose: exchange.reportMinutesAfterClose,
-        billingMinutesAfterClose: exchange.billingMinutesAfterClose,
         weekendDays: exchange.weekendDays,
         isActive: !exchange.isActive,
         historyCacheEnabled: exchange.historyCacheEnabled,
@@ -180,13 +177,6 @@ const Exchanges: React.FC<ExchangesProps> = ({
       header: 'Block SqOff',
       render: (e: ExchangeType) => (
         <small>{e.intradaySquareOffBlockMinutesBeforeClose ?? '--'} mins</small>
-      ),
-    },
-    {
-      key: 'positionalSqOff' as const,
-      header: 'Positional SqOff',
-      render: (e: ExchangeType) => (
-        <small>{e.positionalSquareOffMinutesBeforeClose ?? '--'} mins</small>
       ),
     },
     ...(hideColumns.includes('status') ? [] : [{

@@ -36,12 +36,7 @@ export default defineConfig(({ mode }) => {
       interval: 300,
     },
     proxy: {
-      '/api/v2': {
-        target: backendUrl,
-        changeOrigin: true,
-        secure: isHttps,
-      },
-      '/apis': {
+      '/api': {
         target: backendUrl,
         changeOrigin: true,
         secure: isHttps,

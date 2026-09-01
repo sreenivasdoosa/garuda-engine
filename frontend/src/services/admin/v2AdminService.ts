@@ -109,7 +109,7 @@ export const userManagementService = {
     if (params.role && params.role !== 'all') query.role = params.role;
     if (params.status && params.status !== 'all') query.status = params.status;
     if (params.enabledOnly) query.enabledOnly = true;
-    return api.get<PaginatedResponse<User>>(API_ENDPOINTS.V2_USERS.LIST, query);
+    return api.get<PaginatedResponse<User>>(API_ENDPOINTS.USERS.LIST, query);
   },
 
   // Remote user search for typeahead dropdowns (min 2 chars enforced by the
@@ -124,7 +124,7 @@ export const userManagementService = {
   // that genuinely need the visible set; dropdowns should use searchUsers()
   // (remote search) instead of loading every user.
   async getUsers(params?: { enabledOnly?: boolean }): Promise<User[]> {
-    const res = await api.get<PaginatedResponse<User>>(API_ENDPOINTS.V2_USERS.LIST, {
+    const res = await api.get<PaginatedResponse<User>>(API_ENDPOINTS.USERS.LIST, {
       ...params,
       page: 1,
       pageSize: 500,
@@ -134,42 +134,42 @@ export const userManagementService = {
 
   // Get user by username
   async getUser(username: string): Promise<User> {
-    return api.get<User>(API_ENDPOINTS.V2_USERS.DETAILS(username));
+    return api.get<User>(API_ENDPOINTS.USERS.DETAILS(username));
   },
 
   // Create user
   async createUser(data: CreateUserRequest): Promise<User> {
-    return api.post<User>(API_ENDPOINTS.V2_USERS.BASE, data);
+    return api.post<User>(API_ENDPOINTS.USERS.BASE, data);
   },
 
   // Update user
   async updateUser(username: string, data: UpdateUserRequest): Promise<User> {
-    return api.put<User>(API_ENDPOINTS.V2_USERS.DETAILS(username), data);
+    return api.put<User>(API_ENDPOINTS.USERS.DETAILS(username), data);
   },
 
   // Activate user (set status to ACTIVE)
   async activateUser(username: string): Promise<{ success: boolean }> {
-    return api.put(API_ENDPOINTS.V2_USERS.ACTIVATE(username), {});
+    return api.put(API_ENDPOINTS.USERS.ACTIVATE(username), {});
   },
 
   // Suspend user (set status to SUSPENDED)
   async suspendUser(username: string, reason?: string): Promise<{ success: boolean }> {
-    return api.put(API_ENDPOINTS.V2_USERS.SUSPEND(username), { reason });
+    return api.put(API_ENDPOINTS.USERS.SUSPEND(username), { reason });
   },
 
   // Close user account (set status to CLOSED)
   async closeUser(username: string): Promise<{ success: boolean }> {
-    return api.put(API_ENDPOINTS.V2_USERS.CLOSE(username), {});
+    return api.put(API_ENDPOINTS.USERS.CLOSE(username), {});
   },
 
   // Delete user
   async deleteUser(username: string): Promise<{ success: boolean }> {
-    return api.delete(API_ENDPOINTS.V2_USERS.DETAILS(username));
+    return api.delete(API_ENDPOINTS.USERS.DETAILS(username));
   },
 
   // Set password for user (admin only)
   async setPassword(username: string, password: string): Promise<{ success: boolean }> {
-    return api.put(API_ENDPOINTS.V2_USERS.SET_PASSWORD(username), { password });
+    return api.put(API_ENDPOINTS.USERS.SET_PASSWORD(username), { password });
   },
 };
 
@@ -178,7 +178,7 @@ export const userManagementService = {
 export const userBrokerService = {
   // Get user's brokers
   async getUserBrokers(username: string): Promise<UserBrokerConfig[]> {
-    return api.get<UserBrokerConfig[]>(API_ENDPOINTS.V2_USER_BROKERS.LIST(username));
+    return api.get<UserBrokerConfig[]>(API_ENDPOINTS.USER_BROKERS.LIST(username));
   },
 
   // Server-side paginated flat list of user-brokers for the admin table.
@@ -206,78 +206,78 @@ export const userBrokerService = {
     if (params.activeOnly) query.activeOnly = true;
     if (params.sortBy) query.sortBy = params.sortBy;
     if (params.sortOrder) query.sortOrder = params.sortOrder;
-    return api.get<PaginatedResponse<UserBrokerConfig>>(API_ENDPOINTS.V2_USER_BROKERS.LIST_ALL, query);
+    return api.get<PaginatedResponse<UserBrokerConfig>>(API_ENDPOINTS.USER_BROKERS.LIST_ALL, query);
   },
 
   // Get specific broker config
   async getUserBroker(username: string, broker: string): Promise<UserBrokerConfig> {
-    return api.get<UserBrokerConfig>(API_ENDPOINTS.V2_USER_BROKERS.DETAILS(username, broker));
+    return api.get<UserBrokerConfig>(API_ENDPOINTS.USER_BROKERS.DETAILS(username, broker));
   },
 
   // Add broker to user
   async addBrokerToUser(username: string, data: CreateUserBrokerRequest): Promise<UserBrokerConfig> {
     // Server expects username in the request body
-    return api.post<UserBrokerConfig>(API_ENDPOINTS.V2_USER_BROKERS.LIST(username), { ...data, username });
+    return api.post<UserBrokerConfig>(API_ENDPOINTS.USER_BROKERS.LIST(username), { ...data, username });
   },
 
   // Update user broker
   async updateUserBroker(username: string, broker: string, data: UpdateUserBrokerRequest): Promise<UserBrokerConfig> {
-    return api.put<UserBrokerConfig>(API_ENDPOINTS.V2_USER_BROKERS.DETAILS(username, broker), data);
+    return api.put<UserBrokerConfig>(API_ENDPOINTS.USER_BROKERS.DETAILS(username, broker), data);
   },
 
   // Enable user broker
   async enableUserBroker(username: string, broker: string): Promise<{ success: boolean }> {
-    return api.put(API_ENDPOINTS.V2_USER_BROKERS.ENABLE(username, broker), {});
+    return api.put(API_ENDPOINTS.USER_BROKERS.ENABLE(username, broker), {});
   },
 
   // Disable user broker
   async disableUserBroker(username: string, broker: string): Promise<{ success: boolean }> {
-    return api.put(API_ENDPOINTS.V2_USER_BROKERS.DISABLE(username, broker), {});
+    return api.put(API_ENDPOINTS.USER_BROKERS.DISABLE(username, broker), {});
   },
 
   // Assign seat to user broker (legacy)
   async assignSeat(username: string, broker: string): Promise<{ success: boolean }> {
-    return api.put(API_ENDPOINTS.V2_USER_BROKERS.ASSIGN_SEAT(username, broker), {});
+    return api.put(API_ENDPOINTS.USER_BROKERS.ASSIGN_SEAT(username, broker), {});
   },
 
   // Remove seat from user broker (legacy, auto-disables)
   async removeSeat(username: string, broker: string): Promise<{ success: boolean }> {
-    return api.put(API_ENDPOINTS.V2_USER_BROKERS.REMOVE_SEAT(username, broker), {});
+    return api.put(API_ENDPOINTS.USER_BROKERS.REMOVE_SEAT(username, broker), {});
   },
 
   // Assign license key to user broker
   async assignLicense(username: string, broker: string, licenseKey: string): Promise<{ success: boolean }> {
-    return api.put(API_ENDPOINTS.V2_USER_BROKERS.ASSIGN_LICENSE(username, broker), { licenseKey });
+    return api.put(API_ENDPOINTS.USER_BROKERS.ASSIGN_LICENSE(username, broker), { licenseKey });
   },
 
   // Remove license from user broker
   async removeLicense(username: string, broker: string): Promise<{ success: boolean }> {
-    return api.put(API_ENDPOINTS.V2_USER_BROKERS.REMOVE_LICENSE(username, broker), {});
+    return api.put(API_ENDPOINTS.USER_BROKERS.REMOVE_LICENSE(username, broker), {});
   },
 
   // Remove broker from user
   async removeBrokerFromUser(username: string, broker: string): Promise<{ success: boolean }> {
-    return api.delete(API_ENDPOINTS.V2_USER_BROKERS.DETAILS(username, broker));
+    return api.delete(API_ENDPOINTS.USER_BROKERS.DETAILS(username, broker));
   },
 
   // Auto login to broker
   async autoLogin(username: string, broker: string): Promise<BrokerLoginResponse> {
-    return api.post<BrokerLoginResponse>(API_ENDPOINTS.V2_USER_BROKERS.LOGIN_AUTO(username, broker), {});
+    return api.post<BrokerLoginResponse>(API_ENDPOINTS.USER_BROKERS.LOGIN_AUTO(username, broker), {});
   },
 
   // Get broker login status
   async getLoginStatus(username: string, broker: string): Promise<BrokerLoginStatusResponse> {
-    return api.get<BrokerLoginStatusResponse>(API_ENDPOINTS.V2_USER_BROKERS.LOGIN_STATUS(username, broker));
+    return api.get<BrokerLoginStatusResponse>(API_ENDPOINTS.USER_BROKERS.LOGIN_STATUS(username, broker));
   },
 
   // Logout from broker
   async logout(username: string, broker: string): Promise<BrokerLogoutResponse> {
-    return api.post<BrokerLogoutResponse>(API_ENDPOINTS.V2_USER_BROKERS.LOGOUT(username, broker), {});
+    return api.post<BrokerLogoutResponse>(API_ENDPOINTS.USER_BROKERS.LOGOUT(username, broker), {});
   },
 
   // Check xtreme agent health
   async checkAgentHealth(username: string, broker: string): Promise<AgentHealthResponse> {
-    return api.get<AgentHealthResponse>(API_ENDPOINTS.V2_USER_BROKERS.AGENT_HEALTH(username, broker));
+    return api.get<AgentHealthResponse>(API_ENDPOINTS.USER_BROKERS.AGENT_HEALTH(username, broker));
   },
 };
 
@@ -298,7 +298,7 @@ export const userCapitalService = {
     fromDate?: string;
     toDate?: string;
   }): Promise<CapitalRecord[]> {
-    return api.get<CapitalRecord[]>(API_ENDPOINTS.V2_USER_CAPITAL.BASE, params);
+    return api.get<CapitalRecord[]>(API_ENDPOINTS.USER_CAPITAL.BASE, params);
   },
 
   // Get a page of capital records. Filters + ordering are applied SERVER-SIDE,
@@ -320,12 +320,12 @@ export const userCapitalService = {
     };
     if (params.username) query.username = params.username;
     if (params.broker) query.broker = params.broker;
-    return api.get(API_ENDPOINTS.V2_USER_CAPITAL.BASE, query);
+    return api.get(API_ENDPOINTS.USER_CAPITAL.BASE, query);
   },
 
   // Create/update capital record
   async setCapital(data: { username: string; broker: string; date: string; capital: number }): Promise<CapitalRecord> {
-    return api.post<CapitalRecord>(API_ENDPOINTS.V2_USER_CAPITAL.BASE, data);
+    return api.post<CapitalRecord>(API_ENDPOINTS.USER_CAPITAL.BASE, data);
   },
 };
 
@@ -520,42 +520,42 @@ export interface EffectiveRMSConfigResponse {
 export const rmsConfigService = {
   // Get all configs
   async getAll(): Promise<RMSConfig[]> {
-    return api.get<RMSConfig[]>(API_ENDPOINTS.V2_RMS_CONFIG.LIST);
+    return api.get<RMSConfig[]>(API_ENDPOINTS.RMS_CONFIG.LIST);
   },
 
   // Get config by ID
   async getById(id: number): Promise<RMSConfig> {
-    return api.get<RMSConfig>(API_ENDPOINTS.V2_RMS_CONFIG.DETAILS(id));
+    return api.get<RMSConfig>(API_ENDPOINTS.RMS_CONFIG.DETAILS(id));
   },
 
   // Get configs by level
   async getByLevel(level: RMSConfigLevel): Promise<RMSConfig[]> {
-    return api.get<RMSConfig[]>(API_ENDPOINTS.V2_RMS_CONFIG.BY_LEVEL(level));
+    return api.get<RMSConfig[]>(API_ENDPOINTS.RMS_CONFIG.BY_LEVEL(level));
   },
 
   // Get configs by segment type
   async getBySegment(segment: RMSSegmentType): Promise<RMSConfig[]> {
-    return api.get<RMSConfig[]>(API_ENDPOINTS.V2_RMS_CONFIG.BY_SEGMENT(segment));
+    return api.get<RMSConfig[]>(API_ENDPOINTS.RMS_CONFIG.BY_SEGMENT(segment));
   },
 
   // Create config
   async create(data: Omit<RMSConfig, 'id'>): Promise<RMSConfig> {
-    return api.post<RMSConfig>(API_ENDPOINTS.V2_RMS_CONFIG.BASE, data);
+    return api.post<RMSConfig>(API_ENDPOINTS.RMS_CONFIG.BASE, data);
   },
 
   // Update config
   async update(id: number, data: Partial<RMSConfig>): Promise<RMSConfig> {
-    return api.put<RMSConfig>(API_ENDPOINTS.V2_RMS_CONFIG.DETAILS(id), data);
+    return api.put<RMSConfig>(API_ENDPOINTS.RMS_CONFIG.DETAILS(id), data);
   },
 
   // Delete config
   async delete(id: number): Promise<{ success: boolean }> {
-    return api.delete(API_ENDPOINTS.V2_RMS_CONFIG.DETAILS(id));
+    return api.delete(API_ENDPOINTS.RMS_CONFIG.DETAILS(id));
   },
 
   // Get recent breaches (full array — legacy).
   async getBreaches(params?: { username?: string; type?: string; limit?: number; startDate?: string; endDate?: string }): Promise<RMSBreachLog[]> {
-    return api.get<RMSBreachLog[]>(API_ENDPOINTS.V2_RMS_CONFIG.BREACHES, params);
+    return api.get<RMSBreachLog[]>(API_ENDPOINTS.RMS_CONFIG.BREACHES, params);
   },
 
   // Get a page of breaches. search / severity / category move SERVER-SIDE (were
@@ -580,63 +580,63 @@ export const rmsConfigService = {
     if (params.search) query.search = params.search;
     if (params.severity) query.severity = params.severity;
     if (params.category) query.category = params.category;
-    return api.get(API_ENDPOINTS.V2_RMS_CONFIG.BREACHES, query);
+    return api.get(API_ENDPOINTS.RMS_CONFIG.BREACHES, query);
   },
 
   // Get today's breaches
   async getTodayBreaches(): Promise<RMSBreachLog[]> {
-    return api.get<RMSBreachLog[]>(API_ENDPOINTS.V2_RMS_CONFIG.BREACHES_TODAY);
+    return api.get<RMSBreachLog[]>(API_ENDPOINTS.RMS_CONFIG.BREACHES_TODAY);
   },
 
   // Get breach filter options (types and categories from backend enum)
   async getBreachFilters(): Promise<RMSBreachFilters> {
-    return api.get<RMSBreachFilters>(API_ENDPOINTS.V2_RMS_CONFIG.BREACH_FILTERS);
+    return api.get<RMSBreachFilters>(API_ENDPOINTS.RMS_CONFIG.BREACH_FILTERS);
   },
 
   // Get field-level applicability (which fields are valid at which config levels)
   async getFieldApplicability(): Promise<RMSFieldApplicability> {
-    return api.get<RMSFieldApplicability>(API_ENDPOINTS.V2_RMS_CONFIG.FIELD_APPLICABILITY);
+    return api.get<RMSFieldApplicability>(API_ENDPOINTS.RMS_CONFIG.FIELD_APPLICABILITY);
   },
 
   // Get user states for today
   async getUserStates(): Promise<RMSUserState[]> {
-    return api.get<RMSUserState[]>(API_ENDPOINTS.V2_RMS_CONFIG.USER_STATES);
+    return api.get<RMSUserState[]>(API_ENDPOINTS.RMS_CONFIG.USER_STATES);
   },
 
   // Get kill switch status
   async getKillSwitchStatus(): Promise<KillSwitchStatus> {
-    return api.get<KillSwitchStatus>(API_ENDPOINTS.V2_RMS_CONFIG.KILL_SWITCH);
+    return api.get<KillSwitchStatus>(API_ENDPOINTS.RMS_CONFIG.KILL_SWITCH);
   },
 
   // Activate kill switch (multi-level, JSON body)
   async activateKillSwitch(request: KillSwitchActivateRequest): Promise<{ level: string; activated: boolean; reason: string }> {
-    return api.post(API_ENDPOINTS.V2_RMS_CONFIG.KILL_SWITCH, request);
+    return api.post(API_ENDPOINTS.RMS_CONFIG.KILL_SWITCH, request);
   },
 
   // Activate kill switch for single user-broker (backward compat)
   async activateKillSwitchUser(username: string, broker: string, reason?: string): Promise<{ username: string; broker: string; activated: boolean; reason?: string }> {
     const params = reason ? `?reason=${encodeURIComponent(reason)}` : '';
-    return api.post(API_ENDPOINTS.V2_RMS_CONFIG.KILL_SWITCH_USER(username, broker) + params, {});
+    return api.post(API_ENDPOINTS.RMS_CONFIG.KILL_SWITCH_USER(username, broker) + params, {});
   },
 
   // Deactivate kill switches (batch, by keys)
   async deactivateKillSwitches(keys: string[]): Promise<{ deactivated: string[] }> {
-    return api.post(API_ENDPOINTS.V2_RMS_CONFIG.KILL_SWITCH_DEACTIVATE, { keys });
+    return api.post(API_ENDPOINTS.RMS_CONFIG.KILL_SWITCH_DEACTIVATE, { keys });
   },
 
   // Deactivate kill switch for single user-broker (backward compat)
   async deactivateKillSwitch(username: string, broker: string): Promise<{ username: string; broker: string; activated: boolean }> {
-    return api.delete(API_ENDPOINTS.V2_RMS_CONFIG.KILL_SWITCH_USER(username, broker));
+    return api.delete(API_ENDPOINTS.RMS_CONFIG.KILL_SWITCH_USER(username, broker));
   },
 
   // Remove kill switch instances entirely (batch) — deletes them; re-arms auto-triggers
   async removeKillSwitches(keys: string[]): Promise<{ removed: string[] }> {
-    return api.post(API_ENDPOINTS.V2_RMS_CONFIG.KILL_SWITCH_REMOVE, { keys });
+    return api.post(API_ENDPOINTS.RMS_CONFIG.KILL_SWITCH_REMOVE, { keys });
   },
 
   // Remove every kill switch instance (ACTIVE and INACTIVE)
   async removeAllKillSwitches(): Promise<{ message: string }> {
-    return api.post(API_ENDPOINTS.V2_RMS_CONFIG.KILL_SWITCH_REMOVE_ALL, {});
+    return api.post(API_ENDPOINTS.RMS_CONFIG.KILL_SWITCH_REMOVE_ALL, {});
   },
 
   // Arm/disarm an auto-trigger type (Layer 2). When disabling, alsoRemoveInstances
@@ -646,47 +646,47 @@ export const rmsConfigService = {
     enabled: boolean,
     alsoRemoveInstances: boolean,
   ): Promise<{ source: string; enabled: boolean; instancesRemoved: boolean }> {
-    return api.post(API_ENDPOINTS.V2_RMS_CONFIG.KILL_SWITCH_TYPE, { source, enabled, alsoRemoveInstances });
+    return api.post(API_ENDPOINTS.RMS_CONFIG.KILL_SWITCH_TYPE, { source, enabled, alsoRemoveInstances });
   },
 
   // Stop broker
   async stopBroker(broker: string): Promise<{ broker: string; stopped: boolean }> {
-    return api.post(API_ENDPOINTS.V2_RMS_CONFIG.STOP_BROKER(broker), {});
+    return api.post(API_ENDPOINTS.RMS_CONFIG.STOP_BROKER(broker), {});
   },
 
   // Unstop broker
   async unstopBroker(broker: string): Promise<{ broker: string; stopped: boolean }> {
-    return api.delete(API_ENDPOINTS.V2_RMS_CONFIG.STOP_BROKER(broker));
+    return api.delete(API_ENDPOINTS.RMS_CONFIG.STOP_BROKER(broker));
   },
 
   // Get RMS service status
   async getStatus(): Promise<RMSServiceStatus> {
-    return api.get<RMSServiceStatus>(API_ENDPOINTS.V2_RMS_CONFIG.STATUS);
+    return api.get<RMSServiceStatus>(API_ENDPOINTS.RMS_CONFIG.STATUS);
   },
 
   // Enable RMS service
   async enable(): Promise<{ message: string }> {
-    return api.post(API_ENDPOINTS.V2_RMS_CONFIG.ENABLE, {});
+    return api.post(API_ENDPOINTS.RMS_CONFIG.ENABLE, {});
   },
 
   // Disable RMS service
   async disable(): Promise<{ message: string }> {
-    return api.post(API_ENDPOINTS.V2_RMS_CONFIG.DISABLE, {});
+    return api.post(API_ENDPOINTS.RMS_CONFIG.DISABLE, {});
   },
 
   // Reset daily state
   async resetDailyState(): Promise<{ message: string }> {
-    return api.post(API_ENDPOINTS.V2_RMS_CONFIG.RESET_DAILY, {});
+    return api.post(API_ENDPOINTS.RMS_CONFIG.RESET_DAILY, {});
   },
 
   // Clear config cache
   async clearCache(): Promise<{ message: string }> {
-    return api.post(API_ENDPOINTS.V2_RMS_CONFIG.CLEAR_CACHE, {});
+    return api.post(API_ENDPOINTS.RMS_CONFIG.CLEAR_CACHE, {});
   },
 
   // Get daily stats
   async getDailyStats(params?: { date?: string; username?: string; broker?: string }): Promise<RMSDailyStatsResponse> {
-    return api.get<RMSDailyStatsResponse>(API_ENDPOINTS.V2_RMS_CONFIG.DAILY_STATS, params);
+    return api.get<RMSDailyStatsResponse>(API_ENDPOINTS.RMS_CONFIG.DAILY_STATS, params);
   },
 
   // Get effective config with source tracking (for preview)
@@ -697,12 +697,12 @@ export const rmsConfigService = {
     broker?: string;
     username?: string;
   }): Promise<EffectiveRMSConfigResponse> {
-    return api.get<EffectiveRMSConfigResponse>(API_ENDPOINTS.V2_RMS_CONFIG.EFFECTIVE, params);
+    return api.get<EffectiveRMSConfigResponse>(API_ENDPOINTS.RMS_CONFIG.EFFECTIVE, params);
   },
 
   // Export all GLOBAL/EXCHANGE/SYMBOL configs as xlsx
   async exportConfigs(): Promise<Blob> {
-    const response = await apiClient.post(API_ENDPOINTS.V2_RMS_CONFIG.EXPORT, {}, {
+    const response = await apiClient.post(API_ENDPOINTS.RMS_CONFIG.EXPORT, {}, {
       responseType: 'blob',
     });
     return response as unknown as Blob;
@@ -712,7 +712,7 @@ export const rmsConfigService = {
   async importPreview(file: File): Promise<RMSConfigImportPreviewResult> {
     const formData = new FormData();
     formData.append('file', file);
-    return apiClient.post(API_ENDPOINTS.V2_RMS_CONFIG.IMPORT_PREVIEW, formData, {
+    return apiClient.post(API_ENDPOINTS.RMS_CONFIG.IMPORT_PREVIEW, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
   },
@@ -727,7 +727,7 @@ export const rmsConfigService = {
     formData.append('file', file);
     formData.append('resolutions', JSON.stringify(resolutions));
     formData.append('defaultResolution', defaultResolution);
-    return apiClient.post(API_ENDPOINTS.V2_RMS_CONFIG.IMPORT_APPLY, formData, {
+    return apiClient.post(API_ENDPOINTS.RMS_CONFIG.IMPORT_APPLY, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
   },
@@ -757,29 +757,29 @@ export const auditLogService = {
   // applied SERVER-SIDE across the whole set, so the page and its totalCount are
   // exact (not capped at 100 or filtered after the fact on the client).
   async getPaginated(filter?: AuditLogFilter): Promise<PaginatedResponse<AuditLog>> {
-    return api.get<PaginatedResponse<AuditLog>>(API_ENDPOINTS.V2_AUDIT_LOGS.LIST, filter);
+    return api.get<PaginatedResponse<AuditLog>>(API_ENDPOINTS.AUDIT_LOGS.LIST, filter);
   },
 
   // Get audit logs (unwraps the paginated envelope to the page's rows). Retained
   // for array callers; paginated UIs should use getPaginated() for the totalCount.
   async getLogs(filter?: AuditLogFilter): Promise<AuditLog[]> {
-    const res = await api.get<PaginatedResponse<AuditLog>>(API_ENDPOINTS.V2_AUDIT_LOGS.LIST, filter);
+    const res = await api.get<PaginatedResponse<AuditLog>>(API_ENDPOINTS.AUDIT_LOGS.LIST, filter);
     return res.data;
   },
 
   // Get all entity types
   async getEntityTypes(): Promise<string[]> {
-    return api.get<string[]>(API_ENDPOINTS.V2_AUDIT_LOGS.ENTITY_TYPES);
+    return api.get<string[]>(API_ENDPOINTS.AUDIT_LOGS.ENTITY_TYPES);
   },
 
   // Get logs by entity
   async getLogsByEntity(entityType: string, entityId: string): Promise<AuditLog[]> {
-    return api.get<AuditLog[]>(API_ENDPOINTS.V2_AUDIT_LOGS.BY_ENTITY(entityType, entityId));
+    return api.get<AuditLog[]>(API_ENDPOINTS.AUDIT_LOGS.BY_ENTITY(entityType, entityId));
   },
 
   // Get logs by user
   async getLogsByUser(username: string): Promise<AuditLog[]> {
-    return api.get<AuditLog[]>(API_ENDPOINTS.V2_AUDIT_LOGS.BY_USER(username));
+    return api.get<AuditLog[]>(API_ENDPOINTS.AUDIT_LOGS.BY_USER(username));
   },
 };
 
@@ -794,43 +794,43 @@ export interface ExchangeMarketStatus {
 export const exchangeService = {
   // Get all exchanges
   async getAll(): Promise<Exchange[]> {
-    return api.get<Exchange[]>(API_ENDPOINTS.V2_EXCHANGES.LIST);
+    return api.get<Exchange[]>(API_ENDPOINTS.EXCHANGES.LIST);
   },
 
   // Live per-exchange market status (authoritative server-side timing) — for gating
   // market-dependent UI actions (e.g. terminal square-off) on real state, not a client guess.
   async getMarketStatus(): Promise<ExchangeMarketStatus[]> {
-    return api.get<ExchangeMarketStatus[]>(API_ENDPOINTS.V2_EXCHANGES.MARKET_STATUS);
+    return api.get<ExchangeMarketStatus[]>(API_ENDPOINTS.EXCHANGES.MARKET_STATUS);
   },
 
   // Get exchange by code
   async getByCode(code: string): Promise<Exchange> {
-    return api.get<Exchange>(API_ENDPOINTS.V2_EXCHANGES.DETAILS(code));
+    return api.get<Exchange>(API_ENDPOINTS.EXCHANGES.DETAILS(code));
   },
 
   // Create exchange
   async create(data: CreateExchangeRequest): Promise<Exchange> {
-    return api.post<Exchange>(API_ENDPOINTS.V2_EXCHANGES.BASE, data);
+    return api.post<Exchange>(API_ENDPOINTS.EXCHANGES.BASE, data);
   },
 
   // Update exchange
   async update(code: string, data: Partial<CreateExchangeRequest>): Promise<Exchange> {
-    return api.put<Exchange>(API_ENDPOINTS.V2_EXCHANGES.DETAILS(code), data);
+    return api.put<Exchange>(API_ENDPOINTS.EXCHANGES.DETAILS(code), data);
   },
 
   // Delete exchange
   async delete(code: string): Promise<{ success: boolean }> {
-    return api.delete(API_ENDPOINTS.V2_EXCHANGES.DETAILS(code));
+    return api.delete(API_ENDPOINTS.EXCHANGES.DETAILS(code));
   },
 
   // Get holidays
   async getHolidays(code: string): Promise<Holiday[]> {
-    return api.get<Holiday[]>(API_ENDPOINTS.V2_EXCHANGES.HOLIDAYS(code));
+    return api.get<Holiday[]>(API_ENDPOINTS.EXCHANGES.HOLIDAYS(code));
   },
 
   // Get event days
   async getEventDays(code: string): Promise<EventDay[]> {
-    return api.get<EventDay[]>(API_ENDPOINTS.V2_EXCHANGES.EVENT_DAYS(code));
+    return api.get<EventDay[]>(API_ENDPOINTS.EXCHANGES.EVENT_DAYS(code));
   },
 };
 
@@ -839,22 +839,22 @@ export const exchangeService = {
 export const holidayService = {
   // Get holidays by exchange (returns array of Holiday objects with description)
   async getByExchange(exchange: string): Promise<Holiday[]> {
-    return api.get<Holiday[]>(API_ENDPOINTS.V2_HOLIDAYS.BY_EXCHANGE(exchange));
+    return api.get<Holiday[]>(API_ENDPOINTS.HOLIDAYS.BY_EXCHANGE(exchange));
   },
 
   // Add holiday
   async create(data: CreateHolidayRequest): Promise<Holiday> {
-    return api.post<Holiday>(API_ENDPOINTS.V2_HOLIDAYS.BASE, data);
+    return api.post<Holiday>(API_ENDPOINTS.HOLIDAYS.BASE, data);
   },
 
   // Update holiday description
   async update(exchange: string, date: string, data: { description?: string }): Promise<Holiday> {
-    return api.put<Holiday>(API_ENDPOINTS.V2_HOLIDAYS.DELETE(exchange, date), data);
+    return api.put<Holiday>(API_ENDPOINTS.HOLIDAYS.DELETE(exchange, date), data);
   },
 
   // Delete holiday
   async delete(exchange: string, date: string): Promise<{ success: boolean }> {
-    return api.delete(API_ENDPOINTS.V2_HOLIDAYS.DELETE(exchange, date));
+    return api.delete(API_ENDPOINTS.HOLIDAYS.DELETE(exchange, date));
   },
 };
 
@@ -872,12 +872,12 @@ export interface MarketDataSyncTriggerResponse {
 export const marketDataSyncService = {
   // Get sync service status
   async getStatus(): Promise<MarketDataSyncStatus> {
-    return api.get<MarketDataSyncStatus>(API_ENDPOINTS.V2_MARKET_DATA_SYNC.STATUS);
+    return api.get<MarketDataSyncStatus>(API_ENDPOINTS.MARKET_DATA_SYNC.STATUS);
   },
 
   // Trigger sync
   async triggerSync(): Promise<MarketDataSyncTriggerResponse> {
-    return api.post<MarketDataSyncTriggerResponse>(API_ENDPOINTS.V2_MARKET_DATA_SYNC.TRIGGER, {});
+    return api.post<MarketDataSyncTriggerResponse>(API_ENDPOINTS.MARKET_DATA_SYNC.TRIGGER, {});
   },
 };
 
@@ -897,27 +897,27 @@ export interface UpdateEventDayRequest {
 export const eventDayService = {
   // Get event days by exchange
   async getByExchange(exchange: string): Promise<EventDay[]> {
-    return api.get<EventDay[]>(API_ENDPOINTS.V2_EVENT_DAYS.BY_EXCHANGE(exchange));
+    return api.get<EventDay[]>(API_ENDPOINTS.EVENT_DAYS.BY_EXCHANGE(exchange));
   },
 
   // Get specific event day
   async get(exchange: string, eventDate: string): Promise<EventDay> {
-    return api.get<EventDay>(API_ENDPOINTS.V2_EVENT_DAYS.DETAILS(exchange, eventDate));
+    return api.get<EventDay>(API_ENDPOINTS.EVENT_DAYS.DETAILS(exchange, eventDate));
   },
 
   // Create event day
   async create(exchange: string, data: CreateEventDayRequest): Promise<EventDay> {
-    return api.post<EventDay>(API_ENDPOINTS.V2_EVENT_DAYS.BY_EXCHANGE(exchange), data);
+    return api.post<EventDay>(API_ENDPOINTS.EVENT_DAYS.BY_EXCHANGE(exchange), data);
   },
 
   // Update event day
   async update(exchange: string, eventDate: string, data: UpdateEventDayRequest): Promise<EventDay> {
-    return api.put<EventDay>(API_ENDPOINTS.V2_EVENT_DAYS.DETAILS(exchange, eventDate), data);
+    return api.put<EventDay>(API_ENDPOINTS.EVENT_DAYS.DETAILS(exchange, eventDate), data);
   },
 
   // Delete event day
   async delete(exchange: string, eventDate: string): Promise<{ success: boolean }> {
-    return api.delete(API_ENDPOINTS.V2_EVENT_DAYS.DETAILS(exchange, eventDate));
+    return api.delete(API_ENDPOINTS.EVENT_DAYS.DETAILS(exchange, eventDate));
   },
 };
 
@@ -943,39 +943,39 @@ export const mockTradingDayService = {
   // Get all mock trading days (read-only; entries are managed in the
   // market-data admin UI -> Mock Trading Days)
   async getAll(): Promise<MockTradingDay[]> {
-    return api.get<MockTradingDay[]>(API_ENDPOINTS.V2_MOCK_TRADING_DAYS.ALL);
+    return api.get<MockTradingDay[]>(API_ENDPOINTS.MOCK_TRADING_DAYS.ALL);
   },
 
   // Get mock trading days for one exchange
   async getByExchange(exchange: string): Promise<MockTradingDay[]> {
-    return api.get<MockTradingDay[]>(API_ENDPOINTS.V2_MOCK_TRADING_DAYS.BY_EXCHANGE(exchange));
+    return api.get<MockTradingDay[]>(API_ENDPOINTS.MOCK_TRADING_DAYS.BY_EXCHANGE(exchange));
   },
 };
 
 export const specialTradingDayService = {
   // Get all special trading days
   async getAll(): Promise<SpecialTradingDay[]> {
-    return api.get<SpecialTradingDay[]>(API_ENDPOINTS.V2_SPECIAL_TRADING_DAYS.ALL);
+    return api.get<SpecialTradingDay[]>(API_ENDPOINTS.SPECIAL_TRADING_DAYS.ALL);
   },
 
   // Get special trading days by exchange
   async getByExchange(exchange: string): Promise<SpecialTradingDay[]> {
-    return api.get<SpecialTradingDay[]>(API_ENDPOINTS.V2_SPECIAL_TRADING_DAYS.BY_EXCHANGE(exchange));
+    return api.get<SpecialTradingDay[]>(API_ENDPOINTS.SPECIAL_TRADING_DAYS.BY_EXCHANGE(exchange));
   },
 
   // Create special trading day
   async create(data: SpecialTradingDay): Promise<SpecialTradingDay> {
-    return api.post<SpecialTradingDay>(API_ENDPOINTS.V2_SPECIAL_TRADING_DAYS.ALL, data);
+    return api.post<SpecialTradingDay>(API_ENDPOINTS.SPECIAL_TRADING_DAYS.ALL, data);
   },
 
   // Update special trading day
   async update(exchange: string, date: string, data: { tradingDayName?: string; marketOpen?: string; marketClose?: string }): Promise<SpecialTradingDay> {
-    return api.put<SpecialTradingDay>(API_ENDPOINTS.V2_SPECIAL_TRADING_DAYS.DETAILS(exchange, date), data);
+    return api.put<SpecialTradingDay>(API_ENDPOINTS.SPECIAL_TRADING_DAYS.DETAILS(exchange, date), data);
   },
 
   // Delete special trading day
   async delete(exchange: string, date: string): Promise<{ success: boolean }> {
-    return api.delete(API_ENDPOINTS.V2_SPECIAL_TRADING_DAYS.DETAILS(exchange, date));
+    return api.delete(API_ENDPOINTS.SPECIAL_TRADING_DAYS.DETAILS(exchange, date));
   },
 };
 
@@ -1007,32 +1007,32 @@ export const dataProviderService = {
 export const brokerExchangeConfigService = {
   // Get all configs
   async getAll(): Promise<BrokerExchangeConfig[]> {
-    return api.get<BrokerExchangeConfig[]>(API_ENDPOINTS.V2_BROKER_EXCHANGE_CONFIGS.LIST);
+    return api.get<BrokerExchangeConfig[]>(API_ENDPOINTS.BROKER_EXCHANGE_CONFIGS.LIST);
   },
 
   // Get by broker
   async getByBroker(brokerName: string): Promise<BrokerExchangeConfig[]> {
-    return api.get<BrokerExchangeConfig[]>(API_ENDPOINTS.V2_BROKER_EXCHANGE_CONFIGS.BY_BROKER(brokerName));
+    return api.get<BrokerExchangeConfig[]>(API_ENDPOINTS.BROKER_EXCHANGE_CONFIGS.BY_BROKER(brokerName));
   },
 
   // Get specific config
   async get(brokerName: string, exchangeCode: string): Promise<BrokerExchangeConfig> {
-    return api.get<BrokerExchangeConfig>(API_ENDPOINTS.V2_BROKER_EXCHANGE_CONFIGS.DETAILS(brokerName, exchangeCode));
+    return api.get<BrokerExchangeConfig>(API_ENDPOINTS.BROKER_EXCHANGE_CONFIGS.DETAILS(brokerName, exchangeCode));
   },
 
   // Create config
   async create(data: CreateBrokerExchangeConfigRequest): Promise<BrokerExchangeConfig> {
-    return api.post<BrokerExchangeConfig>(API_ENDPOINTS.V2_BROKER_EXCHANGE_CONFIGS.BASE, data);
+    return api.post<BrokerExchangeConfig>(API_ENDPOINTS.BROKER_EXCHANGE_CONFIGS.BASE, data);
   },
 
   // Update config
   async update(brokerName: string, exchangeCode: string, data: Partial<CreateBrokerExchangeConfigRequest>): Promise<BrokerExchangeConfig> {
-    return api.put<BrokerExchangeConfig>(API_ENDPOINTS.V2_BROKER_EXCHANGE_CONFIGS.DETAILS(brokerName, exchangeCode), data);
+    return api.put<BrokerExchangeConfig>(API_ENDPOINTS.BROKER_EXCHANGE_CONFIGS.DETAILS(brokerName, exchangeCode), data);
   },
 
   // Delete config
   async delete(brokerName: string, exchangeCode: string): Promise<{ success: boolean }> {
-    return api.delete(API_ENDPOINTS.V2_BROKER_EXCHANGE_CONFIGS.DETAILS(brokerName, exchangeCode));
+    return api.delete(API_ENDPOINTS.BROKER_EXCHANGE_CONFIGS.DETAILS(brokerName, exchangeCode));
   },
 };
 
@@ -1041,27 +1041,27 @@ export const brokerExchangeConfigService = {
 export const billingPlanService = {
   // Get all plans
   async getAll(): Promise<BillingPlan[]> {
-    return api.get<BillingPlan[]>(API_ENDPOINTS.V2_BILLING_PLANS.LIST);
+    return api.get<BillingPlan[]>(API_ENDPOINTS.BILLING_PLANS.LIST);
   },
 
   // Get plan by name
   async getByName(name: string): Promise<BillingPlan> {
-    return api.get<BillingPlan>(API_ENDPOINTS.V2_BILLING_PLANS.DETAILS(name));
+    return api.get<BillingPlan>(API_ENDPOINTS.BILLING_PLANS.DETAILS(name));
   },
 
   // Create plan
   async create(data: CreateBillingPlanRequest): Promise<BillingPlan> {
-    return api.post<BillingPlan>(API_ENDPOINTS.V2_BILLING_PLANS.BASE, data);
+    return api.post<BillingPlan>(API_ENDPOINTS.BILLING_PLANS.BASE, data);
   },
 
   // Update plan
   async update(name: string, data: Partial<CreateBillingPlanRequest>): Promise<BillingPlan> {
-    return api.put<BillingPlan>(API_ENDPOINTS.V2_BILLING_PLANS.DETAILS(name), data);
+    return api.put<BillingPlan>(API_ENDPOINTS.BILLING_PLANS.DETAILS(name), data);
   },
 
   // Delete plan
   async delete(name: string): Promise<{ success: boolean }> {
-    return api.delete(API_ENDPOINTS.V2_BILLING_PLANS.DETAILS(name));
+    return api.delete(API_ENDPOINTS.BILLING_PLANS.DETAILS(name));
   },
 };
 
@@ -1070,27 +1070,27 @@ export const billingPlanService = {
 export const brokeragePlanService = {
   // Get all plans
   async getAll(): Promise<BrokeragePlan[]> {
-    return api.get<BrokeragePlan[]>(API_ENDPOINTS.V2_BROKERAGE_PLANS.LIST);
+    return api.get<BrokeragePlan[]>(API_ENDPOINTS.BROKERAGE_PLANS.LIST);
   },
 
   // Get plan by name
   async getByName(name: string): Promise<BrokeragePlan> {
-    return api.get<BrokeragePlan>(API_ENDPOINTS.V2_BROKERAGE_PLANS.DETAILS(name));
+    return api.get<BrokeragePlan>(API_ENDPOINTS.BROKERAGE_PLANS.DETAILS(name));
   },
 
   // Create plan
   async create(data: CreateBrokeragePlanRequest): Promise<BrokeragePlan> {
-    return api.post<BrokeragePlan>(API_ENDPOINTS.V2_BROKERAGE_PLANS.BASE, data);
+    return api.post<BrokeragePlan>(API_ENDPOINTS.BROKERAGE_PLANS.BASE, data);
   },
 
   // Update plan
   async update(name: string, data: Partial<CreateBrokeragePlanRequest>): Promise<BrokeragePlan> {
-    return api.put<BrokeragePlan>(API_ENDPOINTS.V2_BROKERAGE_PLANS.DETAILS(name), data);
+    return api.put<BrokeragePlan>(API_ENDPOINTS.BROKERAGE_PLANS.DETAILS(name), data);
   },
 
   // Delete plan
   async delete(name: string): Promise<{ success: boolean }> {
-    return api.delete(API_ENDPOINTS.V2_BROKERAGE_PLANS.DETAILS(name));
+    return api.delete(API_ENDPOINTS.BROKERAGE_PLANS.DETAILS(name));
   },
 };
 
@@ -1099,32 +1099,32 @@ export const brokeragePlanService = {
 export const brokeragePlanRateService = {
   // Get all rates
   async getAll(): Promise<BrokeragePlanRate[]> {
-    return api.get<BrokeragePlanRate[]>(API_ENDPOINTS.V2_BROKERAGE_PLAN_RATES.LIST);
+    return api.get<BrokeragePlanRate[]>(API_ENDPOINTS.BROKERAGE_PLAN_RATES.LIST);
   },
 
   // Get rates for a specific plan
   async getByPlan(planName: string): Promise<BrokeragePlanRate[]> {
-    return api.get<BrokeragePlanRate[]>(API_ENDPOINTS.V2_BROKERAGE_PLAN_RATES.BY_PLAN(planName));
+    return api.get<BrokeragePlanRate[]>(API_ENDPOINTS.BROKERAGE_PLAN_RATES.BY_PLAN(planName));
   },
 
   // Get specific rate
   async get(planName: string, segment: string, product: string): Promise<BrokeragePlanRate> {
-    return api.get<BrokeragePlanRate>(API_ENDPOINTS.V2_BROKERAGE_PLAN_RATES.DETAILS(planName, segment, product));
+    return api.get<BrokeragePlanRate>(API_ENDPOINTS.BROKERAGE_PLAN_RATES.DETAILS(planName, segment, product));
   },
 
   // Create new rate
   async create(data: CreateBrokeragePlanRateRequest): Promise<BrokeragePlanRate> {
-    return api.post<BrokeragePlanRate>(API_ENDPOINTS.V2_BROKERAGE_PLAN_RATES.BASE, data);
+    return api.post<BrokeragePlanRate>(API_ENDPOINTS.BROKERAGE_PLAN_RATES.BASE, data);
   },
 
   // Update rate
   async update(planName: string, segment: string, product: string, data: Partial<CreateBrokeragePlanRateRequest>): Promise<BrokeragePlanRate> {
-    return api.put<BrokeragePlanRate>(API_ENDPOINTS.V2_BROKERAGE_PLAN_RATES.DETAILS(planName, segment, product), data);
+    return api.put<BrokeragePlanRate>(API_ENDPOINTS.BROKERAGE_PLAN_RATES.DETAILS(planName, segment, product), data);
   },
 
   // Delete rate
   async delete(planName: string, segment: string, product: string): Promise<{ success: boolean }> {
-    return api.delete(API_ENDPOINTS.V2_BROKERAGE_PLAN_RATES.DETAILS(planName, segment, product));
+    return api.delete(API_ENDPOINTS.BROKERAGE_PLAN_RATES.DETAILS(planName, segment, product));
   },
 };
 
@@ -1133,40 +1133,40 @@ export const brokeragePlanRateService = {
 export const statutoryChargesService = {
   // Get all statutory charges
   async getAll(): Promise<StatutoryCharges[]> {
-    return api.get<StatutoryCharges[]>(API_ENDPOINTS.V2_STATUTORY_CHARGES.LIST);
+    return api.get<StatutoryCharges[]>(API_ENDPOINTS.STATUTORY_CHARGES.LIST);
   },
 
   // Get specific charge entry
   async get(exchange: string, segment: string, product: string): Promise<StatutoryCharges> {
-    return api.get<StatutoryCharges>(API_ENDPOINTS.V2_STATUTORY_CHARGES.DETAILS(exchange, segment, product));
+    return api.get<StatutoryCharges>(API_ENDPOINTS.STATUTORY_CHARGES.DETAILS(exchange, segment, product));
   },
 
   // Create new charge entry
   async create(data: CreateStatutoryChargesRequest): Promise<StatutoryCharges> {
-    return api.post<StatutoryCharges>(API_ENDPOINTS.V2_STATUTORY_CHARGES.BASE, data);
+    return api.post<StatutoryCharges>(API_ENDPOINTS.STATUTORY_CHARGES.BASE, data);
   },
 
   // Update charge entry
   async update(exchange: string, segment: string, product: string, data: Partial<CreateStatutoryChargesRequest>): Promise<StatutoryCharges> {
-    return api.put<StatutoryCharges>(API_ENDPOINTS.V2_STATUTORY_CHARGES.DETAILS(exchange, segment, product), data);
+    return api.put<StatutoryCharges>(API_ENDPOINTS.STATUTORY_CHARGES.DETAILS(exchange, segment, product), data);
   },
 
   // Delete charge entry
   async delete(exchange: string, segment: string, product: string): Promise<{ success: boolean }> {
-    return api.delete(API_ENDPOINTS.V2_STATUTORY_CHARGES.DETAILS(exchange, segment, product));
+    return api.delete(API_ENDPOINTS.STATUTORY_CHARGES.DETAILS(exchange, segment, product));
   },
 
   // ---- Per-broker sparse overrides (null field = inherit the default) ----
   async getOverrides(): Promise<StatutoryChargesBrokerOverride[]> {
-    return api.get<StatutoryChargesBrokerOverride[]>(API_ENDPOINTS.V2_STATUTORY_CHARGES.OVERRIDES);
+    return api.get<StatutoryChargesBrokerOverride[]>(API_ENDPOINTS.STATUTORY_CHARGES.OVERRIDES);
   },
 
   async upsertOverride(data: StatutoryChargesBrokerOverride): Promise<StatutoryChargesBrokerOverride> {
-    return api.put<StatutoryChargesBrokerOverride>(API_ENDPOINTS.V2_STATUTORY_CHARGES.OVERRIDES, data);
+    return api.put<StatutoryChargesBrokerOverride>(API_ENDPOINTS.STATUTORY_CHARGES.OVERRIDES, data);
   },
 
   async deleteOverride(broker: string, exchange: string, segment: string, product: string): Promise<void> {
-    return api.delete(API_ENDPOINTS.V2_STATUTORY_CHARGES.OVERRIDE_DETAILS(broker, exchange, segment, product));
+    return api.delete(API_ENDPOINTS.STATUTORY_CHARGES.OVERRIDE_DETAILS(broker, exchange, segment, product));
   },
 };
 
@@ -1175,63 +1175,63 @@ export const statutoryChargesService = {
 export const allocationModelService = {
   // Get all models
   async getAll(): Promise<AllocationModel[]> {
-    return api.get<AllocationModel[]>(API_ENDPOINTS.V2_ALLOCATION_MODELS.LIST);
+    return api.get<AllocationModel[]>(API_ENDPOINTS.ALLOCATION_MODELS.LIST);
   },
 
   // Get model by name
   async getByName(name: string): Promise<AllocationModel> {
-    return api.get<AllocationModel>(API_ENDPOINTS.V2_ALLOCATION_MODELS.DETAILS(name));
+    return api.get<AllocationModel>(API_ENDPOINTS.ALLOCATION_MODELS.DETAILS(name));
   },
 
   // Get model strategies
   async getStrategies(name: string): Promise<AllocationModelStrategy[]> {
-    return api.get<AllocationModelStrategy[]>(API_ENDPOINTS.V2_ALLOCATION_MODELS.STRATEGIES(name));
+    return api.get<AllocationModelStrategy[]>(API_ENDPOINTS.ALLOCATION_MODELS.STRATEGIES(name));
   },
 
   // Create model
   async create(data: CreateAllocationModelRequest): Promise<AllocationModel> {
-    return api.post<AllocationModel>(API_ENDPOINTS.V2_ALLOCATION_MODELS.BASE, data);
+    return api.post<AllocationModel>(API_ENDPOINTS.ALLOCATION_MODELS.BASE, data);
   },
 
   // Update model
   async update(name: string, data: Partial<CreateAllocationModelRequest>): Promise<AllocationModel> {
-    return api.put<AllocationModel>(API_ENDPOINTS.V2_ALLOCATION_MODELS.DETAILS(name), data);
+    return api.put<AllocationModel>(API_ENDPOINTS.ALLOCATION_MODELS.DETAILS(name), data);
   },
 
   // Delete model
   async delete(name: string): Promise<{ success: boolean }> {
-    return api.delete(API_ENDPOINTS.V2_ALLOCATION_MODELS.DETAILS(name));
+    return api.delete(API_ENDPOINTS.ALLOCATION_MODELS.DETAILS(name));
   },
 
   // Rename model — re-points all references atomically on the server
   async rename(name: string, newName: string): Promise<AllocationModel> {
-    return api.post<AllocationModel>(API_ENDPOINTS.V2_ALLOCATION_MODELS.RENAME(name), { newName });
+    return api.post<AllocationModel>(API_ENDPOINTS.ALLOCATION_MODELS.RENAME(name), { newName });
   },
 
   // Get deletion impact preview
   async getDeletionImpact(name: string): Promise<AllocationModelDeletionImpact> {
-    return api.get<AllocationModelDeletionImpact>(API_ENDPOINTS.V2_ALLOCATION_MODELS.DELETION_IMPACT(name));
+    return api.get<AllocationModelDeletionImpact>(API_ENDPOINTS.ALLOCATION_MODELS.DELETION_IMPACT(name));
   },
 
   // Add strategy to model
   async addStrategy(name: string, data: Omit<AllocationModelStrategy, 'allocationModel'>): Promise<AllocationModelStrategy> {
-    return api.post<AllocationModelStrategy>(API_ENDPOINTS.V2_ALLOCATION_MODELS.STRATEGIES(name), data);
+    return api.post<AllocationModelStrategy>(API_ENDPOINTS.ALLOCATION_MODELS.STRATEGIES(name), data);
   },
 
   // Update strategy mapping
   async updateStrategy(name: string, strategy: string, data: Partial<AllocationModelStrategy>): Promise<AllocationModelStrategy> {
-    return api.put<AllocationModelStrategy>(API_ENDPOINTS.V2_ALLOCATION_MODELS.STRATEGY_DETAILS(name, strategy), data);
+    return api.put<AllocationModelStrategy>(API_ENDPOINTS.ALLOCATION_MODELS.STRATEGY_DETAILS(name, strategy), data);
   },
 
   // Remove strategy from model
   async removeStrategy(name: string, strategy: string): Promise<{ success: boolean }> {
-    return api.delete(API_ENDPOINTS.V2_ALLOCATION_MODELS.STRATEGY_DETAILS(name, strategy));
+    return api.delete(API_ENDPOINTS.ALLOCATION_MODELS.STRATEGY_DETAILS(name, strategy));
   },
 
   // Sync all associated user+brokers' subscriptions to this model (scaled by each
   // user's capital). Server-side equivalent of the "apply to strategies" bulk edit.
   async syncUserAllocations(name: string): Promise<AllocationSyncResult> {
-    return api.post<AllocationSyncResult>(API_ENDPOINTS.V2_ALLOCATION_MODELS.SYNC_USER_ALLOCATIONS(name), {});
+    return api.post<AllocationSyncResult>(API_ENDPOINTS.ALLOCATION_MODELS.SYNC_USER_ALLOCATIONS(name), {});
   },
 };
 
@@ -1252,32 +1252,32 @@ export const faqService = {
   // Get all FAQs (optionally filtered by category - currently returns all)
   async getAll(category?: string): Promise<FAQ[]> {
     const params = category ? { category } : undefined;
-    return api.get<FAQ[]>(API_ENDPOINTS.V2_FAQS.LIST, params);
+    return api.get<FAQ[]>(API_ENDPOINTS.FAQS.LIST, params);
   },
 
   // Get specific FAQ by SNO
   async getBySno(sno: number): Promise<FAQ> {
-    return api.get<FAQ>(API_ENDPOINTS.V2_FAQS.DETAILS(sno));
+    return api.get<FAQ>(API_ENDPOINTS.FAQS.DETAILS(sno));
   },
 
   // Search FAQs
   async search(term: string): Promise<FAQ[]> {
-    return api.get<FAQ[]>(API_ENDPOINTS.V2_FAQS.SEARCH(term));
+    return api.get<FAQ[]>(API_ENDPOINTS.FAQS.SEARCH(term));
   },
 
   // Create FAQ
   async create(data: CreateFAQRequest): Promise<FAQ> {
-    return api.post<FAQ>(API_ENDPOINTS.V2_FAQS.BASE, data);
+    return api.post<FAQ>(API_ENDPOINTS.FAQS.BASE, data);
   },
 
   // Update FAQ
   async update(sno: number, data: CreateFAQRequest): Promise<FAQ> {
-    return api.put<FAQ>(API_ENDPOINTS.V2_FAQS.DETAILS(sno), data);
+    return api.put<FAQ>(API_ENDPOINTS.FAQS.DETAILS(sno), data);
   },
 
   // Delete FAQ
   async delete(sno: number): Promise<void> {
-    return api.delete(API_ENDPOINTS.V2_FAQS.DETAILS(sno));
+    return api.delete(API_ENDPOINTS.FAQS.DETAILS(sno));
   },
 };
 
@@ -1405,7 +1405,7 @@ export const tradeService = {
   // is a plain PRODUCT row filter: intraday | positional | cashbuy | mtf | all (anything else → 400).
   async getTrades(filter?: TradeFilter): Promise<PaginatedTradesResponse> {
     const type = filter?.tradeType?.toLowerCase() || 'intraday';
-    return api.get<PaginatedTradesResponse>(API_ENDPOINTS.V2_TRADES.BY_TYPE(type), filter);
+    return api.get<PaginatedTradesResponse>(API_ENDPOINTS.TRADES.BY_TYPE(type), filter);
   },
 
   // Sysadmin: start a recompute of brokerage/GST/charges/net-P&L for COMPLETED intraday+positional
@@ -1419,12 +1419,12 @@ export const tradeService = {
     toDate: string;
     dryRun: boolean;
   }): Promise<RecomputeStartResponse> {
-    return api.post<RecomputeStartResponse>(API_ENDPOINTS.V2_TRADES.RECOMPUTE_CHARGES, params);
+    return api.post<RecomputeStartResponse>(API_ENDPOINTS.TRADES.RECOMPUTE_CHARGES, params);
   },
 
   // Current/last recompute job — result live-updates while RUNNING, final on COMPLETED.
   async getRecomputeStatus(): Promise<RecomputeStatus> {
-    return api.get<RecomputeStatus>(API_ENDPOINTS.V2_TRADES.RECOMPUTE_CHARGES_STATUS);
+    return api.get<RecomputeStatus>(API_ENDPOINTS.TRADES.RECOMPUTE_CHARGES_STATUS);
   },
 };
 
@@ -1441,11 +1441,11 @@ export const positionalMtmService = {
     toDate: string;
     dryRun: boolean;
   }): Promise<RecomputeStartResponse> {
-    return api.post<RecomputeStartResponse>(API_ENDPOINTS.V2_POSITIONAL_MTM.RECOMPUTE, params);
+    return api.post<RecomputeStartResponse>(API_ENDPOINTS.POSITIONAL_MTM.RECOMPUTE, params);
   },
 
   async getStatus(): Promise<PositionalMtmRecomputeStatus> {
-    return api.get<PositionalMtmRecomputeStatus>(API_ENDPOINTS.V2_POSITIONAL_MTM.RECOMPUTE_STATUS);
+    return api.get<PositionalMtmRecomputeStatus>(API_ENDPOINTS.POSITIONAL_MTM.RECOMPUTE_STATUS);
   },
 };
 
@@ -1502,15 +1502,15 @@ export const eodJobRunService = {
   // refuses (409) if it's before the exchange's configured post-market time or a run is already in
   // progress for it; 400 for an unknown exchange. Poll getStatus(exchange).
   async run(exchange: string): Promise<EodRunStartResponse> {
-    return api.post<EodRunStartResponse>(API_ENDPOINTS.V2_EOD_JOB_RUN.RUN, { exchange });
+    return api.post<EodRunStartResponse>(API_ENDPOINTS.EOD_JOB_RUN.RUN, { exchange });
   },
 
   async getStatus(exchange: string): Promise<EodRunStatus> {
-    return api.get<EodRunStatus>(`${API_ENDPOINTS.V2_EOD_JOB_RUN.STATUS}?exchange=${encodeURIComponent(exchange)}`);
+    return api.get<EodRunStatus>(`${API_ENDPOINTS.EOD_JOB_RUN.STATUS}?exchange=${encodeURIComponent(exchange)}`);
   },
 
   async getExchanges(): Promise<EodExchangeEligibility[]> {
-    return api.get<EodExchangeEligibility[]>(API_ENDPOINTS.V2_EOD_JOB_RUN.EXCHANGES);
+    return api.get<EodExchangeEligibility[]>(API_ENDPOINTS.EOD_JOB_RUN.EXCHANGES);
   },
 };
 
@@ -1519,13 +1519,13 @@ export const eodJobRunService = {
 export const eodPnlService = {
   // Get EOD PnL reports - returns either array (legacy) or object with records and summary
   async getReports(filter?: EODPnlFilter): Promise<EODPnlReport[] | EODPnlResponse> {
-    return api.get<EODPnlReport[] | EODPnlResponse>(API_ENDPOINTS.V2_EOD_PNL.BASE, filter);
+    return api.get<EODPnlReport[] | EODPnlResponse>(API_ENDPOINTS.EOD_PNL.BASE, filter);
   },
 
   // Distinct (strategyName, product) present in the caller's scoped EOD reports — for the reports
   // strategy filter, unioned with the active catalog so disabled/removed strategies stay filterable.
   async getReportStrategies(): Promise<{ strategyName: string; product: string | null }[]> {
-    return api.get<{ strategyName: string; product: string | null }[]>(API_ENDPOINTS.V2_EOD_PNL.STRATEGIES);
+    return api.get<{ strategyName: string; product: string | null }[]>(API_ENDPOINTS.EOD_PNL.STRATEGIES);
   },
 };
 
@@ -1541,7 +1541,7 @@ export const capitalHistoryService = {
     endDate?: string;
     limit?: number;
   }): Promise<CapitalChangeHistory[]> {
-    return api.get<CapitalChangeHistory[]>(API_ENDPOINTS.V2_CAPITAL_HISTORY.BASE, params);
+    return api.get<CapitalChangeHistory[]>(API_ENDPOINTS.CAPITAL_HISTORY.BASE, params);
   },
 
   // Get a page of capital-change history. Sending page/pageSize makes the endpoint
@@ -1562,7 +1562,7 @@ export const capitalHistoryService = {
     };
     if (params.broker) query.broker = params.broker;
     if (params.search) query.search = params.search;
-    return api.get<PaginatedResponse<CapitalChangeHistory>>(API_ENDPOINTS.V2_CAPITAL_HISTORY.BASE, query);
+    return api.get<PaginatedResponse<CapitalChangeHistory>>(API_ENDPOINTS.CAPITAL_HISTORY.BASE, query);
   },
 };
 
@@ -1586,7 +1586,7 @@ export const userMarginService = {
     toDate?: string;
     date?: string; // Legacy single date parameter
   }): Promise<MarginRecord[]> {
-    return api.get<MarginRecord[]>(API_ENDPOINTS.V2_USER_MARGINS.BASE, params);
+    return api.get<MarginRecord[]>(API_ENDPOINTS.USER_MARGINS.BASE, params);
   },
 
   // Get a page of margin records. Filters + ordering + the authorized-user scope
@@ -1606,7 +1606,7 @@ export const userMarginService = {
       pageSize: params.pageSize,
     };
     if (params.username) query.username = params.username;
-    return api.get(API_ENDPOINTS.V2_USER_MARGINS.BASE, query);
+    return api.get(API_ENDPOINTS.USER_MARGINS.BASE, query);
   },
 };
 
@@ -1616,7 +1616,7 @@ export const brokerLoginStatusService = {
   // Get login status (tokens are masked by default)
   async getStatus(username?: string): Promise<BrokerLoginStatus[]> {
     const params = username ? { username } : undefined;
-    return api.get<BrokerLoginStatus[]>(API_ENDPOINTS.V2_USER_BROKER_LOGIN_STATUS.BASE, params);
+    return api.get<BrokerLoginStatus[]>(API_ENDPOINTS.USER_BROKER_LOGIN_STATUS.BASE, params);
   },
 
   // Server-side paginated + filtered login status for the admin tab. search/broker/status/todayOnly
@@ -1634,12 +1634,12 @@ export const brokerLoginStatusService = {
     if (params.broker && params.broker !== 'all') query.broker = params.broker;
     if (params.status && params.status !== 'all') query.status = params.status;
     if (params.todayOnly) query.todayOnly = true;
-    return api.get<PaginatedResponse<BrokerLoginStatus>>(API_ENDPOINTS.V2_USER_BROKER_LOGIN_STATUS.BASE, query);
+    return api.get<PaginatedResponse<BrokerLoginStatus>>(API_ENDPOINTS.USER_BROKER_LOGIN_STATUS.BASE, query);
   },
 
   // Get full login status for specific user-broker with unmasked tokens
   async getStatusWithTokens(username: string, broker: string): Promise<BrokerLoginStatus> {
-    return api.get<BrokerLoginStatus>(API_ENDPOINTS.V2_USER_BROKER_LOGIN_STATUS.BASE, {
+    return api.get<BrokerLoginStatus>(API_ENDPOINTS.USER_BROKER_LOGIN_STATUS.BASE, {
       username,
       broker,
       includeTokens: 'true',
@@ -1648,7 +1648,7 @@ export const brokerLoginStatusService = {
 
   // Delete login status for specific user-broker
   async deleteStatus(username: string, broker: string): Promise<void> {
-    return api.delete(`${API_ENDPOINTS.V2_USER_BROKER_LOGIN_STATUS.BASE}?username=${encodeURIComponent(username)}&broker=${encodeURIComponent(broker)}`);
+    return api.delete(`${API_ENDPOINTS.USER_BROKER_LOGIN_STATUS.BASE}?username=${encodeURIComponent(username)}&broker=${encodeURIComponent(broker)}`);
   },
 };
 
@@ -1667,7 +1667,7 @@ export const brokerSocketStatusService = {
   // Live per-user-broker WebSocket (order/position socket) connection status.
   async getStatus(username?: string): Promise<BrokerSocketStatus[]> {
     const params = username ? { username } : undefined;
-    return api.get<BrokerSocketStatus[]>(API_ENDPOINTS.V2_USER_BROKER_SOCKET_STATUS.BASE, params);
+    return api.get<BrokerSocketStatus[]>(API_ENDPOINTS.USER_BROKER_SOCKET_STATUS.BASE, params);
   },
 
   // Server-side paginated + filtered socket status for the admin tab. search/broker/status are all
@@ -1683,7 +1683,7 @@ export const brokerSocketStatusService = {
     if (params.search) query.search = params.search;
     if (params.broker && params.broker !== 'all') query.broker = params.broker;
     if (params.status && params.status !== 'all') query.status = params.status;
-    return api.get<PaginatedResponse<BrokerSocketStatus>>(API_ENDPOINTS.V2_USER_BROKER_SOCKET_STATUS.BASE, query);
+    return api.get<PaginatedResponse<BrokerSocketStatus>>(API_ENDPOINTS.USER_BROKER_SOCKET_STATUS.BASE, query);
   },
 };
 
@@ -1709,7 +1709,7 @@ export const brokerAgentsService = {
     const query: Record<string, unknown> = { page: params.page, pageSize: params.pageSize };
     if (params.search) query.search = params.search;
     if (params.broker && params.broker !== 'all') query.broker = params.broker;
-    return api.get<PaginatedResponse<BrokerAgentInfo>>(API_ENDPOINTS.V2_USER_BROKER_AGENTS.BASE, query);
+    return api.get<PaginatedResponse<BrokerAgentInfo>>(API_ENDPOINTS.USER_BROKER_AGENTS.BASE, query);
   },
 };
 
@@ -1719,7 +1719,7 @@ export const brokerApiStatsService = {
   // Get raw API stats (individual records)
   // broker can be 'all' or empty to get stats for all brokers
   async getStats(params: { broker?: string; date: string }): Promise<BrokerApiStat[]> {
-    return api.get<BrokerApiStat[]>(API_ENDPOINTS.V2_BROKER_API_STATS.BASE, params);
+    return api.get<BrokerApiStat[]>(API_ENDPOINTS.BROKER_API_STATS.BASE, params);
   },
 };
 
@@ -1728,42 +1728,42 @@ export const brokerApiStatsService = {
 export const v2BrokerService = {
   // Get supported broker types
   async getBrokerTypes(): Promise<import('@/components/brokers/Broker').BrokerTypeInfo[]> {
-    return api.get(`${API_ENDPOINTS.V2_BROKERS.BASE}/types`);
+    return api.get(`${API_ENDPOINTS.BROKERS.BASE}/types`);
   },
 
   // Get all brokers
   async getAll(): Promise<import('@/types/broker').Broker[]> {
-    return api.get(API_ENDPOINTS.V2_BROKERS.LIST);
+    return api.get(API_ENDPOINTS.BROKERS.LIST);
   },
 
   // Get broker by name
   async getByName(name: string): Promise<import('@/types/broker').Broker> {
-    return api.get(API_ENDPOINTS.V2_BROKERS.DETAILS(name));
+    return api.get(API_ENDPOINTS.BROKERS.DETAILS(name));
   },
 
   // Create broker
   async create(data: import('@/types/broker').CreateBrokerRequest): Promise<import('@/types/broker').Broker> {
-    return api.post(API_ENDPOINTS.V2_BROKERS.BASE, data);
+    return api.post(API_ENDPOINTS.BROKERS.BASE, data);
   },
 
   // Update broker
   async update(name: string, data: import('@/types/broker').UpdateBrokerRequest): Promise<import('@/types/broker').Broker> {
-    return api.put(API_ENDPOINTS.V2_BROKERS.DETAILS(name), data);
+    return api.put(API_ENDPOINTS.BROKERS.DETAILS(name), data);
   },
 
   // Stop broker
   async stop(name: string): Promise<{ success: boolean }> {
-    return api.put(API_ENDPOINTS.V2_BROKERS.STOP(name), {});
+    return api.put(API_ENDPOINTS.BROKERS.STOP(name), {});
   },
 
   // Unstop broker
   async unstop(name: string): Promise<{ success: boolean }> {
-    return api.put(API_ENDPOINTS.V2_BROKERS.UNSTOP(name), {});
+    return api.put(API_ENDPOINTS.BROKERS.UNSTOP(name), {});
   },
 
   // Delete broker
   async delete(name: string): Promise<{ success: boolean }> {
-    return api.delete(API_ENDPOINTS.V2_BROKERS.DETAILS(name));
+    return api.delete(API_ENDPOINTS.BROKERS.DETAILS(name));
   },
 };
 
@@ -1779,42 +1779,42 @@ export interface UserEventDayAction {
 export const userEventDayActionService = {
   // Get all user event day actions
   async getAll(): Promise<UserEventDayAction[]> {
-    return api.get<UserEventDayAction[]>(API_ENDPOINTS.V2_USER_EVENT_DAY_ACTIONS.ALL);
+    return api.get<UserEventDayAction[]>(API_ENDPOINTS.USER_EVENT_DAY_ACTIONS.ALL);
   },
 
   // Get user event day actions for a specific user
   async getByUser(username: string): Promise<UserEventDayAction[]> {
-    return api.get<UserEventDayAction[]>(API_ENDPOINTS.V2_USER_EVENT_DAY_ACTIONS.BASE(username));
+    return api.get<UserEventDayAction[]>(API_ENDPOINTS.USER_EVENT_DAY_ACTIONS.BASE(username));
   },
 
   // Get user event day actions by exchange
   async getByUserAndExchange(username: string, exchange: string): Promise<UserEventDayAction[]> {
-    return api.get<UserEventDayAction[]>(`${API_ENDPOINTS.V2_USER_EVENT_DAY_ACTIONS.BASE(username)}?exchange=${exchange}`);
+    return api.get<UserEventDayAction[]>(`${API_ENDPOINTS.USER_EVENT_DAY_ACTIONS.BASE(username)}?exchange=${exchange}`);
   },
 
   // Get specific user event day action
   async get(username: string, eventDate: string, exchange: string): Promise<UserEventDayAction> {
-    return api.get<UserEventDayAction>(`${API_ENDPOINTS.V2_USER_EVENT_DAY_ACTIONS.BASE(username)}?eventDate=${eventDate}&exchange=${exchange}`);
+    return api.get<UserEventDayAction>(`${API_ENDPOINTS.USER_EVENT_DAY_ACTIONS.BASE(username)}?eventDate=${eventDate}&exchange=${exchange}`);
   },
 
   // Create user event day action
   async create(username: string, data: { eventDate: string; exchangeCode: string; capitalPercentage: number }): Promise<UserEventDayAction> {
-    return api.post<UserEventDayAction>(API_ENDPOINTS.V2_USER_EVENT_DAY_ACTIONS.BASE(username), data);
+    return api.post<UserEventDayAction>(API_ENDPOINTS.USER_EVENT_DAY_ACTIONS.BASE(username), data);
   },
 
   // Update user event day action
   async update(username: string, eventDate: string, exchange: string, data: { capitalPercentage: number }): Promise<UserEventDayAction> {
-    return api.put<UserEventDayAction>(`${API_ENDPOINTS.V2_USER_EVENT_DAY_ACTIONS.BASE(username)}?eventDate=${eventDate}&exchange=${exchange}`, data);
+    return api.put<UserEventDayAction>(`${API_ENDPOINTS.USER_EVENT_DAY_ACTIONS.BASE(username)}?eventDate=${eventDate}&exchange=${exchange}`, data);
   },
 
   // Delete user event day action
   async delete(username: string, eventDate: string, exchange: string): Promise<{ success: boolean }> {
-    return api.delete(`${API_ENDPOINTS.V2_USER_EVENT_DAY_ACTIONS.BASE(username)}?eventDate=${eventDate}&exchange=${exchange}`);
+    return api.delete(`${API_ENDPOINTS.USER_EVENT_DAY_ACTIONS.BASE(username)}?eventDate=${eventDate}&exchange=${exchange}`);
   },
 
   // Delete all user event day actions
   async deleteAll(username: string): Promise<{ success: boolean }> {
-    return api.delete(API_ENDPOINTS.V2_USER_EVENT_DAY_ACTIONS.BASE(username));
+    return api.delete(API_ENDPOINTS.USER_EVENT_DAY_ACTIONS.BASE(username));
   },
 };
 
@@ -1830,42 +1830,42 @@ export interface StrategyEventDayAction {
 export const strategyEventDayActionService = {
   // Get all strategy event day actions
   async getAll(): Promise<StrategyEventDayAction[]> {
-    return api.get<StrategyEventDayAction[]>(API_ENDPOINTS.V2_STRATEGY_EVENT_DAY_ACTIONS.ALL);
+    return api.get<StrategyEventDayAction[]>(API_ENDPOINTS.STRATEGY_EVENT_DAY_ACTIONS.ALL);
   },
 
   // Get strategy event day actions for a specific strategy
   async getByStrategy(strategyName: string): Promise<StrategyEventDayAction[]> {
-    return api.get<StrategyEventDayAction[]>(API_ENDPOINTS.V2_STRATEGY_EVENT_DAY_ACTIONS.BASE(strategyName));
+    return api.get<StrategyEventDayAction[]>(API_ENDPOINTS.STRATEGY_EVENT_DAY_ACTIONS.BASE(strategyName));
   },
 
   // Get strategy event day actions by exchange
   async getByStrategyAndExchange(strategyName: string, exchange: string): Promise<StrategyEventDayAction[]> {
-    return api.get<StrategyEventDayAction[]>(`${API_ENDPOINTS.V2_STRATEGY_EVENT_DAY_ACTIONS.BASE(strategyName)}?exchange=${exchange}`);
+    return api.get<StrategyEventDayAction[]>(`${API_ENDPOINTS.STRATEGY_EVENT_DAY_ACTIONS.BASE(strategyName)}?exchange=${exchange}`);
   },
 
   // Get specific strategy event day action
   async get(strategyName: string, eventDate: string, exchange: string): Promise<StrategyEventDayAction> {
-    return api.get<StrategyEventDayAction>(`${API_ENDPOINTS.V2_STRATEGY_EVENT_DAY_ACTIONS.BASE(strategyName)}?eventDate=${eventDate}&exchange=${exchange}`);
+    return api.get<StrategyEventDayAction>(`${API_ENDPOINTS.STRATEGY_EVENT_DAY_ACTIONS.BASE(strategyName)}?eventDate=${eventDate}&exchange=${exchange}`);
   },
 
   // Create strategy event day action
   async create(strategyName: string, data: { eventDate: string; exchangeCode: string; capitalPercentage: number }): Promise<StrategyEventDayAction> {
-    return api.post<StrategyEventDayAction>(API_ENDPOINTS.V2_STRATEGY_EVENT_DAY_ACTIONS.BASE(strategyName), data);
+    return api.post<StrategyEventDayAction>(API_ENDPOINTS.STRATEGY_EVENT_DAY_ACTIONS.BASE(strategyName), data);
   },
 
   // Update strategy event day action
   async update(strategyName: string, eventDate: string, exchange: string, data: { capitalPercentage: number }): Promise<StrategyEventDayAction> {
-    return api.put<StrategyEventDayAction>(`${API_ENDPOINTS.V2_STRATEGY_EVENT_DAY_ACTIONS.BASE(strategyName)}?eventDate=${eventDate}&exchange=${exchange}`, data);
+    return api.put<StrategyEventDayAction>(`${API_ENDPOINTS.STRATEGY_EVENT_DAY_ACTIONS.BASE(strategyName)}?eventDate=${eventDate}&exchange=${exchange}`, data);
   },
 
   // Delete strategy event day action
   async delete(strategyName: string, eventDate: string, exchange: string): Promise<{ success: boolean }> {
-    return api.delete(`${API_ENDPOINTS.V2_STRATEGY_EVENT_DAY_ACTIONS.BASE(strategyName)}?eventDate=${eventDate}&exchange=${exchange}`);
+    return api.delete(`${API_ENDPOINTS.STRATEGY_EVENT_DAY_ACTIONS.BASE(strategyName)}?eventDate=${eventDate}&exchange=${exchange}`);
   },
 
   // Delete all strategy event day actions
   async deleteAll(strategyName: string): Promise<{ success: boolean }> {
-    return api.delete(API_ENDPOINTS.V2_STRATEGY_EVENT_DAY_ACTIONS.BASE(strategyName));
+    return api.delete(API_ENDPOINTS.STRATEGY_EVENT_DAY_ACTIONS.BASE(strategyName));
   },
 };
 
@@ -1881,35 +1881,35 @@ export interface ProductEventDayAction {
 
 export const productEventDayActionService = {
   async getAll(): Promise<ProductEventDayAction[]> {
-    return api.get<ProductEventDayAction[]>(API_ENDPOINTS.V2_PRODUCT_EVENT_DAY_ACTIONS.ALL);
+    return api.get<ProductEventDayAction[]>(API_ENDPOINTS.PRODUCT_EVENT_DAY_ACTIONS.ALL);
   },
 
   async getByProduct(product: string): Promise<ProductEventDayAction[]> {
-    return api.get<ProductEventDayAction[]>(API_ENDPOINTS.V2_PRODUCT_EVENT_DAY_ACTIONS.BASE(product));
+    return api.get<ProductEventDayAction[]>(API_ENDPOINTS.PRODUCT_EVENT_DAY_ACTIONS.BASE(product));
   },
 
   async getByProductAndExchange(product: string, exchange: string): Promise<ProductEventDayAction[]> {
-    return api.get<ProductEventDayAction[]>(`${API_ENDPOINTS.V2_PRODUCT_EVENT_DAY_ACTIONS.BASE(product)}?exchange=${exchange}`);
+    return api.get<ProductEventDayAction[]>(`${API_ENDPOINTS.PRODUCT_EVENT_DAY_ACTIONS.BASE(product)}?exchange=${exchange}`);
   },
 
   async get(product: string, eventDate: string, exchange: string): Promise<ProductEventDayAction> {
-    return api.get<ProductEventDayAction>(`${API_ENDPOINTS.V2_PRODUCT_EVENT_DAY_ACTIONS.BASE(product)}?eventDate=${eventDate}&exchange=${exchange}`);
+    return api.get<ProductEventDayAction>(`${API_ENDPOINTS.PRODUCT_EVENT_DAY_ACTIONS.BASE(product)}?eventDate=${eventDate}&exchange=${exchange}`);
   },
 
   async create(product: string, data: { eventDate: string; exchangeCode: string; capitalPercentage: number }): Promise<ProductEventDayAction> {
-    return api.post<ProductEventDayAction>(API_ENDPOINTS.V2_PRODUCT_EVENT_DAY_ACTIONS.BASE(product), data);
+    return api.post<ProductEventDayAction>(API_ENDPOINTS.PRODUCT_EVENT_DAY_ACTIONS.BASE(product), data);
   },
 
   async update(product: string, eventDate: string, exchange: string, data: { capitalPercentage: number }): Promise<ProductEventDayAction> {
-    return api.put<ProductEventDayAction>(`${API_ENDPOINTS.V2_PRODUCT_EVENT_DAY_ACTIONS.BASE(product)}?eventDate=${eventDate}&exchange=${exchange}`, data);
+    return api.put<ProductEventDayAction>(`${API_ENDPOINTS.PRODUCT_EVENT_DAY_ACTIONS.BASE(product)}?eventDate=${eventDate}&exchange=${exchange}`, data);
   },
 
   async delete(product: string, eventDate: string, exchange: string): Promise<{ success: boolean }> {
-    return api.delete(`${API_ENDPOINTS.V2_PRODUCT_EVENT_DAY_ACTIONS.BASE(product)}?eventDate=${eventDate}&exchange=${exchange}`);
+    return api.delete(`${API_ENDPOINTS.PRODUCT_EVENT_DAY_ACTIONS.BASE(product)}?eventDate=${eventDate}&exchange=${exchange}`);
   },
 
   async deleteAll(product: string): Promise<{ success: boolean }> {
-    return api.delete(API_ENDPOINTS.V2_PRODUCT_EVENT_DAY_ACTIONS.BASE(product));
+    return api.delete(API_ENDPOINTS.PRODUCT_EVENT_DAY_ACTIONS.BASE(product));
   },
 };
 
@@ -1950,7 +1950,7 @@ export interface UserBill {
 export const userBillsService = {
   // Get all bills by date range, optionally filtered by username (full array — legacy).
   async getBills(params: { username?: string; fromDate: string; toDate: string }): Promise<UserBill[]> {
-    return api.get<UserBill[]>(API_ENDPOINTS.V2_USER_BILLS.BASE, params);
+    return api.get<UserBill[]>(API_ENDPOINTS.USER_BILLS.BASE, params);
   },
 
   // Get a page of bills. The status filter and the authorized-user scope are applied
@@ -1972,22 +1972,22 @@ export const userBillsService = {
     };
     if (params.username) query.username = params.username;
     if (params.status && params.status !== 'ALL') query.status = params.status;
-    return api.get(API_ENDPOINTS.V2_USER_BILLS.BASE, query);
+    return api.get(API_ENDPOINTS.USER_BILLS.BASE, query);
   },
 
   // Get user bills (legacy)
   async getByUser(username: string): Promise<UserBill[]> {
-    return api.get<UserBill[]>(API_ENDPOINTS.V2_USER_BILLS.BY_USER(username));
+    return api.get<UserBill[]>(API_ENDPOINTS.USER_BILLS.BY_USER(username));
   },
 
   // Get bill details
   async getBill(username: string, billId: string): Promise<UserBill> {
-    return api.get<UserBill>(`${API_ENDPOINTS.V2_USER_BILLS.BY_USER(username)}/${billId}`);
+    return api.get<UserBill>(`${API_ENDPOINTS.USER_BILLS.BY_USER(username)}/${billId}`);
   },
 
   // Mark bill as paid
   async markPaid(username: string, billId: string, amount: number): Promise<UserBill> {
-    return api.put<UserBill>(`${API_ENDPOINTS.V2_USER_BILLS.BY_USER(username)}/${billId}/pay`, { amount });
+    return api.put<UserBill>(`${API_ENDPOINTS.USER_BILLS.BY_USER(username)}/${billId}/pay`, { amount });
   },
 
   // Sysadmin-only. Reconcile bills from a date forward to today: recompute existing
@@ -1996,7 +1996,7 @@ export const userBillsService = {
   // rebuilds EOD reports from raw trades first (authoritative, slow); false reuses
   // the daily-maintained reports (fast). Runs in the background; returns once started.
   async reconcile(params: { fromDate: string; regenerateEodReports: boolean }): Promise<{ started: boolean; fromDate: string; regenerateEodReports: boolean }> {
-    return api.post(API_ENDPOINTS.V2_USER_BILLS.RECONCILE, params);
+    return api.post(API_ENDPOINTS.USER_BILLS.RECONCILE, params);
   },
 };
 
@@ -2021,32 +2021,32 @@ export interface CreateBrokerStrategyConfigRequest {
 export const brokerStrategyConfigService = {
   // Get all configs
   async getAll(): Promise<BrokerStrategyConfig[]> {
-    return api.get<BrokerStrategyConfig[]>(API_ENDPOINTS.V2_BROKER_STRATEGY_CONFIGS.BASE);
+    return api.get<BrokerStrategyConfig[]>(API_ENDPOINTS.BROKER_STRATEGY_CONFIGS.BASE);
   },
 
   // Get configs by broker
   async getByBroker(broker: string): Promise<BrokerStrategyConfig[]> {
-    return api.get<BrokerStrategyConfig[]>(`${API_ENDPOINTS.V2_BROKER_STRATEGY_CONFIGS.BASE}/${broker}`);
+    return api.get<BrokerStrategyConfig[]>(`${API_ENDPOINTS.BROKER_STRATEGY_CONFIGS.BASE}/${broker}`);
   },
 
   // Get config by broker and strategy
   async get(broker: string, strategy: string): Promise<BrokerStrategyConfig> {
-    return api.get<BrokerStrategyConfig>(API_ENDPOINTS.V2_BROKER_STRATEGY_CONFIGS.DETAILS(broker, strategy));
+    return api.get<BrokerStrategyConfig>(API_ENDPOINTS.BROKER_STRATEGY_CONFIGS.DETAILS(broker, strategy));
   },
 
   // Create config
   async create(data: CreateBrokerStrategyConfigRequest): Promise<BrokerStrategyConfig> {
-    return api.post<BrokerStrategyConfig>(API_ENDPOINTS.V2_BROKER_STRATEGY_CONFIGS.BASE, data);
+    return api.post<BrokerStrategyConfig>(API_ENDPOINTS.BROKER_STRATEGY_CONFIGS.BASE, data);
   },
 
   // Update config
   async update(broker: string, strategy: string, data: Partial<CreateBrokerStrategyConfigRequest>): Promise<BrokerStrategyConfig> {
-    return api.put<BrokerStrategyConfig>(API_ENDPOINTS.V2_BROKER_STRATEGY_CONFIGS.DETAILS(broker, strategy), data);
+    return api.put<BrokerStrategyConfig>(API_ENDPOINTS.BROKER_STRATEGY_CONFIGS.DETAILS(broker, strategy), data);
   },
 
   // Delete config
   async delete(broker: string, strategy: string): Promise<{ success: boolean }> {
-    return api.delete(API_ENDPOINTS.V2_BROKER_STRATEGY_CONFIGS.DETAILS(broker, strategy));
+    return api.delete(API_ENDPOINTS.BROKER_STRATEGY_CONFIGS.DETAILS(broker, strategy));
   },
 };
 
@@ -2068,22 +2068,22 @@ export interface StrategyDaysAllocationConfig {
 export const strategyDaysAllocationService = {
   // Get all configs
   async getAll(): Promise<StrategyDaysAllocationConfig[]> {
-    return api.get<StrategyDaysAllocationConfig[]>(API_ENDPOINTS.V2_STRATEGY_DAYS_ALLOCATION.BASE);
+    return api.get<StrategyDaysAllocationConfig[]>(API_ENDPOINTS.STRATEGY_DAYS_ALLOCATION.BASE);
   },
 
   // Get config by strategy and allocation model
   async get(strategyName: string, allocationModel: string): Promise<StrategyDaysAllocationConfig> {
-    return api.get<StrategyDaysAllocationConfig>(API_ENDPOINTS.V2_STRATEGY_DAYS_ALLOCATION.DETAILS(strategyName, allocationModel));
+    return api.get<StrategyDaysAllocationConfig>(API_ENDPOINTS.STRATEGY_DAYS_ALLOCATION.DETAILS(strategyName, allocationModel));
   },
 
   // Create/Update config
   async save(data: StrategyDaysAllocationConfig): Promise<StrategyDaysAllocationConfig> {
-    return api.post<StrategyDaysAllocationConfig>(API_ENDPOINTS.V2_STRATEGY_DAYS_ALLOCATION.BASE, data);
+    return api.post<StrategyDaysAllocationConfig>(API_ENDPOINTS.STRATEGY_DAYS_ALLOCATION.BASE, data);
   },
 
   // Delete config
   async delete(strategyName: string, allocationModel: string): Promise<{ success: boolean }> {
-    return api.delete(API_ENDPOINTS.V2_STRATEGY_DAYS_ALLOCATION.DETAILS(strategyName, allocationModel));
+    return api.delete(API_ENDPOINTS.STRATEGY_DAYS_ALLOCATION.DETAILS(strategyName, allocationModel));
   },
 };
 
@@ -2104,12 +2104,12 @@ export interface UnAccountedPnl {
 export const unAccountedPnlService = {
   // Get all unaccounted PnL records
   async getAll(params?: { username?: string; broker?: string; fromDate?: string; toDate?: string; resolved?: boolean }): Promise<UnAccountedPnl[]> {
-    return api.get<UnAccountedPnl[]>(API_ENDPOINTS.V2_UNACCOUNTED_PNL.BASE, params);
+    return api.get<UnAccountedPnl[]>(API_ENDPOINTS.UNACCOUNTED_PNL.BASE, params);
   },
 
   // Resolve unaccounted PnL
   async resolve(username: string, broker: string, strategy: string, date: string): Promise<UnAccountedPnl> {
-    return api.put<UnAccountedPnl>(`${API_ENDPOINTS.V2_UNACCOUNTED_PNL.BASE}/${username}/${broker}/${strategy}/${date}/resolve`, {});
+    return api.put<UnAccountedPnl>(`${API_ENDPOINTS.UNACCOUNTED_PNL.BASE}/${username}/${broker}/${strategy}/${date}/resolve`, {});
   },
 };
 
@@ -2119,7 +2119,7 @@ export const analyticsService = {
   // Get admin analytics
   async getAnalytics(params?: { fromDate?: string; toDate?: string }): Promise<AdminAnalytics> {
     // This might need a custom endpoint or aggregate from multiple sources
-    return api.get('/api/v2/analytics', params);
+    return api.get('/api/analytics', params);
   },
 };
 
@@ -2142,27 +2142,27 @@ export interface UpdateSystemConfigRequest {
 export const systemConfigService = {
   // Get all system configs
   async getAll(): Promise<SystemConfigEntry[]> {
-    return api.get<SystemConfigEntry[]>(API_ENDPOINTS.V2_SYSTEM_CONFIG.LIST);
+    return api.get<SystemConfigEntry[]>(API_ENDPOINTS.SYSTEM_CONFIG.LIST);
   },
 
   // Get specific config by property
   async getByProperty(property: string): Promise<SystemConfigEntry> {
-    return api.get<SystemConfigEntry>(API_ENDPOINTS.V2_SYSTEM_CONFIG.DETAILS(property));
+    return api.get<SystemConfigEntry>(API_ENDPOINTS.SYSTEM_CONFIG.DETAILS(property));
   },
 
   // Create new config
   async create(data: CreateSystemConfigRequest): Promise<SystemConfigEntry> {
-    return api.post<SystemConfigEntry>(API_ENDPOINTS.V2_SYSTEM_CONFIG.BASE, data);
+    return api.post<SystemConfigEntry>(API_ENDPOINTS.SYSTEM_CONFIG.BASE, data);
   },
 
   // Update existing config
   async update(property: string, data: UpdateSystemConfigRequest): Promise<SystemConfigEntry> {
-    return api.put<SystemConfigEntry>(API_ENDPOINTS.V2_SYSTEM_CONFIG.DETAILS(property), data);
+    return api.put<SystemConfigEntry>(API_ENDPOINTS.SYSTEM_CONFIG.DETAILS(property), data);
   },
 
   // Delete config
   async delete(property: string): Promise<{ success: boolean }> {
-    return api.delete(API_ENDPOINTS.V2_SYSTEM_CONFIG.DETAILS(property));
+    return api.delete(API_ENDPOINTS.SYSTEM_CONFIG.DETAILS(property));
   },
 };
 
@@ -2188,7 +2188,7 @@ export const strategyConfigTreeService = {
   // Get all configs (full list — kept for callers that genuinely need it; the
   // admin table should use getPaginated to avoid shipping the whole tree).
   async getAll(): Promise<StrategyConfigTree[]> {
-    return api.get<StrategyConfigTree[]>(API_ENDPOINTS.V2_STRATEGY_CONFIG_TREE.LIST);
+    return api.get<StrategyConfigTree[]>(API_ENDPOINTS.STRATEGY_CONFIG_TREE.LIST);
   },
 
   // Get a page of the admin config list. Search / strategy / priority filters and
@@ -2204,18 +2204,18 @@ export const strategyConfigTreeService = {
     if (params.search) query.search = params.search;
     if (params.strategyName) query.strategyName = params.strategyName;
     if (params.priority != null) query.priority = params.priority;
-    return api.get<PaginatedResponse<StrategyConfigTree>>(API_ENDPOINTS.V2_STRATEGY_CONFIG_TREE.LIST, query);
+    return api.get<PaginatedResponse<StrategyConfigTree>>(API_ENDPOINTS.STRATEGY_CONFIG_TREE.LIST, query);
   },
 
   // Base (scope-less) configs — one row per strategy that has a base config.
   // Backs the "Clone From" picker without loading the whole tree.
   async getBaseConfigs(): Promise<StrategyConfigTree[]> {
-    return api.get<StrategyConfigTree[]>(API_ENDPOINTS.V2_STRATEGY_CONFIG_TREE.BASE_CONFIGS);
+    return api.get<StrategyConfigTree[]>(API_ENDPOINTS.STRATEGY_CONFIG_TREE.BASE_CONFIGS);
   },
 
   // Distinct strategy names present in the config tree — for the filter dropdown.
   async getStrategyNames(): Promise<string[]> {
-    return api.get<string[]>(API_ENDPOINTS.V2_STRATEGY_CONFIG_TREE.STRATEGY_NAMES);
+    return api.get<string[]>(API_ENDPOINTS.STRATEGY_CONFIG_TREE.STRATEGY_NAMES);
   },
 
   // Live duplicate-scope check for the create form. The POST still 409s on a real
@@ -2232,18 +2232,18 @@ export const strategyConfigTreeService = {
     if (params.broker) query.broker = params.broker;
     if (params.tranchNumber != null) query.tranchNumber = params.tranchNumber;
     if (params.dayCondition) query.dayCondition = params.dayCondition;
-    const res = await api.get<{ exists: boolean }>(API_ENDPOINTS.V2_STRATEGY_CONFIG_TREE.EXISTS, query);
+    const res = await api.get<{ exists: boolean }>(API_ENDPOINTS.STRATEGY_CONFIG_TREE.EXISTS, query);
     return res.exists;
   },
 
   // Get config by ID
   async getById(id: number): Promise<StrategyConfigTree> {
-    return api.get<StrategyConfigTree>(API_ENDPOINTS.V2_STRATEGY_CONFIG_TREE.DETAILS(id));
+    return api.get<StrategyConfigTree>(API_ENDPOINTS.STRATEGY_CONFIG_TREE.DETAILS(id));
   },
 
   // Get all configs for a strategy
   async getByStrategy(strategyName: string): Promise<StrategyConfigTree[]> {
-    return api.get<StrategyConfigTree[]>(API_ENDPOINTS.V2_STRATEGY_CONFIG_TREE.BY_STRATEGY(strategyName));
+    return api.get<StrategyConfigTree[]>(API_ENDPOINTS.STRATEGY_CONFIG_TREE.BY_STRATEGY(strategyName));
   },
 
   // Get effective config (merged from all applicable configs)
@@ -2254,27 +2254,27 @@ export const strategyConfigTreeService = {
     tranchNumber?: number;
     dayCondition?: string;
   }): Promise<EffectiveConfig> {
-    return api.get<EffectiveConfig>(API_ENDPOINTS.V2_STRATEGY_CONFIG_TREE.EFFECTIVE, params);
+    return api.get<EffectiveConfig>(API_ENDPOINTS.STRATEGY_CONFIG_TREE.EFFECTIVE, params);
   },
 
   // Get day conditions for dropdown
   async getDayConditions(): Promise<DayConditionInfo[]> {
-    return api.get<DayConditionInfo[]>(API_ENDPOINTS.V2_STRATEGY_CONFIG_TREE.DAY_CONDITIONS);
+    return api.get<DayConditionInfo[]>(API_ENDPOINTS.STRATEGY_CONFIG_TREE.DAY_CONDITIONS);
   },
 
   // Create new config
   async create(data: CreateStrategyConfigTreeRequest): Promise<StrategyConfigTree> {
-    return api.post<StrategyConfigTree>(API_ENDPOINTS.V2_STRATEGY_CONFIG_TREE.BASE, data);
+    return api.post<StrategyConfigTree>(API_ENDPOINTS.STRATEGY_CONFIG_TREE.BASE, data);
   },
 
   // Update config
   async update(id: number, data: UpdateStrategyConfigTreeRequest): Promise<StrategyConfigTree> {
-    return api.put<StrategyConfigTree>(API_ENDPOINTS.V2_STRATEGY_CONFIG_TREE.DETAILS(id), data);
+    return api.put<StrategyConfigTree>(API_ENDPOINTS.STRATEGY_CONFIG_TREE.DETAILS(id), data);
   },
 
   // Delete config
   async delete(id: number): Promise<{ success: boolean }> {
-    return api.delete(API_ENDPOINTS.V2_STRATEGY_CONFIG_TREE.DETAILS(id));
+    return api.delete(API_ENDPOINTS.STRATEGY_CONFIG_TREE.DETAILS(id));
   },
 };
 
@@ -2297,101 +2297,101 @@ import type {
 export const strategyPolicyService = {
   // Get all policies summary
   async getAll(): Promise<AllPoliciesSummary> {
-    return api.get<AllPoliciesSummary>(API_ENDPOINTS.V2_STRATEGY_POLICIES.ALL);
+    return api.get<AllPoliciesSummary>(API_ENDPOINTS.STRATEGY_POLICIES.ALL);
   },
 
   // Order Fill Escalation Policies
   orderFill: {
     async getAll(): Promise<OrderFillEscalationPolicy[]> {
-      return api.get<OrderFillEscalationPolicy[]>(API_ENDPOINTS.V2_STRATEGY_POLICIES.ORDER_FILL.LIST);
+      return api.get<OrderFillEscalationPolicy[]>(API_ENDPOINTS.STRATEGY_POLICIES.ORDER_FILL.LIST);
     },
     async getById(id: number): Promise<OrderFillEscalationPolicy> {
-      return api.get<OrderFillEscalationPolicy>(API_ENDPOINTS.V2_STRATEGY_POLICIES.ORDER_FILL.DETAILS(id));
+      return api.get<OrderFillEscalationPolicy>(API_ENDPOINTS.STRATEGY_POLICIES.ORDER_FILL.DETAILS(id));
     },
     async create(data: CreateOrderFillPolicyRequest): Promise<OrderFillEscalationPolicy> {
-      return api.post<OrderFillEscalationPolicy>(API_ENDPOINTS.V2_STRATEGY_POLICIES.ORDER_FILL.LIST, data);
+      return api.post<OrderFillEscalationPolicy>(API_ENDPOINTS.STRATEGY_POLICIES.ORDER_FILL.LIST, data);
     },
     async update(id: number, data: Partial<CreateOrderFillPolicyRequest>): Promise<OrderFillEscalationPolicy> {
-      return api.put<OrderFillEscalationPolicy>(API_ENDPOINTS.V2_STRATEGY_POLICIES.ORDER_FILL.DETAILS(id), data);
+      return api.put<OrderFillEscalationPolicy>(API_ENDPOINTS.STRATEGY_POLICIES.ORDER_FILL.DETAILS(id), data);
     },
     async delete(id: number): Promise<{ deleted: boolean; id: number }> {
-      return api.delete(API_ENDPOINTS.V2_STRATEGY_POLICIES.ORDER_FILL.DETAILS(id));
+      return api.delete(API_ENDPOINTS.STRATEGY_POLICIES.ORDER_FILL.DETAILS(id));
     },
   },
 
   // Trailing SL Policies
   trailingSL: {
     async getAll(): Promise<TrailingSLPolicy[]> {
-      return api.get<TrailingSLPolicy[]>(API_ENDPOINTS.V2_STRATEGY_POLICIES.TRAILING_SL.LIST);
+      return api.get<TrailingSLPolicy[]>(API_ENDPOINTS.STRATEGY_POLICIES.TRAILING_SL.LIST);
     },
     async getById(id: number): Promise<TrailingSLPolicy> {
-      return api.get<TrailingSLPolicy>(API_ENDPOINTS.V2_STRATEGY_POLICIES.TRAILING_SL.DETAILS(id));
+      return api.get<TrailingSLPolicy>(API_ENDPOINTS.STRATEGY_POLICIES.TRAILING_SL.DETAILS(id));
     },
     async create(data: CreateTrailingSLPolicyRequest): Promise<TrailingSLPolicy> {
-      return api.post<TrailingSLPolicy>(API_ENDPOINTS.V2_STRATEGY_POLICIES.TRAILING_SL.LIST, data);
+      return api.post<TrailingSLPolicy>(API_ENDPOINTS.STRATEGY_POLICIES.TRAILING_SL.LIST, data);
     },
     async update(id: number, data: Partial<CreateTrailingSLPolicyRequest>): Promise<TrailingSLPolicy> {
-      return api.put<TrailingSLPolicy>(API_ENDPOINTS.V2_STRATEGY_POLICIES.TRAILING_SL.DETAILS(id), data);
+      return api.put<TrailingSLPolicy>(API_ENDPOINTS.STRATEGY_POLICIES.TRAILING_SL.DETAILS(id), data);
     },
     async delete(id: number): Promise<{ deleted: boolean; id: number }> {
-      return api.delete(API_ENDPOINTS.V2_STRATEGY_POLICIES.TRAILING_SL.DETAILS(id));
+      return api.delete(API_ENDPOINTS.STRATEGY_POLICIES.TRAILING_SL.DETAILS(id));
     },
   },
 
   // SL Target Policies
   slTarget: {
     async getAll(): Promise<SLTargetPolicy[]> {
-      return api.get<SLTargetPolicy[]>(API_ENDPOINTS.V2_STRATEGY_POLICIES.SL_TARGET.LIST);
+      return api.get<SLTargetPolicy[]>(API_ENDPOINTS.STRATEGY_POLICIES.SL_TARGET.LIST);
     },
     async getById(id: number): Promise<SLTargetPolicy> {
-      return api.get<SLTargetPolicy>(API_ENDPOINTS.V2_STRATEGY_POLICIES.SL_TARGET.DETAILS(id));
+      return api.get<SLTargetPolicy>(API_ENDPOINTS.STRATEGY_POLICIES.SL_TARGET.DETAILS(id));
     },
     async create(data: CreateSLTargetPolicyRequest): Promise<SLTargetPolicy> {
-      return api.post<SLTargetPolicy>(API_ENDPOINTS.V2_STRATEGY_POLICIES.SL_TARGET.LIST, data);
+      return api.post<SLTargetPolicy>(API_ENDPOINTS.STRATEGY_POLICIES.SL_TARGET.LIST, data);
     },
     async update(id: number, data: Partial<CreateSLTargetPolicyRequest>): Promise<SLTargetPolicy> {
-      return api.put<SLTargetPolicy>(API_ENDPOINTS.V2_STRATEGY_POLICIES.SL_TARGET.DETAILS(id), data);
+      return api.put<SLTargetPolicy>(API_ENDPOINTS.STRATEGY_POLICIES.SL_TARGET.DETAILS(id), data);
     },
     async delete(id: number): Promise<{ deleted: boolean; id: number }> {
-      return api.delete(API_ENDPOINTS.V2_STRATEGY_POLICIES.SL_TARGET.DETAILS(id));
+      return api.delete(API_ENDPOINTS.STRATEGY_POLICIES.SL_TARGET.DETAILS(id));
     },
   },
 
   // Strike Selection Policies
   strike: {
     async getAll(): Promise<StrikeSelectionPolicy[]> {
-      return api.get<StrikeSelectionPolicy[]>(API_ENDPOINTS.V2_STRATEGY_POLICIES.STRIKE.LIST);
+      return api.get<StrikeSelectionPolicy[]>(API_ENDPOINTS.STRATEGY_POLICIES.STRIKE.LIST);
     },
     async getById(id: number): Promise<StrikeSelectionPolicy> {
-      return api.get<StrikeSelectionPolicy>(API_ENDPOINTS.V2_STRATEGY_POLICIES.STRIKE.DETAILS(id));
+      return api.get<StrikeSelectionPolicy>(API_ENDPOINTS.STRATEGY_POLICIES.STRIKE.DETAILS(id));
     },
     async create(data: CreateStrikePolicyRequest): Promise<StrikeSelectionPolicy> {
-      return api.post<StrikeSelectionPolicy>(API_ENDPOINTS.V2_STRATEGY_POLICIES.STRIKE.LIST, data);
+      return api.post<StrikeSelectionPolicy>(API_ENDPOINTS.STRATEGY_POLICIES.STRIKE.LIST, data);
     },
     async update(id: number, data: Partial<CreateStrikePolicyRequest>): Promise<StrikeSelectionPolicy> {
-      return api.put<StrikeSelectionPolicy>(API_ENDPOINTS.V2_STRATEGY_POLICIES.STRIKE.DETAILS(id), data);
+      return api.put<StrikeSelectionPolicy>(API_ENDPOINTS.STRATEGY_POLICIES.STRIKE.DETAILS(id), data);
     },
     async delete(id: number): Promise<{ deleted: boolean; id: number }> {
-      return api.delete(API_ENDPOINTS.V2_STRATEGY_POLICIES.STRIKE.DETAILS(id));
+      return api.delete(API_ENDPOINTS.STRATEGY_POLICIES.STRIKE.DETAILS(id));
     },
   },
 
   // Exit Policies
   exit: {
     async getAll(): Promise<ExitPolicy[]> {
-      return api.get<ExitPolicy[]>(API_ENDPOINTS.V2_STRATEGY_POLICIES.EXIT.LIST);
+      return api.get<ExitPolicy[]>(API_ENDPOINTS.STRATEGY_POLICIES.EXIT.LIST);
     },
     async getById(id: number): Promise<ExitPolicy> {
-      return api.get<ExitPolicy>(API_ENDPOINTS.V2_STRATEGY_POLICIES.EXIT.DETAILS(id));
+      return api.get<ExitPolicy>(API_ENDPOINTS.STRATEGY_POLICIES.EXIT.DETAILS(id));
     },
     async create(data: CreateExitPolicyRequest): Promise<ExitPolicy> {
-      return api.post<ExitPolicy>(API_ENDPOINTS.V2_STRATEGY_POLICIES.EXIT.LIST, data);
+      return api.post<ExitPolicy>(API_ENDPOINTS.STRATEGY_POLICIES.EXIT.LIST, data);
     },
     async update(id: number, data: Partial<CreateExitPolicyRequest>): Promise<ExitPolicy> {
-      return api.put<ExitPolicy>(API_ENDPOINTS.V2_STRATEGY_POLICIES.EXIT.DETAILS(id), data);
+      return api.put<ExitPolicy>(API_ENDPOINTS.STRATEGY_POLICIES.EXIT.DETAILS(id), data);
     },
     async delete(id: number): Promise<{ deleted: boolean; id: number }> {
-      return api.delete(API_ENDPOINTS.V2_STRATEGY_POLICIES.EXIT.DETAILS(id));
+      return api.delete(API_ENDPOINTS.STRATEGY_POLICIES.EXIT.DETAILS(id));
     },
   },
 };
@@ -2401,37 +2401,37 @@ export const strategyPolicyService = {
 export const symbolService = {
   // Get all symbols
   async getAll(params?: { exchange?: string; segment?: string; instrumentType?: string }): Promise<SymbolType[]> {
-    return api.get<SymbolType[]>(API_ENDPOINTS.V2_SYMBOLS.LIST, params);
+    return api.get<SymbolType[]>(API_ENDPOINTS.SYMBOLS.LIST, params);
   },
 
   // Get symbol by symbol name
   async getBySymbol(symbol: string): Promise<SymbolType> {
-    return api.get<SymbolType>(API_ENDPOINTS.V2_SYMBOLS.DETAILS(symbol));
+    return api.get<SymbolType>(API_ENDPOINTS.SYMBOLS.DETAILS(symbol));
   },
 
   // Get symbols by exchange
   async getByExchange(exchange: string): Promise<SymbolType[]> {
-    return api.get<SymbolType[]>(API_ENDPOINTS.V2_SYMBOLS.LIST, { exchange });
+    return api.get<SymbolType[]>(API_ENDPOINTS.SYMBOLS.LIST, { exchange });
   },
 
   // Create symbol
   async create(data: CreateSymbolRequest): Promise<SymbolType> {
-    return api.post<SymbolType>(API_ENDPOINTS.V2_SYMBOLS.BASE, data);
+    return api.post<SymbolType>(API_ENDPOINTS.SYMBOLS.BASE, data);
   },
 
   // Update symbol
   async update(symbol: string, data: UpdateSymbolRequest): Promise<SymbolType> {
-    return api.put<SymbolType>(API_ENDPOINTS.V2_SYMBOLS.DETAILS(symbol), data);
+    return api.put<SymbolType>(API_ENDPOINTS.SYMBOLS.DETAILS(symbol), data);
   },
 
   // Delete symbol
   async delete(tradingSymbol: string): Promise<{ success: boolean }> {
-    return api.delete(API_ENDPOINTS.V2_SYMBOLS.DETAILS(tradingSymbol));
+    return api.delete(API_ENDPOINTS.SYMBOLS.DETAILS(tradingSymbol));
   },
 
   // Get symbol broker configs
   async getBrokerConfigs(tradingSymbol: string): Promise<SymbolBrokerConfig[]> {
-    return api.get<SymbolBrokerConfig[]>(API_ENDPOINTS.V2_SYMBOLS.BROKERS(tradingSymbol));
+    return api.get<SymbolBrokerConfig[]>(API_ENDPOINTS.SYMBOLS.BROKERS(tradingSymbol));
   },
 };
 
@@ -2440,37 +2440,37 @@ export const symbolService = {
 export const symbolBrokerConfigService = {
   // Get all symbol broker configs
   async getAll(params?: { symbol?: string; broker?: string; exchange?: string }): Promise<SymbolBrokerConfig[]> {
-    return api.get<SymbolBrokerConfig[]>(API_ENDPOINTS.V2_SYMBOL_BROKER_CONFIGS.LIST, params);
+    return api.get<SymbolBrokerConfig[]>(API_ENDPOINTS.SYMBOL_BROKER_CONFIGS.LIST, params);
   },
 
   // Get configs for a specific symbol
   async getBySymbol(tradingSymbol: string): Promise<SymbolBrokerConfig[]> {
-    return api.get<SymbolBrokerConfig[]>(API_ENDPOINTS.V2_SYMBOL_BROKER_CONFIGS.BY_SYMBOL(tradingSymbol));
+    return api.get<SymbolBrokerConfig[]>(API_ENDPOINTS.SYMBOL_BROKER_CONFIGS.BY_SYMBOL(tradingSymbol));
   },
 
   // Get configs for a specific broker
   async getByBroker(broker: string): Promise<SymbolBrokerConfig[]> {
-    return api.get<SymbolBrokerConfig[]>(API_ENDPOINTS.V2_SYMBOL_BROKER_CONFIGS.LIST, { broker });
+    return api.get<SymbolBrokerConfig[]>(API_ENDPOINTS.SYMBOL_BROKER_CONFIGS.LIST, { broker });
   },
 
   // Get specific config
   async get(tradingSymbol: string, broker: string): Promise<SymbolBrokerConfig> {
-    return api.get<SymbolBrokerConfig>(API_ENDPOINTS.V2_SYMBOL_BROKER_CONFIGS.DETAILS(tradingSymbol, broker));
+    return api.get<SymbolBrokerConfig>(API_ENDPOINTS.SYMBOL_BROKER_CONFIGS.DETAILS(tradingSymbol, broker));
   },
 
   // Create config
   async create(data: CreateSymbolBrokerConfigRequest): Promise<SymbolBrokerConfig> {
-    return api.post<SymbolBrokerConfig>(API_ENDPOINTS.V2_SYMBOL_BROKER_CONFIGS.BASE, data);
+    return api.post<SymbolBrokerConfig>(API_ENDPOINTS.SYMBOL_BROKER_CONFIGS.BASE, data);
   },
 
   // Update config
   async update(tradingSymbol: string, broker: string, data: UpdateSymbolBrokerConfigRequest): Promise<SymbolBrokerConfig> {
-    return api.put<SymbolBrokerConfig>(API_ENDPOINTS.V2_SYMBOL_BROKER_CONFIGS.DETAILS(tradingSymbol, broker), data);
+    return api.put<SymbolBrokerConfig>(API_ENDPOINTS.SYMBOL_BROKER_CONFIGS.DETAILS(tradingSymbol, broker), data);
   },
 
   // Delete config
   async delete(tradingSymbol: string, broker: string): Promise<{ success: boolean }> {
-    return api.delete(API_ENDPOINTS.V2_SYMBOL_BROKER_CONFIGS.DETAILS(tradingSymbol, broker));
+    return api.delete(API_ENDPOINTS.SYMBOL_BROKER_CONFIGS.DETAILS(tradingSymbol, broker));
   },
 };
 
@@ -2489,32 +2489,32 @@ import type {
 export const brokerInstrumentsService = {
   // Get all broker instrument stats
   async getAllStats(): Promise<BrokerInstrumentsStats[]> {
-    return api.get<BrokerInstrumentsStats[]>(API_ENDPOINTS.V2_BROKER_INSTRUMENTS.LIST);
+    return api.get<BrokerInstrumentsStats[]>(API_ENDPOINTS.BROKER_INSTRUMENTS.LIST);
   },
 
   // Get specific broker stats
   async getBrokerStats(broker: string): Promise<BrokerInstrumentsStats> {
-    return api.get<BrokerInstrumentsStats>(API_ENDPOINTS.V2_BROKER_INSTRUMENTS.DETAILS(broker));
+    return api.get<BrokerInstrumentsStats>(API_ENDPOINTS.BROKER_INSTRUMENTS.DETAILS(broker));
   },
 
   // Search instruments
   async searchInstruments(broker: string, params: InstrumentSearchParams): Promise<InstrumentSearchResult[]> {
-    return api.get<InstrumentSearchResult[]>(API_ENDPOINTS.V2_BROKER_INSTRUMENTS.SEARCH(broker), params);
+    return api.get<InstrumentSearchResult[]>(API_ENDPOINTS.BROKER_INSTRUMENTS.SEARCH(broker), params);
   },
 
   // Lookup specific instrument
   async lookupInstrument(broker: string, params: InstrumentLookupParams): Promise<InstrumentLookupResult> {
-    return api.get<InstrumentLookupResult>(API_ENDPOINTS.V2_BROKER_INSTRUMENTS.LOOKUP(broker), params);
+    return api.get<InstrumentLookupResult>(API_ENDPOINTS.BROKER_INSTRUMENTS.LOOKUP(broker), params);
   },
 
   // Get available expiries
   async getExpiries(broker: string, params: ExpiriesParams): Promise<ExpiryListResult> {
-    return api.get<ExpiryListResult>(API_ENDPOINTS.V2_BROKER_INSTRUMENTS.EXPIRIES(broker), params);
+    return api.get<ExpiryListResult>(API_ENDPOINTS.BROKER_INSTRUMENTS.EXPIRIES(broker), params);
   },
 
   // Force download instruments
   async downloadInstruments(broker: string): Promise<BrokerInstrumentsStats> {
-    return api.post<BrokerInstrumentsStats>(API_ENDPOINTS.V2_BROKER_INSTRUMENTS.DOWNLOAD(broker), {});
+    return api.post<BrokerInstrumentsStats>(API_ENDPOINTS.BROKER_INSTRUMENTS.DOWNLOAD(broker), {});
   },
 };
 
@@ -2541,27 +2541,27 @@ export interface CacheClearResult {
 export const cacheService = {
   // Get cache statistics
   async getStats(): Promise<CacheStats> {
-    return api.get<CacheStats>(API_ENDPOINTS.V2_CACHE.STATS);
+    return api.get<CacheStats>(API_ENDPOINTS.CACHE.STATS);
   },
 
   // Clear auth roles cache
   async clearRoles(): Promise<CacheClearResult> {
-    return api.delete<CacheClearResult>(API_ENDPOINTS.V2_CACHE.CLEAR_ROLES);
+    return api.delete<CacheClearResult>(API_ENDPOINTS.CACHE.CLEAR_ROLES);
   },
 
   // Refresh all core entity caches (CacheManager)
   async clearCore(): Promise<CacheClearResult> {
-    return api.delete<CacheClearResult>(API_ENDPOINTS.V2_CACHE.CLEAR_CORE);
+    return api.delete<CacheClearResult>(API_ENDPOINTS.CACHE.CLEAR_CORE);
   },
 
   // Refresh a specific core entity cache by name
   async clearCoreByName(name: string): Promise<CacheClearResult> {
-    return api.delete<CacheClearResult>(API_ENDPOINTS.V2_CACHE.CLEAR_CORE_BY_NAME(name));
+    return api.delete<CacheClearResult>(API_ENDPOINTS.CACHE.CLEAR_CORE_BY_NAME(name));
   },
 
   // Clear all caches (roles + core)
   async clearAll(): Promise<CacheClearResult> {
-    return api.delete<CacheClearResult>(API_ENDPOINTS.V2_CACHE.CLEAR_ALL);
+    return api.delete<CacheClearResult>(API_ENDPOINTS.CACHE.CLEAR_ALL);
   },
 };
 
@@ -2900,23 +2900,23 @@ export interface InitTimeline {
 export const systemStatusService = {
   // Full status snapshot
   async getStatus(): Promise<SystemStatus> {
-    return api.get<SystemStatus>(API_ENDPOINTS.V2_SYSTEM_STATUS.STATUS);
+    return api.get<SystemStatus>(API_ENDPOINTS.SYSTEM_STATUS.STATUS);
   },
 
   // On-demand NIFTY 50 quote + history probe
   async runHealthCheck(): Promise<SystemStatusHealthCheck> {
-    return api.get<SystemStatusHealthCheck>(API_ENDPOINTS.V2_SYSTEM_STATUS.HEALTH_CHECK);
+    return api.get<SystemStatusHealthCheck>(API_ENDPOINTS.SYSTEM_STATUS.HEALTH_CHECK);
   },
 
   // In-memory startup / daily-init task timeline (newest-first)
   async getInitTimeline(): Promise<InitTimeline> {
-    return api.get<InitTimeline>(API_ENDPOINTS.V2_SYSTEM_STATUS.INIT_TIMELINE);
+    return api.get<InitTimeline>(API_ENDPOINTS.SYSTEM_STATUS.INIT_TIMELINE);
   },
 };
 
 // ==================== DATA RETENTION (Administration → Data Retention) ====================
 
-// Live-trade archive job status (GET /api/v2/data-retention/live-trade-archive). The single global
+// Live-trade archive job status (GET /api/data-retention/live-trade-archive). The single global
 // LiveTradeArchiveJob — status is in-memory only (lost on restart, safe to re-run). See
 // LIVE_TRADES_RETENTION_DESIGN.md.
 export interface LiveTradeArchiveStatus {
@@ -2945,12 +2945,12 @@ export interface StartLiveTradeArchiveResponse {
 export const dataRetentionService = {
   // Current live-trade archive job status (poll while RUNNING).
   async getArchiveStatus(): Promise<LiveTradeArchiveStatus> {
-    return api.get<LiveTradeArchiveStatus>(API_ENDPOINTS.V2_DATA_RETENTION.LIVE_TRADE_ARCHIVE);
+    return api.get<LiveTradeArchiveStatus>(API_ENDPOINTS.DATA_RETENTION.LIVE_TRADE_ARCHIVE);
   },
 
   // Start the live-trade archive rollover (refused with 409 if a job is already in progress).
   async startArchive(): Promise<StartLiveTradeArchiveResponse> {
-    return api.post<StartLiveTradeArchiveResponse>(API_ENDPOINTS.V2_DATA_RETENTION.LIVE_TRADE_ARCHIVE);
+    return api.post<StartLiveTradeArchiveResponse>(API_ENDPOINTS.DATA_RETENTION.LIVE_TRADE_ARCHIVE);
   },
 };
 
@@ -2994,18 +2994,18 @@ export interface MockTerminalizeResult {
 export const mockCleanupService = {
   // List all ACTIVE/OPEN mock trades from LIVE_TRADES (needs TRADES View).
   async listMockTrades(): Promise<MockCleanupList> {
-    return api.get<MockCleanupList>(API_ENDPOINTS.V2_MOCK_CLEANUP.BASE);
+    return api.get<MockCleanupList>(API_ENDPOINTS.MOCK_CLEANUP.BASE);
   },
 
   // Delete ALL mock trades + signals from LIVE_TRADES* (needs TRADES Manage; 409 while a mock session is active).
   async clean(): Promise<MockCleanupResult> {
-    return api.delete<MockCleanupResult>(API_ENDPOINTS.V2_MOCK_CLEANUP.BASE);
+    return api.delete<MockCleanupResult>(API_ENDPOINTS.MOCK_CLEANUP.BASE);
   },
 
   // Set ACTIVE/OPEN mock trades terminal by SYSTEM (ACTIVE→COMPLETED, OPEN→CANCELLED) + evict, instead of
   // hard-deleting (needs TRADES Manage; 409 while a mock session is active).
   async terminalize(): Promise<MockTerminalizeResult> {
-    return api.post<MockTerminalizeResult>(API_ENDPOINTS.V2_MOCK_CLEANUP.TERMINALIZE);
+    return api.post<MockTerminalizeResult>(API_ENDPOINTS.MOCK_CLEANUP.TERMINALIZE);
   },
 };
 
@@ -3048,31 +3048,31 @@ export interface UpdateUserAuthRequest {
 
 export const userAuthService = {
   async getAll(): Promise<UserAuthRecord[]> {
-    return api.get<UserAuthRecord[]>(API_ENDPOINTS.V2_USER_AUTH.LIST);
+    return api.get<UserAuthRecord[]>(API_ENDPOINTS.USER_AUTH.LIST);
   },
 
   async get(username: string): Promise<UserAuthRecord> {
-    return api.get<UserAuthRecord>(API_ENDPOINTS.V2_USER_AUTH.DETAILS(username));
+    return api.get<UserAuthRecord>(API_ENDPOINTS.USER_AUTH.DETAILS(username));
   },
 
   async create(data: CreateUserAuthRequest): Promise<UserAuthRecord> {
-    return api.post<UserAuthRecord>(API_ENDPOINTS.V2_USER_AUTH.BASE, data);
+    return api.post<UserAuthRecord>(API_ENDPOINTS.USER_AUTH.BASE, data);
   },
 
   async update(username: string, data: UpdateUserAuthRequest): Promise<UserAuthRecord> {
-    return api.put<UserAuthRecord>(API_ENDPOINTS.V2_USER_AUTH.DETAILS(username), data);
+    return api.put<UserAuthRecord>(API_ENDPOINTS.USER_AUTH.DETAILS(username), data);
   },
 
   async delete(username: string): Promise<void> {
-    return api.delete(API_ENDPOINTS.V2_USER_AUTH.DETAILS(username));
+    return api.delete(API_ENDPOINTS.USER_AUTH.DETAILS(username));
   },
 
   async resetPassword(username: string, newPassword: string): Promise<void> {
-    return api.post(API_ENDPOINTS.V2_USER_AUTH.RESET_PASSWORD(username), { newPassword });
+    return api.post(API_ENDPOINTS.USER_AUTH.RESET_PASSWORD(username), { newPassword });
   },
 
   async toggleActive(username: string): Promise<{ username: string; isActive: boolean }> {
-    return api.put(API_ENDPOINTS.V2_USER_AUTH.TOGGLE_ACTIVE(username), {});
+    return api.put(API_ENDPOINTS.USER_AUTH.TOGGLE_ACTIVE(username), {});
   },
 };
 
@@ -3082,17 +3082,17 @@ export const userAuthService = {
 const licenseService = {
   // Get all licenses for the configured owner from license server
   async getOwnerLicenses(): Promise<{ success: boolean; ownerEmail: string; licenses: any[]; error?: string }> {
-    return api.get(API_ENDPOINTS.V2_LICENSE_OWNER);
+    return api.get(API_ENDPOINTS.LICENSE_OWNER);
   },
 
   // Request new license keys from the license server
   async requestLicenses(count: number, startDate?: string, endDate?: string): Promise<{ success: boolean; count?: number; licenses?: any[]; error?: string }> {
-    return api.post(API_ENDPOINTS.V2_LICENSE_REQUEST, { count, startDate, endDate });
+    return api.post(API_ENDPOINTS.LICENSE_REQUEST, { count, startDate, endDate });
   },
 
   // Cancel (deactivate) N unassigned licenses — sets end_date for billing, never deletes
   async cancelLicenses(count: number): Promise<{ success: boolean; cancelled?: number; licenses?: any[]; error?: string }> {
-    return api.post(API_ENDPOINTS.V2_LICENSE_CANCEL, { count });
+    return api.post(API_ENDPOINTS.LICENSE_CANCEL, { count });
   },
 };
 
@@ -3108,60 +3108,60 @@ import type {
 
 const emailTemplateService = {
   async getAll(): Promise<EmailTemplateOverride[]> {
-    return api.get(API_ENDPOINTS.V2_EMAIL_TEMPLATES.LIST);
+    return api.get(API_ENDPOINTS.EMAIL_TEMPLATES.LIST);
   },
 
   async getByKey(key: string): Promise<EmailTemplateOverride> {
-    return api.get(API_ENDPOINTS.V2_EMAIL_TEMPLATES.DETAILS(key));
+    return api.get(API_ENDPOINTS.EMAIL_TEMPLATES.DETAILS(key));
   },
 
   async update(key: string, data: UpdateEmailTemplateRequest): Promise<EmailTemplateOverride> {
-    return api.put(API_ENDPOINTS.V2_EMAIL_TEMPLATES.DETAILS(key), data);
+    return api.put(API_ENDPOINTS.EMAIL_TEMPLATES.DETAILS(key), data);
   },
 
   async getDefaults(key: string): Promise<{ subject: string; html: string; text: string }> {
-    return api.get(API_ENDPOINTS.V2_EMAIL_TEMPLATES.DEFAULTS(key));
+    return api.get(API_ENDPOINTS.EMAIL_TEMPLATES.DEFAULTS(key));
   },
 
   async resetToDefault(key: string): Promise<EmailTemplateOverride> {
-    return api.post(API_ENDPOINTS.V2_EMAIL_TEMPLATES.RESET(key), {});
+    return api.post(API_ENDPOINTS.EMAIL_TEMPLATES.RESET(key), {});
   },
 
   async setEnabled(key: string, enabled: boolean): Promise<EmailTemplateOverride> {
     const action = enabled ? 'enable' : 'disable';
-    return api.post(API_ENDPOINTS.V2_EMAIL_TEMPLATES.ACTION(key, action), {});
+    return api.post(API_ENDPOINTS.EMAIL_TEMPLATES.ACTION(key, action), {});
   },
 };
 
 export const emailPreferencesService = {
   async get(): Promise<UserEmailPreferences> {
-    return api.get(API_ENDPOINTS.V2_EMAIL_PREFERENCES.SELF);
+    return api.get(API_ENDPOINTS.EMAIL_PREFERENCES.SELF);
   },
 
   async update(data: Partial<UserEmailPreferences>): Promise<UserEmailPreferences> {
-    return api.put(API_ENDPOINTS.V2_EMAIL_PREFERENCES.SELF, data);
+    return api.put(API_ENDPOINTS.EMAIL_PREFERENCES.SELF, data);
   },
 
   async getForUser(username: string): Promise<UserEmailPreferences> {
-    return api.get(API_ENDPOINTS.V2_EMAIL_PREFERENCES.FOR_USER(username));
+    return api.get(API_ENDPOINTS.EMAIL_PREFERENCES.FOR_USER(username));
   },
 
   async updateForUser(username: string, data: Partial<UserEmailPreferences>): Promise<UserEmailPreferences> {
-    return api.put(API_ENDPOINTS.V2_EMAIL_PREFERENCES.FOR_USER(username), data);
+    return api.put(API_ENDPOINTS.EMAIL_PREFERENCES.FOR_USER(username), data);
   },
 
   async getAvailableCategories(): Promise<EmailPreferenceCategory[]> {
-    return api.get(API_ENDPOINTS.V2_EMAIL_PREFERENCES.AVAILABLE_CATEGORIES);
+    return api.get(API_ENDPOINTS.EMAIL_PREFERENCES.AVAILABLE_CATEGORIES);
   },
 };
 
 const emailBrandingService = {
   async get(): Promise<EmailBrandingConfig> {
-    return api.get(API_ENDPOINTS.V2_EMAIL_BRANDING.BASE);
+    return api.get(API_ENDPOINTS.EMAIL_BRANDING.BASE);
   },
 
   async update(data: EmailBrandingConfig): Promise<EmailBrandingConfig> {
-    return api.put(API_ENDPOINTS.V2_EMAIL_BRANDING.BASE, data);
+    return api.put(API_ENDPOINTS.EMAIL_BRANDING.BASE, data);
   },
 };
 

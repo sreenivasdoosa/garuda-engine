@@ -1,6 +1,6 @@
 /**
  * Types for the user-portal client-side PnL engine (Phase 2 of
- * docs/USER_PORTAL_CLIENT_SIDE_PNL_DESIGN.md): the /api/v2/me/live/* REST shapes and
+ * docs/USER_PORTAL_CLIENT_SIDE_PNL_DESIGN.md): the /api/me/live/* REST shapes and
  * the tradeUpdate / algoPositionUpdate / brokerPositionUpdate WS events.
  */
 

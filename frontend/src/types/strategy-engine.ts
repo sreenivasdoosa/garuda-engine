@@ -1033,7 +1033,7 @@ export interface StrategyStateFilters {
 }
 
 /**
- * Snapshot of MOCK_SESSION_STATE returned by /api/v2/engine/mock/status.
+ * Snapshot of MOCK_SESSION_STATE returned by /api/engine/mock/status.
  */
 export interface MockSessionStatus {
   isActive: boolean;

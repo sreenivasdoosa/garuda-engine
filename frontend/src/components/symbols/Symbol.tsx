@@ -2,7 +2,7 @@
  * Symbol Component
  * Modal for viewing/editing a single symbol (SymbolInfo)
  * Reusable across Admin portals
- * Uses V2 API: /api/v2/symbols
+ * Uses: /api/symbols
  *
  * Distributed: Only core fields (maxOptionChainLevels, straddleMaxPremiumDiff, hedgeStrikeRoundingMultiple) editable.
  * Standalone: All fields editable, supports create mode.

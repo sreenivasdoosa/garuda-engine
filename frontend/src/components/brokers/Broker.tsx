@@ -2,7 +2,7 @@
  * Broker Component
  * Modal for viewing/editing a single broker
  * Reusable across Admin portals
- * Uses V2 API: /api/v2/brokers
+ * Uses: /api/brokers
  */
 
 import { useState, useEffect } from 'react';

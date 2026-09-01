@@ -2,7 +2,7 @@
  * User Subscriptions Component
  * Shows ALL user subscriptions across all users in a grouped table
  * Similar to UserStrategiesPage but for strategy engine subscriptions
- * Uses V2 API: /api/v2/engine/subscriptions
+ * Uses: /api/engine/subscriptions
  */
 
 import React, { useState, useMemo, useEffect } from 'react';

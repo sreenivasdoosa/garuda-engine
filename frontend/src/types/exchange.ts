@@ -8,23 +8,25 @@
 export interface Exchange {
   exchange: string;            // Exchange code: "NSE", "BSE", "MCX"
   exchangeName: string;        // Full name
-  segment?: string | null;     // "EQUITY", "FNO", "COMMODITY", "CURRENCY"
+  /** Which segments the venue lists: "EQUITY", "FNO", "COMMODITY", "CURRENCY". */
+  segments?: string[];
+  /** What the venue settles in. A P&L figure needs a unit. */
+  currency?: string;
   timezone?: string;
   preMarketStart?: string;
   preMarketEnd?: string;
   marketOpen?: string;
   marketClose?: string;
   algoStartMinutesBeforeMarketOpen?: number;
-  loginMinutesBeforeMarketOpen?: number;
   intradaySquareOffMinutesBeforeClose?: number;
   intradaySquareOffBlockMinutesBeforeClose?: number;
-  positionalSquareOffMinutesBeforeClose?: number;
   postMarketWindowMinutes?: number;
   reportMinutesAfterClose?: number;
-  billingMinutesAfterClose?: number;
   holidays?: string[];
   eventDays?: string[];
   weekendDays?: string[];
+  /** How long before the open the day is prepared. */
+  dayInitMinutesBeforeMarketOpen?: number;
   isActive: boolean;
   historyCacheEnabled?: boolean;
   historyCacheSymbols?: string[] | null;
@@ -37,21 +39,21 @@ export interface Exchange {
 export interface CreateExchangeRequest {
   exchange: string;
   exchangeName: string;
-  segment?: string | null;
+  segments?: string[];
+  currency?: string;
   timezone?: string;
   preMarketStart?: string;
   preMarketEnd?: string;
   marketOpen?: string;
   marketClose?: string;
   algoStartMinutesBeforeMarketOpen?: number;
-  loginMinutesBeforeMarketOpen?: number;
   intradaySquareOffMinutesBeforeClose?: number;
   intradaySquareOffBlockMinutesBeforeClose?: number;
-  positionalSquareOffMinutesBeforeClose?: number;
   postMarketWindowMinutes?: number;
   reportMinutesAfterClose?: number;
-  billingMinutesAfterClose?: number;
   weekendDays?: string[];
+  /** How long before the open the day is prepared. */
+  dayInitMinutesBeforeMarketOpen?: number;
   isActive?: boolean;
   historyCacheEnabled?: boolean;
   historyCacheSymbols?: string[] | null;

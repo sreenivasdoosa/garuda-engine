@@ -1,7 +1,7 @@
 /**
  * UserEventDays Component
  * Table for listing and managing user-specific event day capital percentage overrides
- * Uses V2 API: /api/v2/user-event-day-actions
+ * Uses: /api/user-event-day-actions
  */
 
 import { useState, useMemo } from 'react';

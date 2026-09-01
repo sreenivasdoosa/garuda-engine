@@ -2,7 +2,7 @@
  * useIndexTicks — surface NIFTY 50 + SENSEX ticks to the app header.
  *
  * Data flow:
- *   1. On mount, fetch initial quotes via REST (/api/v2/market-data/quotes)
+ *   1. On mount, fetch initial quotes via REST (/api/market-data/quotes)
  *      so the cards have prices before the first WebSocket tick — and so
  *      they stay populated when markets are closed / on holidays (no WS
  *      pushes arrive, REST snapshot keeps the previous-close visible).

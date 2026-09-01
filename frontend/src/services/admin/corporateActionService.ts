@@ -1,7 +1,7 @@
 /**
  * Corporate Actions Service — equity splits & bonuses (admin only).
  * API service for the corporate-actions subsystem (docs/CORPORATE_ACTIONS_DESIGN.md).
- * Backed by CorporateActionServletV2 at /api/v2/corporate-actions.
+ * Backed by CorporateActionServletV2 at /api/corporate-actions.
  *
  * Lifecycle (C13): PENDING → APPROVED → APPLIED, or CANCELLED. Approved actions
  * auto-apply pre-market on the ex-date; a PENDING action whose ex-date has arrived
@@ -10,7 +10,7 @@
 
 import { api } from '@/api/client';
 
-const BASE = '/api/v2/corporate-actions';
+const BASE = '/api/corporate-actions';
 
 export type CorporateActionType = 'SPLIT' | 'BONUS';
 export type CorporateActionStatus = 'PENDING' | 'APPROVED' | 'APPLIED' | 'CANCELLED';

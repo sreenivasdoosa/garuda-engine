@@ -2,7 +2,7 @@
  * Symbols Component
  * Table for listing trading symbols (SymbolInfo)
  * Reusable across Admin portals
- * Uses V2 API: /api/v2/symbols
+ * Uses: /api/symbols
  *
  * Distributed: Symbols synced from market-data service. Only core fields editable.
  * Standalone: Full CRUD - all fields editable, add/delete supported.

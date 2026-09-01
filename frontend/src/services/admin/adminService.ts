@@ -54,7 +54,7 @@ export const adminService = {
   async getUsers(
     params?: AdminUserFilter & PaginationParams
   ): Promise<PaginatedResponse<User>> {
-    const response = await api.get<User[]>(API_ENDPOINTS.V2_USERS.LIST, params as Record<string, unknown>);
+    const response = await api.get<User[]>(API_ENDPOINTS.USERS.LIST, params as Record<string, unknown>);
     // V2 API returns array directly, wrap in paginated response
     const pageSize = params?.pageSize || response.length || 1;
     return {
@@ -70,21 +70,21 @@ export const adminService = {
    * Get user by username (V2 API)
    */
   async getUserById(username: string): Promise<User> {
-    return api.get<User>(API_ENDPOINTS.V2_USERS.DETAILS(username));
+    return api.get<User>(API_ENDPOINTS.USERS.DETAILS(username));
   },
 
   /**
    * Update user (V2 API)
    */
   async updateUser(username: string, data: Partial<User>): Promise<User> {
-    return api.put<User>(API_ENDPOINTS.V2_USERS.DETAILS(username), data);
+    return api.put<User>(API_ENDPOINTS.USERS.DETAILS(username), data);
   },
 
   /**
    * Suspend user (V2 API)
    */
   async suspendUser(username: string): Promise<{ success: boolean }> {
-    await api.put(API_ENDPOINTS.V2_USERS.SUSPEND(username), {});
+    await api.put(API_ENDPOINTS.USERS.SUSPEND(username), {});
     return { success: true };
   },
 
@@ -92,7 +92,7 @@ export const adminService = {
    * Activate user (V2 API)
    */
   async activateUser(username: string): Promise<{ success: boolean }> {
-    await api.put(API_ENDPOINTS.V2_USERS.ACTIVATE(username), {});
+    await api.put(API_ENDPOINTS.USERS.ACTIVATE(username), {});
     return { success: true };
   },
 
@@ -102,7 +102,7 @@ export const adminService = {
    */
   async resetUserPassword(username: string): Promise<{ success: boolean; temporaryPassword: string }> {
     // V2 API doesn't have reset password endpoint, use legacy or implement differently
-    return api.post(`${API_ENDPOINTS.V2_USERS.DETAILS(username)}/reset-password`, {});
+    return api.post(`${API_ENDPOINTS.USERS.DETAILS(username)}/reset-password`, {});
   },
 
   /**
@@ -112,7 +112,7 @@ export const adminService = {
     // The V2 list endpoint is server-paginated and returns the standard
     // `{ data, pagination }` envelope. Map it to this legacy paginated shape.
     const res = await api.get<{ data: AuditLog[]; pagination: { page: number; pageSize: number; totalCount: number; totalPages: number } }>(
-      API_ENDPOINTS.V2_AUDIT_LOGS.LIST,
+      API_ENDPOINTS.AUDIT_LOGS.LIST,
       params as Record<string, unknown>,
     );
     return {
@@ -172,6 +172,6 @@ export const adminService = {
    * Note: V2 API may not have export endpoint
    */
   async exportUsers(format: 'csv' | 'xlsx'): Promise<Blob> {
-    return api.get<Blob>(`${API_ENDPOINTS.V2_USERS.LIST}/export`, { format });
+    return api.get<Blob>(`${API_ENDPOINTS.USERS.LIST}/export`, { format });
   },
 };

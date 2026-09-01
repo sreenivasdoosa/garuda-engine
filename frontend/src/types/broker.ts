@@ -164,8 +164,8 @@ export interface BrokerFunds {
 
 /**
  * Snapshot of every table currently referencing a broker. Returned by
- * GET /api/v2/brokers/{name}/usage and embedded inside the 409 Conflict
- * body of DELETE /api/v2/brokers/{name} when blockers are present.
+ * GET /api/brokers/{name}/usage and embedded inside the 409 Conflict
+ * body of DELETE /api/brokers/{name} when blockers are present.
  *
  * - blockers   : tables with FK to BROKERS — non-zero values block delete
  * - historical : tables with no FK — non-zero values produce orphan rows

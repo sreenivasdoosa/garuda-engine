@@ -2,7 +2,7 @@
  * GlobalEventDays Component
  * Table for listing and managing exchange event days (expiry days, special trading days)
  * These are global settings that apply to all strategies and users
- * Uses V2 API: /api/v2/event-days
+ * Uses: /api/event-days
  */
 
 import { useState, useMemo } from 'react';

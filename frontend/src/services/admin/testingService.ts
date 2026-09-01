@@ -197,14 +197,14 @@ export const testingService = {
    * Send a test external signal
    */
   async sendTestSignal(request: TestSignalRequest): Promise<TestSignalResponse> {
-    return api.post<TestSignalResponse>(API_ENDPOINTS.V2_TESTING.SIGNAL, request);
+    return api.post<TestSignalResponse>(API_ENDPOINTS.TESTING.SIGNAL, request);
   },
 
   /**
    * Get list of strategies that accept external signals
    */
   async getSignalStrategies(): Promise<SignalStrategyInfo[]> {
-    return api.get<SignalStrategyInfo[]>(API_ENDPOINTS.V2_TESTING.STRATEGIES);
+    return api.get<SignalStrategyInfo[]>(API_ENDPOINTS.TESTING.STRATEGIES);
   },
 
   /**
@@ -213,7 +213,7 @@ export const testingService = {
    * STRATEGY scope clears only strategy-level runtime scheduler state.
    */
   async resetStrategyState(request: ResetStrategyStateRequest): Promise<ResetStrategyStateResponse> {
-    return api.post<ResetStrategyStateResponse>(API_ENDPOINTS.V2_TESTING.RESET_STRATEGY_STATE, request);
+    return api.post<ResetStrategyStateResponse>(API_ENDPOINTS.TESTING.RESET_STRATEGY_STATE, request);
   },
 
   /**
@@ -222,7 +222,7 @@ export const testingService = {
    * Trades and signals are NOT touched.
    */
   async updateStrategyState(request: UpdateStrategyStateRequest): Promise<UpdateStrategyStateResponse> {
-    return api.post<UpdateStrategyStateResponse>(API_ENDPOINTS.V2_TESTING.UPDATE_STRATEGY_STATE, request);
+    return api.post<UpdateStrategyStateResponse>(API_ENDPOINTS.TESTING.UPDATE_STRATEGY_STATE, request);
   },
 
   /**
@@ -231,41 +231,41 @@ export const testingService = {
    * unlike resetStrategyState, which also clears trades.
    */
   async clearStrategyState(request: ClearStrategyStateRequest): Promise<ClearStrategyStateResponse> {
-    return api.post<ClearStrategyStateResponse>(API_ENDPOINTS.V2_TESTING.CLEAR_STRATEGY_STATE, request);
+    return api.post<ClearStrategyStateResponse>(API_ENDPOINTS.TESTING.CLEAR_STRATEGY_STATE, request);
   },
 
   /**
    * Place a test order
    */
   async placeOrder(request: PlaceOrderRequest): Promise<OrderOperationResponse> {
-    return api.post<OrderOperationResponse>(API_ENDPOINTS.V2_TESTING.PLACE_ORDER, request);
+    return api.post<OrderOperationResponse>(API_ENDPOINTS.TESTING.PLACE_ORDER, request);
   },
 
   /**
    * Modify an existing order
    */
   async modifyOrder(request: ModifyOrderRequest): Promise<OrderOperationResponse> {
-    return api.post<OrderOperationResponse>(API_ENDPOINTS.V2_TESTING.MODIFY_ORDER, request);
+    return api.post<OrderOperationResponse>(API_ENDPOINTS.TESTING.MODIFY_ORDER, request);
   },
 
   /**
    * Cancel an existing order
    */
   async cancelOrder(request: CancelOrderRequest): Promise<OrderOperationResponse> {
-    return api.post<OrderOperationResponse>(API_ENDPOINTS.V2_TESTING.CANCEL_ORDER, request);
+    return api.post<OrderOperationResponse>(API_ENDPOINTS.TESTING.CANCEL_ORDER, request);
   },
 
   /**
    * Trigger manual DB backup to S3
    */
   async triggerDbBackup(): Promise<TriggerDbBackupResponse> {
-    return api.post<TriggerDbBackupResponse>(API_ENDPOINTS.V2_TESTING.TRIGGER_DB_BACKUP, {});
+    return api.post<TriggerDbBackupResponse>(API_ENDPOINTS.TESTING.TRIGGER_DB_BACKUP, {});
   },
 
   /**
    * Clear candle history (day/intraday/both) for a symbol from DB and cache
    */
   async clearCandlesHistory(request: ClearCandlesHistoryRequest): Promise<ClearCandlesHistoryResponse> {
-    return api.post<ClearCandlesHistoryResponse>(API_ENDPOINTS.V2_TESTING.CLEAR_CANDLES_HISTORY, request);
+    return api.post<ClearCandlesHistoryResponse>(API_ENDPOINTS.TESTING.CLEAR_CANDLES_HISTORY, request);
   },
 };

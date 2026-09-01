@@ -9,7 +9,7 @@
  * - All Actions view: full calendar with status filter, per-action journal drill-down
  *   (pre → post snapshots per trade) and apply-now / reverse for admins.
  *
- * Backed by CorporateActionServletV2 at /api/v2/corporate-actions (Resource.SYSTEM_CONFIG, admin-only).
+ * Backed by CorporateActionServletV2 at /api/corporate-actions (Resource.SYSTEM_CONFIG, admin-only).
  */
 
 import { Fragment, useMemo, useState } from 'react';

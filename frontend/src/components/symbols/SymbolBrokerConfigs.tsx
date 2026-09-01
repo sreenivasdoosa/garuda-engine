@@ -1,7 +1,7 @@
 /**
  * SymbolBrokerConfigs Component
  * Table for listing and managing symbol-broker configurations (freeze limits per broker)
- * Uses V2 API: /api/v2/symbols/{symbol}/brokers
+ * Uses: /api/symbols/{symbol}/brokers
  */
 
 import { useState, useEffect, useMemo } from 'react';
@@ -75,8 +75,8 @@ const SymbolBrokerConfigs: React.FC<SymbolBrokerConfigsProps> = ({
 
   const createMutation = useMutation({
     mutationFn: async (data: CreateSymbolBrokerConfigRequest) => {
-      // POST to /api/v2/symbols/{symbol}/brokers
-      const response = await fetch(`/api/v2/symbols/${encodeURIComponent(data.symbol)}/brokers`, {
+      // POST to /api/symbols/{symbol}/brokers
+      const response = await fetch(`/api/symbols/${encodeURIComponent(data.symbol)}/brokers`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(trimStringsDeep(data)),
@@ -93,8 +93,8 @@ const SymbolBrokerConfigs: React.FC<SymbolBrokerConfigsProps> = ({
 
   const updateMutation = useMutation({
     mutationFn: async ({ symbol, broker, data }: { symbol: string; broker: string; data: Partial<CreateSymbolBrokerConfigRequest> }) => {
-      // PUT to /api/v2/symbols/{symbol}/brokers/{broker}
-      const response = await fetch(`/api/v2/symbols/${encodeURIComponent(symbol)}/brokers/${encodeURIComponent(broker)}`, {
+      // PUT to /api/symbols/{symbol}/brokers/{broker}
+      const response = await fetch(`/api/symbols/${encodeURIComponent(symbol)}/brokers/${encodeURIComponent(broker)}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(trimStringsDeep(data)),
@@ -111,8 +111,8 @@ const SymbolBrokerConfigs: React.FC<SymbolBrokerConfigsProps> = ({
 
   const deleteMutation = useMutation({
     mutationFn: async ({ symbol, broker }: { symbol: string; broker: string }) => {
-      // DELETE /api/v2/symbols/{symbol}/brokers/{broker}
-      const response = await fetch(`/api/v2/symbols/${encodeURIComponent(symbol)}/brokers/${encodeURIComponent(broker)}`, {
+      // DELETE /api/symbols/{symbol}/brokers/{broker}
+      const response = await fetch(`/api/symbols/${encodeURIComponent(symbol)}/brokers/${encodeURIComponent(broker)}`, {
         method: 'DELETE',
       });
       if (!response.ok) throw new Error('Failed to delete broker config');

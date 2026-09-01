@@ -2,7 +2,7 @@
  * Brokers Component
  * Table for listing brokers
  * Reusable across Admin portals
- * Uses V2 API: /api/v2/brokers
+ * Uses: /api/brokers
  */
 
 import { useState, useMemo } from 'react';

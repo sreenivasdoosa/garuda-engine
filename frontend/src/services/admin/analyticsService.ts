@@ -299,49 +299,49 @@ export interface BrokerUserPerformance {
 export const analyticsService = {
   // User Analytics
   async getUserStats(): Promise<UserStats> {
-    return api.get<UserStats>(API_ENDPOINTS.V2_ANALYTICS.USERS);
+    return api.get<UserStats>(API_ENDPOINTS.ANALYTICS.USERS);
   },
 
   async getUserGrowth(fromDate: string, toDate: string): Promise<TimeSeriesPoint[]> {
-    return api.get<TimeSeriesPoint[]>(API_ENDPOINTS.V2_ANALYTICS.USERS_GROWTH, { fromDate, toDate });
+    return api.get<TimeSeriesPoint[]>(API_ENDPOINTS.ANALYTICS.USERS_GROWTH, { fromDate, toDate });
   },
 
   // Broker Analytics
   async getBrokerStats(): Promise<BrokerStats> {
-    return api.get<BrokerStats>(API_ENDPOINTS.V2_ANALYTICS.BROKERS);
+    return api.get<BrokerStats>(API_ENDPOINTS.ANALYTICS.BROKERS);
   },
 
   // Strategy Analytics
   async getStrategyStats(): Promise<StrategyStats> {
-    return api.get<StrategyStats>(API_ENDPOINTS.V2_ANALYTICS.STRATEGIES);
+    return api.get<StrategyStats>(API_ENDPOINTS.ANALYTICS.STRATEGIES);
   },
 
   // Capital Analytics
   async getDailyCapitalSummary(fromDate: string, toDate: string): Promise<DailyCapitalSummary[]> {
-    return api.get<DailyCapitalSummary[]>(API_ENDPOINTS.V2_ANALYTICS.CAPITAL, { fromDate, toDate });
+    return api.get<DailyCapitalSummary[]>(API_ENDPOINTS.ANALYTICS.CAPITAL, { fromDate, toDate });
   },
 
   async getCapitalDistribution(date: string): Promise<CapitalDistribution> {
-    return api.get<CapitalDistribution>(API_ENDPOINTS.V2_ANALYTICS.CAPITAL_DISTRIBUTION, { date });
+    return api.get<CapitalDistribution>(API_ENDPOINTS.ANALYTICS.CAPITAL_DISTRIBUTION, { date });
   },
 
   // Margin Analytics
   async getDailyMarginSummary(fromDate: string, toDate: string): Promise<DailyMarginSummary[]> {
-    return api.get<DailyMarginSummary[]>(API_ENDPOINTS.V2_ANALYTICS.MARGINS, { fromDate, toDate });
+    return api.get<DailyMarginSummary[]>(API_ENDPOINTS.ANALYTICS.MARGINS, { fromDate, toDate });
   },
 
   // Billing Analytics (Admin only)
   async getBillingSummary(fromDate: string, toDate: string): Promise<BillingSummary> {
-    return api.get<BillingSummary>(API_ENDPOINTS.V2_ANALYTICS.BILLING, { fromDate, toDate });
+    return api.get<BillingSummary>(API_ENDPOINTS.ANALYTICS.BILLING, { fromDate, toDate });
   },
 
   async getRevenueData(fromDate: string, toDate: string): Promise<RevenueData> {
-    return api.get<RevenueData>(API_ENDPOINTS.V2_ANALYTICS.BILLING_REVENUE, { fromDate, toDate });
+    return api.get<RevenueData>(API_ENDPOINTS.ANALYTICS.BILLING_REVENUE, { fromDate, toDate });
   },
 
   // Trade Analytics
   async getTradeSummary(fromDate: string, toDate: string, mode: TradingMode = 'live'): Promise<TradeSummary> {
-    return api.get<TradeSummary>(API_ENDPOINTS.V2_ANALYTICS.TRADES, { fromDate, toDate, mode });
+    return api.get<TradeSummary>(API_ENDPOINTS.ANALYTICS.TRADES, { fromDate, toDate, mode });
   },
 
   /**
@@ -352,81 +352,81 @@ export const analyticsService = {
    * snapshot (not date-filtered).
    */
   async getEodTradeSummary(fromDate: string, toDate: string, mode: TradingMode = 'live'): Promise<EodTradeSummary> {
-    return api.get<EodTradeSummary>(API_ENDPOINTS.V2_ANALYTICS.TRADES_EOD_SUMMARY, { fromDate, toDate, mode });
+    return api.get<EodTradeSummary>(API_ENDPOINTS.ANALYTICS.TRADES_EOD_SUMMARY, { fromDate, toDate, mode });
   },
 
   async getDailyPnlSummary(fromDate: string, toDate: string, mode: TradingMode = 'live'): Promise<DailyPnlSummary[]> {
-    return api.get<DailyPnlSummary[]>(API_ENDPOINTS.V2_ANALYTICS.TRADES_PNL, { fromDate, toDate, mode });
+    return api.get<DailyPnlSummary[]>(API_ENDPOINTS.ANALYTICS.TRADES_PNL, { fromDate, toDate, mode });
   },
 
   async getPnlByStrategy(fromDate: string, toDate: string, mode: TradingMode = 'live'): Promise<StrategyPnl[]> {
-    return api.get<StrategyPnl[]>(API_ENDPOINTS.V2_ANALYTICS.TRADES_BY_STRATEGY, { fromDate, toDate, mode });
+    return api.get<StrategyPnl[]>(API_ENDPOINTS.ANALYTICS.TRADES_BY_STRATEGY, { fromDate, toDate, mode });
   },
 
   async getTradeDistribution(fromDate: string, toDate: string, mode: TradingMode = 'live'): Promise<TradeDistribution> {
-    return api.get<TradeDistribution>(API_ENDPOINTS.V2_ANALYTICS.TRADES_DISTRIBUTION, { fromDate, toDate, mode });
+    return api.get<TradeDistribution>(API_ENDPOINTS.ANALYTICS.TRADES_DISTRIBUTION, { fromDate, toDate, mode });
   },
 
   // Strategy Performance Analytics
   async getStrategyPerformanceStats(fromDate: string, toDate: string, mode: TradingMode = 'live'): Promise<StrategyPerformanceStats> {
-    return api.get<StrategyPerformanceStats>(API_ENDPOINTS.V2_ANALYTICS.STRATEGY_PERFORMANCE, { fromDate, toDate, mode });
+    return api.get<StrategyPerformanceStats>(API_ENDPOINTS.ANALYTICS.STRATEGY_PERFORMANCE, { fromDate, toDate, mode });
   },
 
   async getStrategyDetailedPerformance(fromDate: string, toDate: string, mode: TradingMode = 'live'): Promise<StrategyDetailedPerformance[]> {
-    return api.get<StrategyDetailedPerformance[]>(API_ENDPOINTS.V2_ANALYTICS.STRATEGY_PERFORMANCE_DETAILED, { fromDate, toDate, mode });
+    return api.get<StrategyDetailedPerformance[]>(API_ENDPOINTS.ANALYTICS.STRATEGY_PERFORMANCE_DETAILED, { fromDate, toDate, mode });
   },
 
   async getPerformanceByProduct(fromDate: string, toDate: string, mode: TradingMode = 'live'): Promise<ProductPerformance[]> {
-    return api.get<ProductPerformance[]>(API_ENDPOINTS.V2_ANALYTICS.STRATEGY_PERFORMANCE_BY_PRODUCT, { fromDate, toDate, mode });
+    return api.get<ProductPerformance[]>(API_ENDPOINTS.ANALYTICS.STRATEGY_PERFORMANCE_BY_PRODUCT, { fromDate, toDate, mode });
   },
 
   async getCumulativePnl(fromDate: string, toDate: string, mode: TradingMode = 'live'): Promise<CumulativePnl[]> {
-    return api.get<CumulativePnl[]>(API_ENDPOINTS.V2_ANALYTICS.STRATEGY_PERFORMANCE_CUMULATIVE, { fromDate, toDate, mode });
+    return api.get<CumulativePnl[]>(API_ENDPOINTS.ANALYTICS.STRATEGY_PERFORMANCE_CUMULATIVE, { fromDate, toDate, mode });
   },
 
   async getMonthlyStrategyPerformance(fromDate: string, toDate: string, mode: TradingMode = 'live'): Promise<MonthlyStrategyPerformance[]> {
-    return api.get<MonthlyStrategyPerformance[]>(API_ENDPOINTS.V2_ANALYTICS.STRATEGY_PERFORMANCE_MONTHLY, { fromDate, toDate, mode });
+    return api.get<MonthlyStrategyPerformance[]>(API_ENDPOINTS.ANALYTICS.STRATEGY_PERFORMANCE_MONTHLY, { fromDate, toDate, mode });
   },
 
   async getStrategyDailyPnl(strategy: string, fromDate: string, toDate: string, mode: TradingMode = 'live'): Promise<DailyPnlSummary[]> {
-    return api.get<DailyPnlSummary[]>(API_ENDPOINTS.V2_ANALYTICS.STRATEGY_PERFORMANCE_DAILY, { strategy, fromDate, toDate, mode });
+    return api.get<DailyPnlSummary[]>(API_ENDPOINTS.ANALYTICS.STRATEGY_PERFORMANCE_DAILY, { strategy, fromDate, toDate, mode });
   },
 
   // User Performance Analytics
   async getUserPerformanceStats(fromDate: string, toDate: string, mode: TradingMode = 'live'): Promise<UserPerformanceStats> {
-    return api.get<UserPerformanceStats>(API_ENDPOINTS.V2_ANALYTICS.USER_PERFORMANCE, { fromDate, toDate, mode });
+    return api.get<UserPerformanceStats>(API_ENDPOINTS.ANALYTICS.USER_PERFORMANCE, { fromDate, toDate, mode });
   },
 
   async getUserDetailedPerformance(fromDate: string, toDate: string, mode: TradingMode = 'live'): Promise<UserDetailedPerformance[]> {
-    return api.get<UserDetailedPerformance[]>(API_ENDPOINTS.V2_ANALYTICS.USER_PERFORMANCE_DETAILED, { fromDate, toDate, mode });
+    return api.get<UserDetailedPerformance[]>(API_ENDPOINTS.ANALYTICS.USER_PERFORMANCE_DETAILED, { fromDate, toDate, mode });
   },
 
   async getUserCumulativePnl(fromDate: string, toDate: string, limit = 10, mode: TradingMode = 'live'): Promise<CumulativePnl[]> {
-    return api.get<CumulativePnl[]>(API_ENDPOINTS.V2_ANALYTICS.USER_PERFORMANCE_CUMULATIVE, { fromDate, toDate, limit, mode });
+    return api.get<CumulativePnl[]>(API_ENDPOINTS.ANALYTICS.USER_PERFORMANCE_CUMULATIVE, { fromDate, toDate, limit, mode });
   },
 
   async getMonthlyUserPerformance(fromDate: string, toDate: string, mode: TradingMode = 'live'): Promise<MonthlyUserPerformance[]> {
-    return api.get<MonthlyUserPerformance[]>(API_ENDPOINTS.V2_ANALYTICS.USER_PERFORMANCE_MONTHLY, { fromDate, toDate, mode });
+    return api.get<MonthlyUserPerformance[]>(API_ENDPOINTS.ANALYTICS.USER_PERFORMANCE_MONTHLY, { fromDate, toDate, mode });
   },
 
   async getUserDailyPnl(user: string, fromDate: string, toDate: string, mode: TradingMode = 'live'): Promise<DailyPnlSummary[]> {
-    return api.get<DailyPnlSummary[]>(API_ENDPOINTS.V2_ANALYTICS.USER_PERFORMANCE_DAILY, { user, fromDate, toDate, mode });
+    return api.get<DailyPnlSummary[]>(API_ENDPOINTS.ANALYTICS.USER_PERFORMANCE_DAILY, { user, fromDate, toDate, mode });
   },
 
   async getBrokerDetailedPerformance(fromDate: string, toDate: string, mode: TradingMode = 'live'): Promise<BrokerDetailedPerformance[]> {
-    return api.get<BrokerDetailedPerformance[]>(API_ENDPOINTS.V2_ANALYTICS.BROKER_PERFORMANCE_DETAILED, { fromDate, toDate, mode });
+    return api.get<BrokerDetailedPerformance[]>(API_ENDPOINTS.ANALYTICS.BROKER_PERFORMANCE_DETAILED, { fromDate, toDate, mode });
   },
 
   async getBrokerDailyPnl(broker: string, fromDate: string, toDate: string, mode: TradingMode = 'live'): Promise<DailyPnlSummary[]> {
-    return api.get<DailyPnlSummary[]>(API_ENDPOINTS.V2_ANALYTICS.BROKER_PERFORMANCE_DAILY, { broker, fromDate, toDate, mode });
+    return api.get<DailyPnlSummary[]>(API_ENDPOINTS.ANALYTICS.BROKER_PERFORMANCE_DAILY, { broker, fromDate, toDate, mode });
   },
 
   async getBrokerUserBreakdown(broker: string, fromDate: string, toDate: string, mode: TradingMode = 'live'): Promise<BrokerUserPerformance[]> {
-    return api.get<BrokerUserPerformance[]>(API_ENDPOINTS.V2_ANALYTICS.BROKER_PERFORMANCE_USERS, { broker, fromDate, toDate, mode });
+    return api.get<BrokerUserPerformance[]>(API_ENDPOINTS.ANALYTICS.BROKER_PERFORMANCE_USERS, { broker, fromDate, toDate, mode });
   },
 
   async getUserStrategyBreakdown(user: string, fromDate: string, toDate: string, mode: TradingMode = 'live'): Promise<UserStrategyPerformance[]> {
-    return api.get<UserStrategyPerformance[]>(API_ENDPOINTS.V2_ANALYTICS.USER_PERFORMANCE_STRATEGIES, { user, fromDate, toDate, mode });
+    return api.get<UserStrategyPerformance[]>(API_ENDPOINTS.ANALYTICS.USER_PERFORMANCE_STRATEGIES, { user, fromDate, toDate, mode });
   },
 };
 

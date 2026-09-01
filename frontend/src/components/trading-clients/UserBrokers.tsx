@@ -2,7 +2,7 @@
  * UserBrokers Component
  * Table for listing user broker configurations
  * Reusable across Admin, Client Manager portals
- * Uses V2 API: /api/v2/users/{username}/brokers
+ * Uses: /api/users/{username}/brokers
  */
 
 import { useState, useMemo } from 'react';

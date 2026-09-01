@@ -1,7 +1,7 @@
 /**
  * BrokerDeleteModal — smart confirm dialog for deleting a broker.
  *
- * Fetches GET /api/v2/brokers/{name}/usage on open. Renders one of three
+ * Fetches GET /api/brokers/{name}/usage on open. Renders one of three
  * states based on the response:
  *   1. blockers present  → list them, refuse to delete (operator must clear first)
  *   2. only historical counts → show as info, allow delete

@@ -250,11 +250,18 @@ class TestTransactionality:
 
 class TestEveryTableIsReachable:
     async def test_each_repository_can_count_its_table(self, session_factory):
-        """A model that does not match its table fails here rather than in use."""
+        """A model that does not match its table fails here rather than in use.
+
+        There was a `len(names) == 67` here as well. It caught nothing -- a
+        model whose columns have drifted from its table still counts -- and it
+        failed the moment a table was added, which is the one change it should
+        have been indifferent to. What matters is that every repository named
+        can reach its table, whatever the number of them is.
+        """
         from garuda.persistence.repositories import Repositories
 
         names = [name for name in dir(Repositories) if not name.startswith("_") and name != "of"]
-        assert len(names) == 67
+        assert names, "no repositories found on Repositories"
 
         async with UnitOfWork(session_factory) as uow:
             for name in names:

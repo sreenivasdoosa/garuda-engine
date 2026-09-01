@@ -25,9 +25,9 @@ import type {
 } from '@/types/terminal';
 import type { SquareOffProduct } from '@/types/product';
 
-const BASE_URL = '/api/v2/terminal';
-const TRADES_URL = '/api/v2/trades';
-const POSITIONS_URL = '/api/v2/positions';
+const BASE_URL = '/api/terminal';
+const TRADES_URL = '/api/trades';
+const POSITIONS_URL = '/api/positions';
 
 /** Fleet-wide square-off preview counts (all accessible users), for the confirmation modals. */
 export interface SquareOffPreview {

@@ -60,7 +60,7 @@ const refreshAccessToken = async (): Promise<string | null> => {
     console.log('[API] Attempting token refresh...');
     // Use axios directly to avoid interceptor loop
     const response = await axios.post(
-      `${getBaseUrl()}/api/v2/auth/refresh`,
+      `${getBaseUrl()}/api/auth/refresh`,
       { refresh_token: refreshToken },
       { headers: { 'Content-Type': 'application/json' } }
     );

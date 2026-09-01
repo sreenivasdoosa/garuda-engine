@@ -2,7 +2,7 @@
  * UserBroker Component
  * Modal for viewing/editing a single user broker configuration
  * Reusable across Admin, Client Manager portals
- * Uses V2 API: /api/v2/users/{username}/brokers
+ * Uses: /api/users/{username}/brokers
  */
 
 import { useState, useEffect, useMemo } from 'react';

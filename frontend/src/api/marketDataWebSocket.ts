@@ -1,6 +1,6 @@
 /**
  * WebSocket service for real-time market data (Standalone mode).
- * Connects to /api/v2/market-data/socket registered in core's WebServer.
+ * Connects to /api/market-data/socket registered in core's WebServer.
  */
 
 import { getWsHost, getWsScheme } from '@/config/env';
@@ -85,7 +85,7 @@ class MarketDataWebSocket {
     const protocol = getWsScheme();
     const username = this.getUsername();
     const clientId = username ? `garuda-console-${username}` : 'garuda-console';
-    let url = `${protocol}//${getWsHost()}/api/v2/market-data/socket?clientId=${encodeURIComponent(clientId)}`;
+    let url = `${protocol}//${getWsHost()}/api/market-data/socket?clientId=${encodeURIComponent(clientId)}`;
     // DEV ONLY: see context/WebSocketContext.tsx — a localhost page can't send the
     // ws_access_token cookie cross-site to a remote WS host, so pass the JWT as the
     // servlet's `token` query-param fallback. Prod builds keep using the cookie.

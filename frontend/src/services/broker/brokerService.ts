@@ -13,73 +13,73 @@ import type {
 
 /**
  * Broker Service - V2 API
- * Endpoint: /api/v2/brokers
+ * Endpoint: /api/brokers
  */
 export const brokerService = {
   /**
    * Get all brokers
-   * GET /api/v2/brokers
+   * GET /api/brokers
    */
   async getAll(): Promise<Broker[]> {
-    return api.get<Broker[]>(API_ENDPOINTS.V2_BROKERS.LIST);
+    return api.get<Broker[]>(API_ENDPOINTS.BROKERS.LIST);
   },
 
   /**
    * Get broker by name
-   * GET /api/v2/brokers/{name}
+   * GET /api/brokers/{name}
    */
   async getByName(name: string): Promise<Broker> {
-    return api.get<Broker>(API_ENDPOINTS.V2_BROKERS.DETAILS(name));
+    return api.get<Broker>(API_ENDPOINTS.BROKERS.DETAILS(name));
   },
 
   /**
    * Create new broker (admin only)
-   * POST /api/v2/brokers
+   * POST /api/brokers
    */
   async create(data: CreateBrokerRequest): Promise<Broker> {
-    return api.post<Broker>(API_ENDPOINTS.V2_BROKERS.BASE, data);
+    return api.post<Broker>(API_ENDPOINTS.BROKERS.BASE, data);
   },
 
   /**
    * Update broker (admin only)
-   * PUT /api/v2/brokers/{name}
+   * PUT /api/brokers/{name}
    */
   async update(name: string, data: UpdateBrokerRequest): Promise<Broker> {
-    return api.put<Broker>(API_ENDPOINTS.V2_BROKERS.DETAILS(name), data);
+    return api.put<Broker>(API_ENDPOINTS.BROKERS.DETAILS(name), data);
   },
 
   /**
    * Delete broker (admin only)
-   * DELETE /api/v2/brokers/{name}
+   * DELETE /api/brokers/{name}
    * Returns 409 Conflict with a {usage: BrokerUsage} body if any FK-protected
    * dependency rows still reference this broker.
    */
   async delete(name: string): Promise<void> {
-    return api.delete(API_ENDPOINTS.V2_BROKERS.DETAILS(name));
+    return api.delete(API_ENDPOINTS.BROKERS.DETAILS(name));
   },
 
   /**
    * Pre-flight dependency check for the delete-broker UX.
-   * GET /api/v2/brokers/{name}/usage
+   * GET /api/brokers/{name}/usage
    */
   async getUsage(name: string): Promise<BrokerUsage> {
-    return api.get<BrokerUsage>(`${API_ENDPOINTS.V2_BROKERS.DETAILS(name)}/usage`);
+    return api.get<BrokerUsage>(`${API_ENDPOINTS.BROKERS.DETAILS(name)}/usage`);
   },
 
   /**
    * Stop broker
-   * PUT /api/v2/brokers/{name}/stop
+   * PUT /api/brokers/{name}/stop
    */
   async stop(name: string): Promise<void> {
-    return api.put(API_ENDPOINTS.V2_BROKERS.STOP(name), {});
+    return api.put(API_ENDPOINTS.BROKERS.STOP(name), {});
   },
 
   /**
    * Unstop broker
-   * PUT /api/v2/brokers/{name}/unstop
+   * PUT /api/brokers/{name}/unstop
    */
   async unstop(name: string): Promise<void> {
-    return api.put(API_ENDPOINTS.V2_BROKERS.UNSTOP(name), {});
+    return api.put(API_ENDPOINTS.BROKERS.UNSTOP(name), {});
   },
 
   // Legacy V1 APIs for broker login/credentials (keep for now until migrated)

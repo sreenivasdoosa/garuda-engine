@@ -1,6 +1,6 @@
 // Stock universe (watchlist) types — equity strategies bind to a universe.
 // Maps to: the reference engine
-// API: /api/v2/engine/universes
+// API: /api/engine/universes
 
 export type UniverseType = 'PREDEFINED_INDEX' | 'CUSTOM';
 

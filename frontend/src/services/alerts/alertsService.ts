@@ -14,7 +14,7 @@ export const alertsService = {
     if (alertLevel) {
       params.append('alertLevel', alertLevel);
     }
-    return api.get<SystemAlert[]>(`${API_ENDPOINTS.V2_ALERTS.RECENT}?${params.toString()}`);
+    return api.get<SystemAlert[]>(`${API_ENDPOINTS.ALERTS.RECENT}?${params.toString()}`);
   },
 
   /**
@@ -22,7 +22,7 @@ export const alertsService = {
    * Returns only alerts newer than the given timestamp.
    */
   async getAlertsSince(timestamp: string): Promise<SystemAlert[]> {
-    return api.get<SystemAlert[]>(`${API_ENDPOINTS.V2_ALERTS.SINCE}?timestamp=${encodeURIComponent(timestamp)}`);
+    return api.get<SystemAlert[]>(`${API_ENDPOINTS.ALERTS.SINCE}?timestamp=${encodeURIComponent(timestamp)}`);
   },
 
   /**
@@ -43,7 +43,7 @@ export const alertsService = {
     if (params.audience) queryParams.append('audience', params.audience);
 
     const queryString = queryParams.toString();
-    const url = queryString ? `${API_ENDPOINTS.V2_ALERTS.BASE}?${queryString}` : API_ENDPOINTS.V2_ALERTS.BASE;
+    const url = queryString ? `${API_ENDPOINTS.ALERTS.BASE}?${queryString}` : API_ENDPOINTS.ALERTS.BASE;
 
     return api.get<AlertsPageResponse>(url);
   },
@@ -52,6 +52,6 @@ export const alertsService = {
    * Get available filter options (operations, entity types, alert levels).
    */
   async getFilters(): Promise<AlertFilters> {
-    return api.get<AlertFilters>(API_ENDPOINTS.V2_ALERTS.FILTERS);
+    return api.get<AlertFilters>(API_ENDPOINTS.ALERTS.FILTERS);
   },
 };

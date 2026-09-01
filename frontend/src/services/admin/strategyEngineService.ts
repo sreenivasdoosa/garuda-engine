@@ -42,47 +42,47 @@ import type {
 export const engineControlService = {
   // Get all exchanges engine status
   async getAllStatus(): Promise<AllEnginesStatus> {
-    return api.get<AllEnginesStatus>(API_ENDPOINTS.V2_ENGINE.STATUS);
+    return api.get<AllEnginesStatus>(API_ENDPOINTS.ENGINE.STATUS);
   },
 
   // Get engine status for specific exchange
   async getStatus(exchange: string): Promise<ExchangeEngineStatus> {
-    return api.get<ExchangeEngineStatus>(API_ENDPOINTS.V2_ENGINE.STATUS_EXCHANGE(exchange));
+    return api.get<ExchangeEngineStatus>(API_ENDPOINTS.ENGINE.STATUS_EXCHANGE(exchange));
   },
 
   // Get detailed metrics for specific exchange
   async getMetrics(exchange: string): Promise<ExchangeEngineMetrics> {
-    return api.get<ExchangeEngineMetrics>(API_ENDPOINTS.V2_ENGINE.METRICS(exchange));
+    return api.get<ExchangeEngineMetrics>(API_ENDPOINTS.ENGINE.METRICS(exchange));
   },
 
   // Start the engine for specific exchange
   async start(exchange: string): Promise<ExchangeEngineStatus> {
-    return api.post<ExchangeEngineStatus>(API_ENDPOINTS.V2_ENGINE.START(exchange), {});
+    return api.post<ExchangeEngineStatus>(API_ENDPOINTS.ENGINE.START(exchange), {});
   },
 
   // Stop the engine for specific exchange
   async stop(exchange: string): Promise<ExchangeEngineStatus> {
-    return api.post<ExchangeEngineStatus>(API_ENDPOINTS.V2_ENGINE.STOP(exchange), {});
+    return api.post<ExchangeEngineStatus>(API_ENDPOINTS.ENGINE.STOP(exchange), {});
   },
 
   // Reload subscriptions for specific exchange
   async reload(exchange: string): Promise<ExchangeEngineStatus> {
-    return api.post<ExchangeEngineStatus>(API_ENDPOINTS.V2_ENGINE.RELOAD(exchange), {});
+    return api.post<ExchangeEngineStatus>(API_ENDPOINTS.ENGINE.RELOAD(exchange), {});
   },
 
   // Enable dry run mode for specific exchange
   async enableDryRun(exchange: string): Promise<ExchangeEngineStatus> {
-    return api.post<ExchangeEngineStatus>(API_ENDPOINTS.V2_ENGINE.DRYRUN_ENABLE(exchange), {});
+    return api.post<ExchangeEngineStatus>(API_ENDPOINTS.ENGINE.DRYRUN_ENABLE(exchange), {});
   },
 
   // Disable dry run mode for specific exchange
   async disableDryRun(exchange: string): Promise<ExchangeEngineStatus> {
-    return api.post<ExchangeEngineStatus>(API_ENDPOINTS.V2_ENGINE.DRYRUN_DISABLE(exchange), {});
+    return api.post<ExchangeEngineStatus>(API_ENDPOINTS.ENGINE.DRYRUN_DISABLE(exchange), {});
   },
 
   // Shutdown all engines
   async shutdownAll(): Promise<{ message: string }> {
-    return api.post<{ message: string }>(API_ENDPOINTS.V2_ENGINE.SHUTDOWN_ALL, {});
+    return api.post<{ message: string }>(API_ENDPOINTS.ENGINE.SHUTDOWN_ALL, {});
   },
 
   // Legacy single-engine methods (deprecated - for backwards compatibility)
@@ -109,32 +109,32 @@ export const engineControlService = {
 export const strategyTemplateService = {
   // Get all templates
   async getAll(): Promise<StrategyTemplate[]> {
-    return api.get<StrategyTemplate[]>(API_ENDPOINTS.V2_ENGINE_TEMPLATES.LIST);
+    return api.get<StrategyTemplate[]>(API_ENDPOINTS.ENGINE_TEMPLATES.LIST);
   },
 
   // Get active templates only
   async getActive(): Promise<StrategyTemplate[]> {
-    return api.get<StrategyTemplate[]>(API_ENDPOINTS.V2_ENGINE_TEMPLATES.ACTIVE);
+    return api.get<StrategyTemplate[]>(API_ENDPOINTS.ENGINE_TEMPLATES.ACTIVE);
   },
 
   // Get template by name
   async getByName(templateName: string): Promise<StrategyTemplate> {
-    return api.get<StrategyTemplate>(API_ENDPOINTS.V2_ENGINE_TEMPLATES.DETAILS(templateName));
+    return api.get<StrategyTemplate>(API_ENDPOINTS.ENGINE_TEMPLATES.DETAILS(templateName));
   },
 
   // Create template
   async create(data: CreateStrategyTemplateRequest): Promise<StrategyTemplate> {
-    return api.post<StrategyTemplate>(API_ENDPOINTS.V2_ENGINE_TEMPLATES.BASE, data);
+    return api.post<StrategyTemplate>(API_ENDPOINTS.ENGINE_TEMPLATES.BASE, data);
   },
 
   // Update template
   async update(templateName: string, data: UpdateStrategyTemplateRequest): Promise<StrategyTemplate> {
-    return api.put<StrategyTemplate>(API_ENDPOINTS.V2_ENGINE_TEMPLATES.DETAILS(templateName), data);
+    return api.put<StrategyTemplate>(API_ENDPOINTS.ENGINE_TEMPLATES.DETAILS(templateName), data);
   },
 
   // Delete template
   async delete(templateName: string): Promise<{ success: boolean }> {
-    return api.delete(API_ENDPOINTS.V2_ENGINE_TEMPLATES.DETAILS(templateName));
+    return api.delete(API_ENDPOINTS.ENGINE_TEMPLATES.DETAILS(templateName));
   },
 };
 
@@ -148,27 +148,27 @@ export const strategyDefinitionService = {
     exchange?: string;
     status?: StrategyStatus;
   }): Promise<StrategyDefinition[]> {
-    return api.get<StrategyDefinition[]>(API_ENDPOINTS.V2_ENGINE_DEFINITIONS.LIST, params);
+    return api.get<StrategyDefinition[]>(API_ENDPOINTS.ENGINE_DEFINITIONS.LIST, params);
   },
 
   // Get active definitions only
   async getActive(): Promise<StrategyDefinition[]> {
-    return api.get<StrategyDefinition[]>(API_ENDPOINTS.V2_ENGINE_DEFINITIONS.ACTIVE);
+    return api.get<StrategyDefinition[]>(API_ENDPOINTS.ENGINE_DEFINITIONS.ACTIVE);
   },
 
   // Get definition by ID
   async getById(id: number): Promise<StrategyDefinition> {
-    return api.get<StrategyDefinition>(API_ENDPOINTS.V2_ENGINE_DEFINITIONS.DETAILS(id));
+    return api.get<StrategyDefinition>(API_ENDPOINTS.ENGINE_DEFINITIONS.DETAILS(id));
   },
 
   // Get definition by name
   async getByName(strategyName: string): Promise<StrategyDefinition> {
-    return api.get<StrategyDefinition>(API_ENDPOINTS.V2_ENGINE_DEFINITIONS.BY_NAME(strategyName));
+    return api.get<StrategyDefinition>(API_ENDPOINTS.ENGINE_DEFINITIONS.BY_NAME(strategyName));
   },
 
   // Create definition
   async create(data: CreateStrategyDefinitionRequest): Promise<StrategyDefinition> {
-    return api.post<StrategyDefinition>(API_ENDPOINTS.V2_ENGINE_DEFINITIONS.BASE, data);
+    return api.post<StrategyDefinition>(API_ENDPOINTS.ENGINE_DEFINITIONS.BASE, data);
   },
 
   /**
@@ -185,22 +185,22 @@ export const strategyDefinitionService = {
   ): Promise<TemplateResolution> {
     const qs = `?indicatorEntry=${indicatorEntry}&indicatorExit=${indicatorExit}`;
     return api.post<TemplateResolution>(
-      API_ENDPOINTS.V2_ENGINE_DEFINITIONS.RESOLVE_TEMPLATE + qs, draft);
+      API_ENDPOINTS.ENGINE_DEFINITIONS.RESOLVE_TEMPLATE + qs, draft);
   },
 
   // Update definition
   async update(id: number, data: UpdateStrategyDefinitionRequest): Promise<StrategyDefinition> {
-    return api.put<StrategyDefinition>(API_ENDPOINTS.V2_ENGINE_DEFINITIONS.DETAILS(id), data);
+    return api.put<StrategyDefinition>(API_ENDPOINTS.ENGINE_DEFINITIONS.DETAILS(id), data);
   },
 
   // Change definition status (ACTIVE, WIND_DOWN, INACTIVE)
   async changeStatus(id: number, status: StrategyStatus): Promise<StrategyDefinition> {
-    return api.post<StrategyDefinition>(API_ENDPOINTS.V2_ENGINE_DEFINITIONS.CHANGE_STATUS(id, status), {});
+    return api.post<StrategyDefinition>(API_ENDPOINTS.ENGINE_DEFINITIONS.CHANGE_STATUS(id, status), {});
   },
 
   // Delete definition
   async delete(id: number): Promise<{ success: boolean }> {
-    return api.delete(API_ENDPOINTS.V2_ENGINE_DEFINITIONS.DETAILS(id));
+    return api.delete(API_ENDPOINTS.ENGINE_DEFINITIONS.DETAILS(id));
   },
 };
 
@@ -228,7 +228,7 @@ export const strategyDefinitionTransferService = {
     const body = strategyNames === 'all'
       ? { all: true }
       : { strategyNames };
-    const response = await apiClient.post(API_ENDPOINTS.V2_ENGINE_DEFINITIONS.EXPORT, body, {
+    const response = await apiClient.post(API_ENDPOINTS.ENGINE_DEFINITIONS.EXPORT, body, {
       responseType: 'blob',
     });
     return response as unknown as Blob;
@@ -238,7 +238,7 @@ export const strategyDefinitionTransferService = {
   async importPreview(file: File): Promise<ImportPreviewResult> {
     const formData = new FormData();
     formData.append('file', file);
-    return apiClient.post(API_ENDPOINTS.V2_ENGINE_DEFINITIONS.IMPORT_PREVIEW, formData, {
+    return apiClient.post(API_ENDPOINTS.ENGINE_DEFINITIONS.IMPORT_PREVIEW, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
   },
@@ -253,7 +253,7 @@ export const strategyDefinitionTransferService = {
     formData.append('file', file);
     formData.append('resolutions', JSON.stringify(resolutions));
     formData.append('defaultResolution', defaultResolution);
-    return apiClient.post(API_ENDPOINTS.V2_ENGINE_DEFINITIONS.IMPORT_APPLY, formData, {
+    return apiClient.post(API_ENDPOINTS.ENGINE_DEFINITIONS.IMPORT_APPLY, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
   },
@@ -264,7 +264,7 @@ export const strategyDefinitionTransferService = {
 export const userSubscriptionService = {
   // Get all subscriptions (including inactive)
   async getAll(): Promise<UserStrategySubscription[]> {
-    return api.get<UserStrategySubscription[]>(API_ENDPOINTS.V2_ENGINE_SUBSCRIPTIONS.LIST, { activeOnly: false });
+    return api.get<UserStrategySubscription[]>(API_ENDPOINTS.ENGINE_SUBSCRIPTIONS.LIST, { activeOnly: false });
   },
 
   // Server-side filtered list for the admin table. Returns the FULL matching set
@@ -286,62 +286,62 @@ export const userSubscriptionService = {
     if (params.broker && params.broker !== 'all') query.broker = params.broker;
     if (params.paper && params.paper !== 'all') query.paper = params.paper;
     return api.get<UserStrategySubscription[]>(
-      API_ENDPOINTS.V2_ENGINE_SUBSCRIPTIONS.LIST, query);
+      API_ENDPOINTS.ENGINE_SUBSCRIPTIONS.LIST, query);
   },
 
   // Get active subscriptions only
   async getActive(): Promise<UserStrategySubscription[]> {
-    return api.get<UserStrategySubscription[]>(API_ENDPOINTS.V2_ENGINE_SUBSCRIPTIONS.ACTIVE);
+    return api.get<UserStrategySubscription[]>(API_ENDPOINTS.ENGINE_SUBSCRIPTIONS.ACTIVE);
   },
 
   // Get subscription by ID
   async getById(id: number): Promise<UserStrategySubscription> {
-    return api.get<UserStrategySubscription>(API_ENDPOINTS.V2_ENGINE_SUBSCRIPTIONS.DETAILS(id));
+    return api.get<UserStrategySubscription>(API_ENDPOINTS.ENGINE_SUBSCRIPTIONS.DETAILS(id));
   },
 
   // Get subscriptions by user
   async getByUser(username: string): Promise<UserStrategySubscription[]> {
-    return api.get<UserStrategySubscription[]>(API_ENDPOINTS.V2_ENGINE_SUBSCRIPTIONS.BY_USER(username));
+    return api.get<UserStrategySubscription[]>(API_ENDPOINTS.ENGINE_SUBSCRIPTIONS.BY_USER(username));
   },
 
   // Get subscriptions by strategy
   async getByStrategy(strategyName: string): Promise<UserStrategySubscription[]> {
-    return api.get<UserStrategySubscription[]>(API_ENDPOINTS.V2_ENGINE_SUBSCRIPTIONS.BY_STRATEGY(strategyName));
+    return api.get<UserStrategySubscription[]>(API_ENDPOINTS.ENGINE_SUBSCRIPTIONS.BY_STRATEGY(strategyName));
   },
 
   // Get subscriptions that accept external signals
   async getSignalSubscriptions(): Promise<UserStrategySubscription[]> {
-    return api.get<UserStrategySubscription[]>(API_ENDPOINTS.V2_ENGINE_SUBSCRIPTIONS.SIGNALS);
+    return api.get<UserStrategySubscription[]>(API_ENDPOINTS.ENGINE_SUBSCRIPTIONS.SIGNALS);
   },
 
   // Create subscription
   async create(data: CreateUserSubscriptionRequest): Promise<UserStrategySubscription> {
-    return api.post<UserStrategySubscription>(API_ENDPOINTS.V2_ENGINE_SUBSCRIPTIONS.BASE, data);
+    return api.post<UserStrategySubscription>(API_ENDPOINTS.ENGINE_SUBSCRIPTIONS.BASE, data);
   },
 
   // Update subscription
   async update(id: number, data: UpdateUserSubscriptionRequest): Promise<UserStrategySubscription> {
-    return api.put<UserStrategySubscription>(API_ENDPOINTS.V2_ENGINE_SUBSCRIPTIONS.DETAILS(id), data);
+    return api.put<UserStrategySubscription>(API_ENDPOINTS.ENGINE_SUBSCRIPTIONS.DETAILS(id), data);
   },
 
   // Activate subscription
   async activate(id: number): Promise<UserStrategySubscription> {
-    return api.post<UserStrategySubscription>(API_ENDPOINTS.V2_ENGINE_SUBSCRIPTIONS.ACTIVATE(id), {});
+    return api.post<UserStrategySubscription>(API_ENDPOINTS.ENGINE_SUBSCRIPTIONS.ACTIVATE(id), {});
   },
 
   // Deactivate subscription
   async deactivate(id: number): Promise<UserStrategySubscription> {
-    return api.post<UserStrategySubscription>(API_ENDPOINTS.V2_ENGINE_SUBSCRIPTIONS.DEACTIVATE(id), {});
+    return api.post<UserStrategySubscription>(API_ENDPOINTS.ENGINE_SUBSCRIPTIONS.DEACTIVATE(id), {});
   },
 
   // Delete subscription
   async delete(id: number): Promise<{ success: boolean }> {
-    return api.delete(API_ENDPOINTS.V2_ENGINE_SUBSCRIPTIONS.DETAILS(id));
+    return api.delete(API_ENDPOINTS.ENGINE_SUBSCRIPTIONS.DETAILS(id));
   },
 
   // Delete all subscriptions for a user
   async deleteByUser(username: string): Promise<{ success: boolean }> {
-    return api.delete(API_ENDPOINTS.V2_ENGINE_SUBSCRIPTIONS.BY_USER(username));
+    return api.delete(API_ENDPOINTS.ENGINE_SUBSCRIPTIONS.BY_USER(username));
   },
 };
 
@@ -351,45 +351,45 @@ export const externalSignalService = {
   // Get pending signals
   async getPending(limit?: number): Promise<ExternalSignal[]> {
     const params = limit ? { limit } : undefined;
-    return api.get<ExternalSignal[]>(API_ENDPOINTS.V2_ENGINE_SIGNALS.PENDING, params);
+    return api.get<ExternalSignal[]>(API_ENDPOINTS.ENGINE_SIGNALS.PENDING, params);
   },
 
   // Get recent signals
   async getRecent(limit?: number): Promise<ExternalSignal[]> {
     const params = limit ? { limit } : undefined;
-    return api.get<ExternalSignal[]>(API_ENDPOINTS.V2_ENGINE_SIGNALS.RECENT, params);
+    return api.get<ExternalSignal[]>(API_ENDPOINTS.ENGINE_SIGNALS.RECENT, params);
   },
 
   // Get signal by ID
   async getById(id: number): Promise<ExternalSignal> {
-    return api.get<ExternalSignal>(API_ENDPOINTS.V2_ENGINE_SIGNALS.DETAILS(id));
+    return api.get<ExternalSignal>(API_ENDPOINTS.ENGINE_SIGNALS.DETAILS(id));
   },
 
   // Get signals by source
   async getBySource(source: string, limit?: number): Promise<ExternalSignal[]> {
     const params = limit ? { limit } : undefined;
-    return api.get<ExternalSignal[]>(API_ENDPOINTS.V2_ENGINE_SIGNALS.BY_SOURCE(source), params);
+    return api.get<ExternalSignal[]>(API_ENDPOINTS.ENGINE_SIGNALS.BY_SOURCE(source), params);
   },
 
   // Submit new signal
   async submit(data: CreateExternalSignalRequest): Promise<ExternalSignal> {
-    return api.post<ExternalSignal>(API_ENDPOINTS.V2_ENGINE_SIGNALS.BASE, data);
+    return api.post<ExternalSignal>(API_ENDPOINTS.ENGINE_SIGNALS.BASE, data);
   },
 
   // Cancel/skip signal
   async cancel(id: number, data?: CancelSignalRequest): Promise<ExternalSignal> {
-    return api.post<ExternalSignal>(API_ENDPOINTS.V2_ENGINE_SIGNALS.CANCEL(id), data || {});
+    return api.post<ExternalSignal>(API_ENDPOINTS.ENGINE_SIGNALS.CANCEL(id), data || {});
   },
 
   // Delete signal
   async delete(id: number): Promise<{ success: boolean }> {
-    return api.delete(API_ENDPOINTS.V2_ENGINE_SIGNALS.DETAILS(id));
+    return api.delete(API_ENDPOINTS.ENGINE_SIGNALS.DETAILS(id));
   },
 
   // Cleanup old processed signals
   async cleanup(daysOld?: number): Promise<SignalCleanupResult> {
     const params = daysOld ? { days: daysOld } : undefined;
-    return api.delete<SignalCleanupResult>(API_ENDPOINTS.V2_ENGINE_SIGNALS.CLEANUP, params);
+    return api.delete<SignalCleanupResult>(API_ENDPOINTS.ENGINE_SIGNALS.CLEANUP, params);
   },
 };
 
@@ -398,32 +398,32 @@ export const externalSignalService = {
 export const tranchScheduleService = {
   // Get all schedules
   async getAll(): Promise<TranchSchedule[]> {
-    return api.get<TranchSchedule[]>(API_ENDPOINTS.V2_ENGINE_SCHEDULES.LIST);
+    return api.get<TranchSchedule[]>(API_ENDPOINTS.ENGINE_SCHEDULES.LIST);
   },
 
   // Get schedule by ID
   async getById(id: number): Promise<TranchSchedule> {
-    return api.get<TranchSchedule>(API_ENDPOINTS.V2_ENGINE_SCHEDULES.DETAILS(id));
+    return api.get<TranchSchedule>(API_ENDPOINTS.ENGINE_SCHEDULES.DETAILS(id));
   },
 
   // Get schedules by strategy
   async getByStrategy(strategyName: string): Promise<TranchSchedule[]> {
-    return api.get<TranchSchedule[]>(API_ENDPOINTS.V2_ENGINE_SCHEDULES.BY_STRATEGY(strategyName));
+    return api.get<TranchSchedule[]>(API_ENDPOINTS.ENGINE_SCHEDULES.BY_STRATEGY(strategyName));
   },
 
   // Create schedule
   async create(data: CreateTranchScheduleRequest): Promise<TranchSchedule> {
-    return api.post<TranchSchedule>(API_ENDPOINTS.V2_ENGINE_SCHEDULES.BASE, data);
+    return api.post<TranchSchedule>(API_ENDPOINTS.ENGINE_SCHEDULES.BASE, data);
   },
 
   // Update schedule
   async update(id: number, data: UpdateTranchScheduleRequest): Promise<TranchSchedule> {
-    return api.put<TranchSchedule>(API_ENDPOINTS.V2_ENGINE_SCHEDULES.DETAILS(id), data);
+    return api.put<TranchSchedule>(API_ENDPOINTS.ENGINE_SCHEDULES.DETAILS(id), data);
   },
 
   // Delete schedule
   async delete(id: number): Promise<{ success: boolean }> {
-    return api.delete(API_ENDPOINTS.V2_ENGINE_SCHEDULES.DETAILS(id));
+    return api.delete(API_ENDPOINTS.ENGINE_SCHEDULES.DETAILS(id));
   },
 };
 
@@ -439,7 +439,7 @@ export const strategyStateService = {
     if (filters?.username) params.username = filters.username;
     if (filters?.strategy) params.strategy = filters.strategy;
     if (filters?.date) params.date = filters.date;
-    return api.get<StrategyStateSnapshot[]>(API_ENDPOINTS.V2_ENGINE_STATES.LIST, params);
+    return api.get<StrategyStateSnapshot[]>(API_ENDPOINTS.ENGINE_STATES.LIST, params);
   },
 
   /**
@@ -447,7 +447,7 @@ export const strategyStateService = {
    */
   async getSummary(date?: string): Promise<StrategyStateSummary> {
     const params = date ? { date } : undefined;
-    return api.get<StrategyStateSummary>(API_ENDPOINTS.V2_ENGINE_STATES.SUMMARY, params);
+    return api.get<StrategyStateSummary>(API_ENDPOINTS.ENGINE_STATES.SUMMARY, params);
   },
 
   /**
@@ -461,7 +461,7 @@ export const strategyStateService = {
   ): Promise<StrategyStateSnapshot> {
     const params = date ? { date } : undefined;
     return api.get<StrategyStateSnapshot>(
-      API_ENDPOINTS.V2_ENGINE_STATES.DETAILS(username, strategy, broker),
+      API_ENDPOINTS.ENGINE_STATES.DETAILS(username, strategy, broker),
       params
     );
   },
@@ -517,7 +517,7 @@ export interface HedgeReplaceRecoveryResult {
   }>;
 }
 
-const HEDGE_REPLACE_URL = '/api/v2/hedge-replace';
+const HEDGE_REPLACE_URL = '/api/hedge-replace';
 
 export const hedgeReplaceService = {
   /**
@@ -552,13 +552,13 @@ export const hedgeReplaceService = {
 export const indicatorRulesService = {
   // Get all indicator rules
   async getAll(): Promise<IndicatorRuleSet[]> {
-    return api.get<IndicatorRuleSet[]>(API_ENDPOINTS.V2_ENGINE_INDICATOR_RULES.LIST);
+    return api.get<IndicatorRuleSet[]>(API_ENDPOINTS.ENGINE_INDICATOR_RULES.LIST);
   },
 
   // Get indicator rules by strategy name
   async getByStrategy(strategyName: string): Promise<IndicatorRuleSet | null> {
     try {
-      return await api.get<IndicatorRuleSet>(API_ENDPOINTS.V2_ENGINE_INDICATOR_RULES.BY_STRATEGY(strategyName));
+      return await api.get<IndicatorRuleSet>(API_ENDPOINTS.ENGINE_INDICATOR_RULES.BY_STRATEGY(strategyName));
     } catch {
       return null; // Not found
     }
@@ -566,12 +566,12 @@ export const indicatorRulesService = {
 
   // Save indicator rules for a strategy
   async save(rules: IndicatorRuleSet): Promise<IndicatorRuleSet> {
-    return api.post<IndicatorRuleSet>(API_ENDPOINTS.V2_ENGINE_INDICATOR_RULES.BASE, rules);
+    return api.post<IndicatorRuleSet>(API_ENDPOINTS.ENGINE_INDICATOR_RULES.BASE, rules);
   },
 
   // Delete indicator rules for a strategy
   async delete(strategyName: string): Promise<{ success: boolean }> {
-    return api.delete(API_ENDPOINTS.V2_ENGINE_INDICATOR_RULES.BY_STRATEGY(strategyName));
+    return api.delete(API_ENDPOINTS.ENGINE_INDICATOR_RULES.BY_STRATEGY(strategyName));
   },
 };
 
@@ -589,15 +589,15 @@ export const breakoutWatchService = {
    * Get all active breakout watches (or filtered list)
    */
   async getWatches(filters?: BreakoutWatchFilters): Promise<BreakoutWatch[]> {
-    let url: string = API_ENDPOINTS.V2_ENGINE_BREAKOUT_WATCHES.LIST;
+    let url: string = API_ENDPOINTS.ENGINE_BREAKOUT_WATCHES.LIST;
     const params: Record<string, string> = {};
 
     if (filters?.username && filters?.broker) {
-      url = API_ENDPOINTS.V2_ENGINE_BREAKOUT_WATCHES.BY_USER_BROKER(filters.username, filters.broker);
+      url = API_ENDPOINTS.ENGINE_BREAKOUT_WATCHES.BY_USER_BROKER(filters.username, filters.broker);
     } else if (filters?.username) {
-      url = API_ENDPOINTS.V2_ENGINE_BREAKOUT_WATCHES.BY_USER(filters.username);
+      url = API_ENDPOINTS.ENGINE_BREAKOUT_WATCHES.BY_USER(filters.username);
     } else if (filters?.strategy) {
-      url = API_ENDPOINTS.V2_ENGINE_BREAKOUT_WATCHES.BY_STRATEGY(filters.strategy);
+      url = API_ENDPOINTS.ENGINE_BREAKOUT_WATCHES.BY_STRATEGY(filters.strategy);
     }
 
     if (filters?.includeAll) {
@@ -611,21 +611,21 @@ export const breakoutWatchService = {
    * Get breakout watch summary statistics
    */
   async getSummary(): Promise<BreakoutWatchSummary> {
-    return api.get<BreakoutWatchSummary>(API_ENDPOINTS.V2_ENGINE_BREAKOUT_WATCHES.SUMMARY);
+    return api.get<BreakoutWatchSummary>(API_ENDPOINTS.ENGINE_BREAKOUT_WATCHES.SUMMARY);
   },
 
   /**
    * Get a specific breakout watch by ID
    */
   async getById(id: number): Promise<BreakoutWatch> {
-    return api.get<BreakoutWatch>(API_ENDPOINTS.V2_ENGINE_BREAKOUT_WATCHES.DETAILS(id));
+    return api.get<BreakoutWatch>(API_ENDPOINTS.ENGINE_BREAKOUT_WATCHES.DETAILS(id));
   },
 
   /**
    * Get breakout watches for a specific user
    */
   async getByUser(username: string): Promise<BreakoutWatch[]> {
-    return api.get<BreakoutWatch[]>(API_ENDPOINTS.V2_ENGINE_BREAKOUT_WATCHES.BY_USER(username));
+    return api.get<BreakoutWatch[]>(API_ENDPOINTS.ENGINE_BREAKOUT_WATCHES.BY_USER(username));
   },
 
   /**
@@ -635,7 +635,7 @@ export const breakoutWatchService = {
   async getByUserBroker(username: string, broker: string, includeTriggered = false): Promise<BreakoutWatch[]> {
     const params = includeTriggered ? { includeTriggered: 'true' } : undefined;
     return api.get<BreakoutWatch[]>(
-      API_ENDPOINTS.V2_ENGINE_BREAKOUT_WATCHES.BY_USER_BROKER(username, broker),
+      API_ENDPOINTS.ENGINE_BREAKOUT_WATCHES.BY_USER_BROKER(username, broker),
       params
     );
   },
@@ -644,7 +644,7 @@ export const breakoutWatchService = {
    * Get breakout watches for a specific strategy
    */
   async getByStrategy(strategy: string): Promise<BreakoutWatch[]> {
-    return api.get<BreakoutWatch[]>(API_ENDPOINTS.V2_ENGINE_BREAKOUT_WATCHES.BY_STRATEGY(strategy));
+    return api.get<BreakoutWatch[]>(API_ENDPOINTS.ENGINE_BREAKOUT_WATCHES.BY_STRATEGY(strategy));
   },
 };
 
@@ -658,7 +658,7 @@ export const breakoutWatchService = {
  */
 export const strategyCatalogService = {
   async getOptions(): Promise<StrategyDefinition[]> {
-    return api.get<StrategyDefinition[]>(API_ENDPOINTS.V2_STRATEGY_CATALOG.BASE);
+    return api.get<StrategyDefinition[]>(API_ENDPOINTS.STRATEGY_CATALOG.BASE);
   },
 };
 

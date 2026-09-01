@@ -6,7 +6,7 @@
  * watching the user terminal, broker config, or strategy pages still
  * see at a glance that mock-mode is engaged.
  *
- * Polls /api/v2/engine/mock/status every 60s. Lightweight; one GET
+ * Polls /api/engine/mock/status every 60s. Lightweight; one GET
  * per minute even when admin is on a different tab.
  */
 

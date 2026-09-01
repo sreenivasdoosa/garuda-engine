@@ -13,12 +13,15 @@ startup so nobody forgets it is there.
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
 import jwt
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
+
+from garuda.core.clock import LiveClock
+from garuda.protocols.clock import Clock
 
 logger = logging.getLogger(__name__)
 
@@ -47,14 +50,16 @@ def password_matches(hashed: str, offered: str) -> bool:
         return False
 
 
-def issue(username: str, secret: str, *, now: datetime | None = None) -> str:
+def issue(
+    username: str, secret: str, *, now: datetime | None = None, clock: Clock | None = None
+) -> str:
     """A session token for the admin.
 
     The claim names are the ones the Console reads. There are no rights in
     them: one operator owns every account on this engine, so being signed in
     is the whole of the authorization model.
     """
-    issued = now or datetime.now(UTC)
+    issued = now or (clock or LiveClock()).now()
     claims: dict[str, Any] = {
         "sub": username,
         "username": username,

@@ -10,7 +10,7 @@ export const getBaseUrl = (): string => {
 };
 
 /**
- * Runtime WebSocket host pushed by the server's /api/v2/public/config
+ * Runtime WebSocket host pushed by the server's /api/public/config
  * (server.ws.host). Set by configService.getServerConfig() — which useAuth
  * fetches before the WS auth cookie is written and before isAuthenticated
  * flips (the WS connect trigger), so it is in place before any connection.
@@ -95,7 +95,7 @@ export const isAnalyticsEnabled = (): boolean => {
 };
 
 // OAuth - Fallback redirect URI (used if server config not available)
-// Primary OAuth config comes from server via /apis/public/config endpoint
+// Primary OAuth config comes from server via /api/public/config endpoint
 export const getOAuthRedirectUri = (): string => {
   if (typeof window !== 'undefined') {
     // In browser, construct redirect URI from current origin

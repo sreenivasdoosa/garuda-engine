@@ -1,7 +1,7 @@
 /**
  * Market Data API Service (Standalone mode)
  *
- * API functions for market-data servlets registered under /api/v2/market-data/*.
+ * API functions for market-data servlets registered under /api/market-data/*.
  * These endpoints return raw JSON (not V2 wrapped), so apiClient passes them through as-is.
  *
  * Uses the `api` helper from client.ts which correctly types the return value

@@ -12,7 +12,7 @@
  * .validateOrder line 255. That's a state the operator should always be
  * aware of, hence danger styling.
  *
- * Polls /api/v2/system-config/rms.enabled every 60s. Silently fails on
+ * Polls /api/system-config/rms.enabled every 60s. Silently fails on
  * permission errors so the badge degrades to invisible for users who
  * lack SYSTEM_CONFIG view rights.
  */

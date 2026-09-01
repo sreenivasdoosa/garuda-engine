@@ -94,7 +94,7 @@ configuration is refused loudly rather than silently ignored.
 | **1 trailing mode** | `HEIKIN_ASHI` — needs a candle transform, a wick search and a distance cap that nothing else uses |
 | **Automatic kill switches** | Operator-set switches load and fire. The reference also raises them from a daily loss, a volatility circuit or a rejection rate, with a state machine for when one may re-fire. `DailyLossCheck` refuses at the limit instead. |
 | **The `*_policy` tables** | Not read, and that is correct: they are Console-side templates with no key from a strategy. See `TRADE_MANAGEMENT.md`. |
-| **Most of the API** | Five endpoints exist: public config, login, profile, change-password, health. Every other page still calls the reference's endpoints and nothing serves them. |
+| **Most of the API** | Serving now: config, login, profile, change-password, health, and exchanges (full CRUD). Every other page still calls endpoints nothing serves. `GET /api/exchanges/market-status` is the one exchange route still missing: it needs the built trading calendars, which live in `composition` — above `api` — so it lands with the Terminal, its only caller. |
 | **Users, in the Console** | The pages that scope by *user* -- the user selector, event days, recompute, subscriptions, the config tree -- still speak of users. In garuda that concept is the trading client, and the rename waits on the API defining its shape. |
 
 ---
@@ -119,6 +119,7 @@ Newest first. One line per chunk of work, not per commit.
 
 | Date | What landed |
 |---|---|
+| 2026-09-01 | One flat `/api`, and the first page served for real. The Console called three prefixes it inherited — `/apis` (v1), `/api/v2` and a couple of bare ones; there is one API here, so a version in the path says nothing. Exchanges is the first page whose endpoints exist: list, fetch, create, partial update and delete, with 18 behavioural tests. The SSO handshake went with it (token, refresh, userinfo, the OAuth config) — unreachable, since sign-in issues one access token and nothing else. |
 | 2026-09-01 | Type: DM Sans for body, Sora for headings, JetBrains Mono for figures, and a root of 16px instead of 15 with the scale shifted up a step — the console was set at 14px body, which is too small to read a table of money in. |
 | 2026-09-01 | The Console's first page is a setup guide instead of a dashboard: six stages in the order they have to happen — venues, instruments, brokers, accounts, risk, strategy — each linking to the page that does it, with the reason it comes where it does. The nav sections and the pages inside them are in that same order rather than the alphabet. The dashboard it replaced is deleted, not parked: it was tiles of "no data available" against endpoints that do not exist. |
 | 2026-09-01 | The Console dropped its left rail. Navigation is now a top bar carrying the seven sections and a row under it carrying that section's pages, so the wide tables get the full width of the window; the Terminal runs full screen with the bar and nothing else. The palette is the sign-in page's throughout — sky/indigo/purple over near-black, dark by default, with its grid and soft lights behind the content. Removed on the way: the trade checklist, the AI assistant (both of them named as out of scope), and the dashboard's billing card, which was still fetching an endpoint that will never exist. |

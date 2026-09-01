@@ -66,7 +66,7 @@ export interface TradeLogFilters {
   eventTypes: TradeLogEventType[];
 }
 
-// Query params sent to /api/v2/trade-log (paginated). All optional.
+// Query params sent to /api/trade-log (paginated). All optional.
 export interface TradeLogFilterParams {
   page?: number;
   pageSize?: number;

@@ -14,7 +14,7 @@ import type { MockSessionStatus } from '@/types/strategy-engine';
 export const mockSessionService = {
   /** Current state snapshot from MOCK_SESSION_STATE. */
   getStatus(): Promise<MockSessionStatus> {
-    return api.get<MockSessionStatus>(API_ENDPOINTS.V2_ENGINE_MOCK.STATUS);
+    return api.get<MockSessionStatus>(API_ENDPOINTS.ENGINE_MOCK.STATUS);
   },
 
   /**
@@ -23,7 +23,7 @@ export const mockSessionService = {
    * or if no isMock-tagged active strategies exist.
    */
   start(): Promise<MockSessionStatus> {
-    return api.post<MockSessionStatus>(API_ENDPOINTS.V2_ENGINE_MOCK.START, {});
+    return api.post<MockSessionStatus>(API_ENDPOINTS.ENGINE_MOCK.START, {});
   },
 
   /**
@@ -32,6 +32,6 @@ export const mockSessionService = {
    * in-memory cleanup (Phase 4+).
    */
   stop(): Promise<MockSessionStatus> {
-    return api.post<MockSessionStatus>(API_ENDPOINTS.V2_ENGINE_MOCK.STOP, {});
+    return api.post<MockSessionStatus>(API_ENDPOINTS.ENGINE_MOCK.STOP, {});
   },
 };

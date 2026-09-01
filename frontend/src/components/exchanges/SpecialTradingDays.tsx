@@ -2,7 +2,7 @@
  * SpecialTradingDays Component
  * Distributed: read-only, synced from Market Data Service
  * Standalone: directly managed with add/edit/delete
- * Uses V2 API: /api/v2/special-trading-days
+ * Uses: /api/special-trading-days
  */
 
 import { useState, useMemo } from 'react';

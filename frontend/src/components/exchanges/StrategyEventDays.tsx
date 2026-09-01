@@ -1,7 +1,7 @@
 /**
  * StrategyEventDays Component
  * Table for listing and managing strategy-specific event day capital percentage overrides
- * Uses V2 API: /api/v2/strategy-event-day-actions
+ * Uses: /api/strategy-event-day-actions
  */
 
 import { useState, useMemo, useEffect } from 'react';

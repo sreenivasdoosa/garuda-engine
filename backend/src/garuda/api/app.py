@@ -5,8 +5,11 @@ page beyond that still calls endpoints that do not exist, and each one is
 built with the page that needs it rather than as an API tier ahead of any of
 them -- see `docs/API_AND_CONSOLE.md`.
 
-Mounted at `/api/v2` because that is what the copied Console calls. Responses
-carry the `{success, data}` envelope its client interceptor unwraps.
+Everything is mounted under a flat `/api`. The Console was copied from an
+engine that shipped `/apis` (v1) and `/api/v2` side by side and had to name
+which one it meant; there is one API here, so a version in the path says
+nothing. Responses carry the `{success, data}` envelope the Console's client
+interceptor unwraps.
 """
 
 from __future__ import annotations
@@ -14,13 +17,14 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+from garuda.api import envelope
 from garuda.api.credentials import AdminCredentials
-from garuda.api.envelope import failed, ok
+from garuda.api.envelope import ok
+from garuda.api.routers import exchanges
 from garuda.api.tokens import issue, read
 from garuda.config.settings import Settings, load_settings
 from garuda.core.clock import LiveClock
@@ -82,17 +86,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=401, detail="not signed in")
         return claims
 
-    @app.exception_handler(HTTPException)
-    async def refuse(request: Request, error: HTTPException) -> JSONResponse:
-        """Refusals in the envelope too, so the Console reads the message."""
-        del request
-        return JSONResponse(status_code=error.status_code, content=failed(str(error.detail)))
+    envelope.install(app)
 
     @app.on_event("startup")
     async def first_run() -> None:
         await admin.ensure()
 
-    @app.get("/api/v2/public/config")
+    @app.get("/api/config")
     async def public_config() -> dict[str, Any]:
         """What the Console needs before anyone has signed in."""
         return ok(
@@ -103,7 +103,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             }
         )
 
-    @app.post("/api/v2/auth/local/login")
+    @app.post("/api/auth/login")
     async def login(request: LoginRequest) -> dict[str, Any]:
         if request.username != config.admin_username or not await admin.matches(request.password):
             # One message for both, so a wrong username and a wrong password
@@ -122,7 +122,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             }
         )
 
-    @app.post("/api/v2/auth/local/change-password")
+    @app.post("/api/auth/change-password")
     async def change_password(
         request: ChangePasswordRequest,
         claims: dict[str, Any] = Depends(signed_in),
@@ -133,7 +133,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=400, detail=refusal)
         return ok(None, message="password changed")
 
-    @app.get("/api/v2/auth/local/profile")
+    @app.get("/api/auth/profile")
     async def profile(claims: dict[str, Any] = Depends(signed_in)) -> dict[str, Any]:
         return ok(
             {
@@ -144,8 +144,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             }
         )
 
-    @app.get("/api/v2/health")
+    @app.get("/api/health")
     async def health() -> dict[str, Any]:
         return ok({"status": "ok"})
+
+    # One router per Console page, added as each page is made to work.
+    app.include_router(exchanges.build(sessions))
 
     return app

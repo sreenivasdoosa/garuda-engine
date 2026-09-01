@@ -2,7 +2,7 @@
  * Exchange Component
  * Modal for viewing/editing a single exchange
  * Reusable across Admin portals
- * Uses V2 API: /api/v2/exchanges
+ * Uses: /api/exchanges
  */
 
 import { useState, useEffect } from 'react';
@@ -43,20 +43,17 @@ const Exchange: React.FC<ExchangeProps> = ({
   const [formData, setFormData] = useState<CreateExchangeRequest>({
     exchange: '',
     exchangeName: '',
-    segment: null,
+    segments: [],
     timezone: 'Asia/Kolkata',
     preMarketStart: '09:00:00',
     preMarketEnd: '09:08:00',
     marketOpen: '09:15:00',
     marketClose: '15:30:00',
     algoStartMinutesBeforeMarketOpen: 90,
-    loginMinutesBeforeMarketOpen: 60,
     intradaySquareOffMinutesBeforeClose: 20,
     intradaySquareOffBlockMinutesBeforeClose: 10,
-    positionalSquareOffMinutesBeforeClose: 30,
     postMarketWindowMinutes: 60,
     reportMinutesAfterClose: 15,
-    billingMinutesAfterClose: 30,
     weekendDays: ['SATURDAY', 'SUNDAY'],
     isActive: true,
     historyCacheEnabled: false,
@@ -67,20 +64,17 @@ const Exchange: React.FC<ExchangeProps> = ({
       setFormData({
         exchange: exchange.exchange,
         exchangeName: exchange.exchangeName,
-        segment: exchange.segment || null,
+        segments: exchange.segments ?? [],
         timezone: exchange.timezone || 'Asia/Kolkata',
         preMarketStart: exchange.preMarketStart || '',
         preMarketEnd: exchange.preMarketEnd || '',
         marketOpen: exchange.marketOpen || '09:15:00',
         marketClose: exchange.marketClose || '15:30:00',
         algoStartMinutesBeforeMarketOpen: exchange.algoStartMinutesBeforeMarketOpen ?? 90,
-        loginMinutesBeforeMarketOpen: exchange.loginMinutesBeforeMarketOpen ?? 60,
         intradaySquareOffMinutesBeforeClose: exchange.intradaySquareOffMinutesBeforeClose ?? 20,
         intradaySquareOffBlockMinutesBeforeClose: exchange.intradaySquareOffBlockMinutesBeforeClose ?? 10,
-        positionalSquareOffMinutesBeforeClose: exchange.positionalSquareOffMinutesBeforeClose ?? 30,
         postMarketWindowMinutes: exchange.postMarketWindowMinutes ?? 60,
         reportMinutesAfterClose: exchange.reportMinutesAfterClose ?? 15,
-        billingMinutesAfterClose: exchange.billingMinutesAfterClose ?? 30,
         weekendDays: exchange.weekendDays || ['SATURDAY', 'SUNDAY'],
         isActive: exchange.isActive,
         historyCacheEnabled: exchange.historyCacheEnabled ?? false,
@@ -89,20 +83,17 @@ const Exchange: React.FC<ExchangeProps> = ({
       setFormData({
         exchange: '',
         exchangeName: '',
-        segment: null,
+        segments: [],
         timezone: 'Asia/Kolkata',
         preMarketStart: '09:00:00',
         preMarketEnd: '09:08:00',
         marketOpen: '09:15:00',
         marketClose: '15:30:00',
         algoStartMinutesBeforeMarketOpen: 90,
-        loginMinutesBeforeMarketOpen: 60,
         intradaySquareOffMinutesBeforeClose: 20,
         intradaySquareOffBlockMinutesBeforeClose: 10,
-        positionalSquareOffMinutesBeforeClose: 30,
         postMarketWindowMinutes: 60,
         reportMinutesAfterClose: 15,
-        billingMinutesAfterClose: 30,
         weekendDays: ['SATURDAY', 'SUNDAY'],
         isActive: true,
         historyCacheEnabled: false,
@@ -195,10 +186,6 @@ const Exchange: React.FC<ExchangeProps> = ({
                   <div className="font-medium">{exchange.algoStartMinutesBeforeMarketOpen ?? 'N/A'}</div>
                 </Col>
                 <Col md={4}>
-                  <label className="text-ink-soft text-[0.875em]">Login Start (mins before open)</label>
-                  <div className="font-medium">{exchange.loginMinutesBeforeMarketOpen ?? 'N/A'}</div>
-                </Col>
-                <Col md={4}>
                   <label className="text-ink-soft text-[0.875em]">Post-Market Window (mins)</label>
                   <div className="font-medium">{exchange.postMarketWindowMinutes ?? 'N/A'}</div>
                 </Col>
@@ -209,10 +196,6 @@ const Exchange: React.FC<ExchangeProps> = ({
                 <Col md={4}>
                   <label className="text-ink-soft text-[0.875em]">Intraday Block SqOff (mins before close)</label>
                   <div className="font-medium">{exchange.intradaySquareOffBlockMinutesBeforeClose ?? 'N/A'}</div>
-                </Col>
-                <Col md={4}>
-                  <label className="text-ink-soft text-[0.875em]">Positional SqOff (mins before close)</label>
-                  <div className="font-medium">{exchange.positionalSquareOffMinutesBeforeClose ?? 'N/A'}</div>
                 </Col>
                 <Col md={4}>
                   <label className="text-ink-soft text-[0.875em]">Report Generation (mins after close)</label>
@@ -362,16 +345,6 @@ const Exchange: React.FC<ExchangeProps> = ({
                   </Col>
                   <Col md={4}>
                     <Form.Group className="mb-4">
-                      <Form.Label className="flex items-center">Login Start (mins before market open) <HelpIcon article={exchangeHelpContent['exchange.loginMinutesBeforeMarketOpen']} /></Form.Label>
-                      <Form.Control
-                        type="number"
-                        value={formData.loginMinutesBeforeMarketOpen ?? ''}
-                        onChange={(e) => setFormData({ ...formData, loginMinutesBeforeMarketOpen: parseInt(e.target.value) || 0 })}
-                      />
-                    </Form.Group>
-                  </Col>
-                  <Col md={4}>
-                    <Form.Group className="mb-4">
                       <Form.Label className="flex items-center">Post-Market Window (mins) <HelpIcon article={exchangeHelpContent['exchange.postMarketWindowMinutes']} /></Form.Label>
                       <Form.Control
                         type="number"
@@ -399,16 +372,6 @@ const Exchange: React.FC<ExchangeProps> = ({
                         type="number"
                         value={formData.intradaySquareOffBlockMinutesBeforeClose ?? ''}
                         onChange={(e) => setFormData({ ...formData, intradaySquareOffBlockMinutesBeforeClose: parseInt(e.target.value) || 0 })}
-                      />
-                    </Form.Group>
-                  </Col>
-                  <Col md={4}>
-                    <Form.Group className="mb-4">
-                      <Form.Label className="flex items-center">Positional Square-Off (mins before close) <HelpIcon article={exchangeHelpContent['exchange.positionalSquareOffMinutesBeforeClose']} /></Form.Label>
-                      <Form.Control
-                        type="number"
-                        value={formData.positionalSquareOffMinutesBeforeClose ?? ''}
-                        onChange={(e) => setFormData({ ...formData, positionalSquareOffMinutesBeforeClose: parseInt(e.target.value) || 0 })}
                       />
                     </Form.Group>
                   </Col>

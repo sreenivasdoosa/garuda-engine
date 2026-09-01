@@ -1,7 +1,7 @@
 /**
  * ProductEventDays Component
  * Table for listing and managing product-specific event day capital percentage overrides
- * Uses V2 API: /api/v2/product-event-day-actions
+ * Uses: /api/product-event-day-actions
  */
 
 import { useState, useMemo } from 'react';

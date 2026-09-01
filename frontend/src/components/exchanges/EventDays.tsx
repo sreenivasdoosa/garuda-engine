@@ -5,7 +5,7 @@
  * 2. Product Config - Product-specific capital percentage overrides
  * 3. Strategy Config - Strategy-specific capital percentage overrides
  * 4. User Config - User-specific capital percentage overrides
- * Uses V2 API: /api/v2/event-days, /api/v2/product-event-day-actions, /api/v2/strategy-event-day-actions, /api/v2/user-event-day-actions
+ * Uses: /api/event-days, /api/product-event-day-actions, /api/strategy-event-day-actions, /api/user-event-day-actions
  */
 
 import { useState } from 'react';
