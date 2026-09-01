@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import datetime as dt
 from typing import Any
+from zoneinfo import available_timezones
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -27,6 +28,11 @@ from garuda.domain.enums import Segment
 from garuda.domain.money import Currency
 from garuda.persistence import models
 from garuda.persistence.repositories import ExchangesRepository
+
+#: Every zone this machine's tz database knows, which is exactly the set
+#: `ZoneInfo` will accept when the venue loader builds the calendar. Sorted
+#: once at import; the list does not change while the process runs.
+TIMEZONES: tuple[str, ...] = tuple(sorted(available_timezones()))
 
 #: Weekend is a set of day names in the row, so the Console needs the spelling
 #: `_parse_weekend` in the venue loader accepts.
@@ -137,6 +143,17 @@ def _checked_currency(value: str | None) -> str | None:
     return code
 
 
+def _checked_timezone(value: str | None) -> str | None:
+    """The venue loader passes this straight to `ZoneInfo`, which raises on a
+    zone the tz database does not have -- at startup, a long way from here."""
+    if value is None or not value.strip():
+        return None
+    zone = value.strip()
+    if zone not in set(TIMEZONES):
+        raise HTTPException(status_code=400, detail=f"{zone!r} is not an IANA timezone")
+    return zone
+
+
 def _checked_segments(values: list[str] | None) -> str | None:
     """Same: a venue that lists a segment the engine does not have will not
     load, and an empty list will not build an exchange at all."""
@@ -159,7 +176,7 @@ _COLUMNS: dict[str, tuple[str, Any]] = {
     "exchangeName": ("exchange_name", lambda v: v),
     "segments": ("segments", _checked_segments),
     "currency": ("currency", _checked_currency),
-    "timezone": ("timezone", lambda v: v),
+    "timezone": ("timezone", _checked_timezone),
     "preMarketStart": ("pre_market_start", _parse_time),
     "preMarketEnd": ("pre_market_end", _parse_time),
     "marketOpen": ("market_open", _parse_time),
@@ -217,6 +234,7 @@ def build(sessions: async_sessionmaker[AsyncSession]) -> APIRouter:
                 "currencies": sorted(c.value for c in Currency),
                 "segments": sorted(s.value for s in Segment),
                 "weekendDays": list(WEEKDAYS),
+                "timezones": list(TIMEZONES),
             }
         )
 

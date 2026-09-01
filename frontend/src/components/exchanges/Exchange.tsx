@@ -5,8 +5,9 @@
  * Uses: /api/exchanges
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import Select from 'react-select';
 import { Modal, Form, Row, Col, Button, Spinner, Badge, Tabs, Tab } from '@/components/ui/rbShim';
 import { BsGlobe } from 'react-icons/bs';
 import HelpIcon from '@/components/common/HelpIcon';
@@ -39,6 +40,7 @@ const FALLBACK = {
   currencies: ['INR', 'USD', 'EUR', 'GBP', 'JPY', 'AED', 'SGD', 'HKD', 'AUD'],
   segments: ['COMMODITY', 'CURRENCY', 'EQUITY', 'FNO'],
   weekendDays: ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'],
+  timezones: ['Asia/Kolkata', 'UTC'],
 };
 
 const Exchange: React.FC<ExchangeProps> = ({
@@ -124,6 +126,27 @@ const Exchange: React.FC<ExchangeProps> = ({
     enabled: !isViewMode,
   });
   const options = served ?? FALLBACK;
+
+  /**
+   * ~600 zones, grouped by the part before the slash. Searchable is what makes
+   * the list usable at all; the groups are what make it browsable when you do
+   * not already know the name you are looking for.
+   */
+  const timezoneGroups = useMemo(() => {
+    const byRegion = new Map<string, string[]>();
+    for (const zone of options.timezones) {
+      const region = zone.includes('/') ? zone.slice(0, zone.indexOf('/')) : 'Other';
+      const group = byRegion.get(region);
+      if (group) group.push(zone);
+      else byRegion.set(region, [zone]);
+    }
+    return [...byRegion.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([region, zones]) => ({
+        label: region,
+        options: zones.map((zone) => ({ value: zone, label: zone })),
+      }));
+  }, [options.timezones]);
 
   const handleSubmit = () => {
     onSave(formData, isCreateMode);
@@ -277,10 +300,23 @@ const Exchange: React.FC<ExchangeProps> = ({
                   <Col md={4}>
                     <Form.Group className="mb-4">
                       <Form.Label className="flex items-center">Timezone <HelpIcon article={exchangeHelpContent['exchange.timezone']} /></Form.Label>
-                      <Form.Control
-                        value={formData.timezone ?? ''}
-                        onChange={(e) => setFormData({ ...formData, timezone: e.target.value })}
-                        placeholder="e.g., Asia/Kolkata"
+                      <Select
+                        classNamePrefix="react-select"
+                        options={timezoneGroups}
+                        value={
+                          formData.timezone
+                            ? { value: formData.timezone, label: formData.timezone }
+                            : null
+                        }
+                        onChange={(choice) =>
+                          setFormData({ ...formData, timezone: choice?.value ?? '' })
+                        }
+                        placeholder="Search a timezone…"
+                        isClearable
+                        /* The menu is portalled out of the modal, which clips
+                           anything overflowing its body. */
+                        menuPortalTarget={typeof document === 'undefined' ? null : document.body}
+                        styles={{ menuPortal: (base) => ({ ...base, zIndex: 9999 }) }}
                       />
                     </Form.Group>
                   </Col>

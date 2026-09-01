@@ -339,3 +339,48 @@ async def test_a_venue_that_lists_no_segments_is_refused_at_creation(
         assert response.status_code == 400, segments
         assert "segments" in response.json()["message"]
         assert (await client.get("/api/exchanges")).json()["data"] == []
+
+
+async def test_the_options_include_every_zone_the_server_can_accept(
+    client: httpx.AsyncClient,
+) -> None:
+    """The Console's select is built from this, so it has to be the same set
+    `ZoneInfo` will take -- not a curated subset."""
+    zones = (await client.get("/api/exchanges/options")).json()["data"]["timezones"]
+
+    assert "Asia/Kolkata" in zones
+    assert "America/New_York" in zones
+    assert "UTC" in zones
+    assert zones == sorted(zones)
+
+
+async def test_a_timezone_the_tz_database_does_not_have_is_refused(
+    client: httpx.AsyncClient, nse: None
+) -> None:
+    """`ZoneInfo(row.timezone)` in the venue loader raises on an unknown zone,
+    and it raises at startup. Refuse it while the caller is still here."""
+    response = await client.put("/api/exchanges/NSE", json={"timezone": "Mars/Olympus"})
+
+    assert response.status_code == 400
+    assert "Mars/Olympus" in response.json()["message"]
+    assert (await client.get("/api/exchanges/NSE")).json()["data"]["timezone"] == "Asia/Kolkata"
+
+
+async def test_a_timezone_the_database_does_have_is_stored_verbatim(
+    client: httpx.AsyncClient, nse: None
+) -> None:
+    await client.put("/api/exchanges/NSE", json={"timezone": "America/New_York"})
+
+    assert (await client.get("/api/exchanges/NSE")).json()["data"]["timezone"] == (
+        "America/New_York"
+    )
+
+
+async def test_a_blank_timezone_clears_it_rather_than_being_refused(
+    client: httpx.AsyncClient, nse: None
+) -> None:
+    """The select is clearable, and the venue loader falls back when the column
+    is empty -- so blank has to mean blank, not "not a timezone"."""
+    await client.put("/api/exchanges/NSE", json={"timezone": ""})
+
+    assert (await client.get("/api/exchanges/NSE")).json()["data"]["timezone"] is None

@@ -73,6 +73,8 @@ export interface ExchangeOptions {
   currencies: string[];
   segments: string[];
   weekendDays: string[];
+  /** Every IANA zone the server's tz database knows — the set `ZoneInfo` accepts. */
+  timezones: string[];
 }
 
 // ==================== HOLIDAYS ====================
