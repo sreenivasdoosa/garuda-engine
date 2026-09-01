@@ -12,7 +12,8 @@ trap a position on exactly the day the limit was reached.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
@@ -31,7 +32,7 @@ from garuda.domain.trade import Trade, TradeId
 from garuda.domain.trade_state import TradeExitReason, TradeState
 from garuda.protocols.broker import OrderRejectedError
 from garuda.rms.checks import default_checks
-from garuda.rms.gate import RiskContext, RiskGate
+from garuda.rms.gate import Breach, RiskContext, RiskGate
 from garuda.rms.limits import RiskLimits
 from garuda.rms.scope import LimitBook, LimitScope, ScopedLimits
 
@@ -725,3 +726,104 @@ async def test_the_cap_reads_the_side_the_order_would_take_on(
     await place(an_order(10, side=Side.BUY))
 
     assert len(placed) == 1
+
+
+# -- the refusal is recorded, not only logged -------------------------------
+
+
+class RecordingBreaches:
+    """Stands in for the store. What was written is the whole question."""
+
+    def __init__(self) -> None:
+        self.written: list[tuple[str, str | None, str | None]] = []
+
+    async def record(self, breaches: Sequence[Breach], **where: object) -> int:
+        strategy = where.get("strategy")
+        self.written.extend(
+            (breach.type.value, str(strategy) if strategy is not None else None, breach.current)
+            for breach in breaches
+        )
+        return len(breaches)
+
+
+async def test_a_refusal_is_written_to_the_breach_log(stock: Instrument) -> None:
+    """A log line scrolls away and an alert is deduplicated by key. The table
+    is what an operator reads a week later."""
+    recorded = RecordingBreaches()
+    place = gated(
+        _accepting([]),
+        gate=RiskGate(default_checks()),
+        limits=everywhere(RiskLimits(max_order_quantity=5)),
+        instruments=lambda instrument: stock,
+        quotes=lambda instrument: a_quote(),
+        clock=ReplayClock(NOW),
+        label="Appa",
+        breaches=recorded,  # type: ignore[arg-type]
+    )
+
+    with pytest.raises(OrderRejectedError):
+        await place(an_order(10))
+
+    assert recorded.written == [("ORDER_QTY_EXCEEDED", None, "10")]
+
+
+async def test_an_order_that_passes_writes_nothing(stock: Instrument) -> None:
+    recorded = RecordingBreaches()
+    place = gated(
+        _accepting([]),
+        gate=RiskGate(default_checks()),
+        limits=everywhere(RiskLimits()),
+        instruments=lambda instrument: stock,
+        quotes=lambda instrument: a_quote(),
+        clock=ReplayClock(NOW),
+        label="Appa",
+        breaches=recorded,  # type: ignore[arg-type]
+    )
+
+    await place(an_order())
+
+    assert recorded.written == []
+
+
+async def test_the_strategy_is_recorded_from_the_orders_tag(stock: Instrument) -> None:
+    """Both services placing through this gate tag with the strategy: the
+    entry service from the signal, the protective service from the trade."""
+    recorded = RecordingBreaches()
+    place = gated(
+        _accepting([]),
+        gate=RiskGate(default_checks()),
+        limits=everywhere(RiskLimits(max_order_quantity=5)),
+        instruments=lambda instrument: stock,
+        quotes=lambda instrument: a_quote(),
+        clock=ReplayClock(NOW),
+        label="Appa",
+        breaches=recorded,  # type: ignore[arg-type]
+    )
+
+    with pytest.raises(OrderRejectedError):
+        await place(replace(an_order(10), tag="straddle"))
+
+    assert recorded.written == [("ORDER_QTY_EXCEEDED", "straddle", "10")]
+
+
+async def test_an_order_with_no_known_instrument_is_refused_before_recording(
+    stock: Instrument,
+) -> None:
+    """Nothing can be said about it: the row wants a trading symbol and an
+    exchange, and the master is what has them."""
+    recorded = RecordingBreaches()
+    place = gated(
+        _accepting([]),
+        gate=RiskGate(default_checks()),
+        limits=everywhere(RiskLimits()),
+        instruments=lambda instrument: None,
+        quotes=lambda instrument: a_quote(),
+        clock=ReplayClock(NOW),
+        label="Appa",
+        breaches=recorded,  # type: ignore[arg-type]
+    )
+
+    with pytest.raises(OrderRejectedError, match="instrument master"):
+        await place(an_order())
+
+    assert recorded.written == []

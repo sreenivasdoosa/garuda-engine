@@ -503,6 +503,24 @@ holds and what the reference configures; `max_order_value` is what caps a
 single order's money. A `max_position_value_per_symbol` limit had been declared
 here with no column populating it and no check reading it, and is gone.
 
+**Every refusal is recorded**, one row per breach, in `rms_breach_log`. A log
+line scrolls away and an alert is deduplicated by key, so neither answers "how
+often did volume stop us this week, and how short was it" — which is what the
+table was ported for. One row per breach rather than per refusal, because "the
+spread was wide *and* the volume was thin" is two facts and one row holding
+both cannot be counted by type.
+
+What was measured and what was allowed are kept apart from the sentence as
+well as in it: the sentence is for a person reading one refusal, the columns
+are for querying a day of them. Severity is the reference's own grading, 1 to
+5, ported exactly — a kill switch and a daily-loss breach are 5s while
+market-closed is a 1, which does not line up with the breach *family* and is
+not derived from it.
+
+A failed write never changes the outcome. The order was already refused and
+nothing left the engine, so a store that is down costs the audit trail rather
+than the refusal.
+
 The kill switch is the one an operator would guess wrong: it stops an account
 taking risk and must never stop it closing. It is also not yet reachable —
 `kill_switches` is a table with no runtime service behind it, so nothing sets

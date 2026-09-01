@@ -42,6 +42,7 @@ from garuda.domain.market import Tick
 from garuda.domain.money import Currency, Money
 from garuda.domain.order import BrokerOrderId, OrderRequest, Side
 from garuda.domain.trade import Trade
+from garuda.persistence.breach_store import BreachStore
 from garuda.persistence.models import RmsConfigRow
 from garuda.persistence.uow import UnitOfWork
 from garuda.protocols.broker import OrderRejectedError
@@ -84,6 +85,7 @@ def gated(
     realized_today: DayResult | None = None,
     open_quantity: OpenQuantity | None = None,
     committed_quantity: CommittedQuantity | None = None,
+    breaches: BreachStore | None = None,
     is_exit: bool = False,
 ) -> PlaceOrder:
     """Wrap a placement so the risk gate sees it first.
@@ -135,6 +137,21 @@ def gated(
         )
         if not decision.allowed:
             logger.warning("%s: refused %s — %s", label, request.instrument, decision.reason)
+            if breaches is not None:
+                # Recorded before the refusal is raised, and never allowed to
+                # change it: the order is already stopped either way, and a
+                # store that is down costs the audit trail rather than the
+                # refusal.
+                await breaches.record(
+                    decision.breaches,
+                    trading_client=request.trading_client,
+                    instrument=instrument,
+                    # The tag, which both services placing through this gate
+                    # set to the strategy: the entry service from the signal
+                    # and the protective service from the trade.
+                    strategy=request.tag,
+                    at=now,
+                )
             raise OrderRejectedError(decision.reason)
 
         return await place(request)

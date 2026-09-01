@@ -37,6 +37,12 @@ class Breach:
 
     type: BreachType
     detail: str
+    #: What was measured and what was allowed, kept apart from the sentence
+    #: as well as in it. The sentence is for a person reading one refusal;
+    #: these are for querying a day of them -- "every volume breach under
+    #: five hundred" is a question the detail cannot answer.
+    current: str | None = None
+    limit: str | None = None
 
     def __str__(self) -> str:
         return f"{self.type}: {self.detail}"

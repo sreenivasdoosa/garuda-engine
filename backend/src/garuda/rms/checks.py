@@ -120,6 +120,8 @@ class StaleQuoteCheck:
             self.breach_type,
             f"{context.instrument.trading_symbol} quote is {age.total_seconds():.0f}s old, "
             f"limit is {limit.total_seconds():.0f}s",
+            current=f"{age.total_seconds():.0f}s",
+            limit=f"{limit.total_seconds():.0f}s",
         )
 
 
@@ -139,6 +141,8 @@ class OrderQuantityCheck:
         return Breach(
             self.breach_type,
             f"{context.request.quantity} units exceeds the limit of {limit}",
+            current=str(context.request.quantity),
+            limit=str(limit),
         )
 
 
@@ -161,7 +165,12 @@ class OrderValueCheck:
         value = context.instrument.notional(quote.last_price, context.request.quantity)
         if value <= limit:
             return None
-        return Breach(self.breach_type, f"order value {value} exceeds the limit of {limit}")
+        return Breach(
+            self.breach_type,
+            f"order value {value} exceeds the limit of {limit}",
+            current=str(value),
+            limit=str(limit),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -187,6 +196,8 @@ class FreezeQuantityCheck:
             self.breach_type,
             f"{context.request.quantity} exceeds the exchange freeze limit of "
             f"{context.instrument.freeze_quantity}; the entry should have been sliced",
+            current=str(context.request.quantity),
+            limit=str(context.instrument.freeze_quantity),
         )
 
 
@@ -223,6 +234,8 @@ class DailyLossCheck:
             self.breach_type,
             f"the day is down {realized}, past the limit of {limit}; no new positions "
             "until tomorrow, and everything open can still be closed",
+            current=str(realized),
+            limit=str(limit),
         )
 
 
@@ -252,6 +265,8 @@ class SpreadCheck:
             self.breach_type,
             f"spread {spread} is {fraction:.2%} of {quote.last_price}, "
             f"limit is {Decimal(limit):.2%}",
+            current=f"{fraction:.4%}",
+            limit=f"{Decimal(limit):.4%}",
         )
 
 
@@ -274,6 +289,8 @@ class VolumeCheck:
         return Breach(
             self.breach_type,
             f"volume {quote.volume} is below the minimum of {limit}",
+            current=str(quote.volume),
+            limit=str(limit),
         )
 
 
@@ -314,6 +331,8 @@ class ExitQuantityCheck:
             self.breach_type,
             f"exit of {context.request.quantity} exceeds the {open_quantity} open in "
             f"{context.instrument.trading_symbol}",
+            current=str(context.request.quantity),
+            limit=str(open_quantity),
         )
 
 
@@ -351,6 +370,8 @@ class PositionQuantityCheck:
             self.breach_type,
             f"{committed} already held or resting in {context.instrument.trading_symbol} "
             f"plus {context.request.quantity} more is {total}, past the limit of {limit}",
+            current=str(total),
+            limit=str(limit),
         )
 
 

@@ -76,6 +76,33 @@ class BreachType(StrEnum):
     def family(self) -> BreachFamily:
         return _FAMILIES[self]
 
+    @property
+    def severity(self) -> int:
+        """How bad this is, 1 to 5, as the reference engine grades it.
+
+        Not derived from the family: severity is about what the operator has
+        to do next and the family is about what went wrong, and they do not
+        line up. A kill switch and a daily-loss breach are both a 5 while a
+        market-closed breach is a 1, and all three are SYSTEM or ACCOUNT.
+        """
+        return _SEVERITIES.get(self, 1)
+
+
+#: Ported from the reference, exactly. Everything unlisted is a 1.
+_SEVERITIES: dict[BreachType, int] = {
+    BreachType.KILL_SWITCH_ACTIVE: 5,
+    BreachType.DAILY_LOSS_EXCEEDED: 5,
+    BreachType.VOLATILITY_CIRCUIT: 5,
+    BreachType.ERROR_RATE_CIRCUIT: 5,
+    BreachType.BROKER_STOPPED: 4,
+    BreachType.PRICE_FREAK: 3,
+    BreachType.POSITION_TOTAL_EXCEEDED: 3,
+    BreachType.COMBO_TOTAL_EXCEEDED: 3,
+    BreachType.PRICE_STALE: 2,
+    BreachType.VOLUME_LOW: 2,
+    BreachType.SPREAD_WIDE: 2,
+}
+
 
 _FAMILIES: dict[BreachType, BreachFamily] = {
     BreachType.QUOTE_UNAVAILABLE: BreachFamily.PRICE_QUALITY,

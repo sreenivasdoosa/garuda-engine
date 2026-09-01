@@ -58,6 +58,7 @@ from garuda.marketdata.loader import InstrumentRegistryHolder
 from garuda.marketdata.registry import InstrumentRegistry
 from garuda.marketdata.service import MarketDataService
 from garuda.marketdata.supervisor import FeedSupervisor
+from garuda.persistence.breach_store import BreachStore
 from garuda.persistence.trade_store import TradeStore
 from garuda.persistence.uow import UnitOfWork
 from garuda.protocols.account import AccountStream
@@ -394,6 +395,7 @@ def _build_client(
         clock=clock,
         label=account.label,
         realized_today=realised_today(book.trades),
+        breaches=BreachStore(sessions, label=account.label),
     )
     # Both are gated; they differ in which checks have any business stopping
     # them. A stop-loss must go out on the day a loss limit was reached, and a
