@@ -16,15 +16,13 @@ import clsx from 'clsx';
 import { Drawer } from '@/components/ui/Drawer';
 import AiChatPanel from '@/components/ai/AiChatPanel';
 import { useAiChatStore } from '@/store/aiChatStore';
-import { usePermissions } from '@/hooks/usePermissions';
 
 const AiAssistantHeaderButton: React.FC = () => {
-  const { aiAssistant } = usePermissions();
   const [open, setOpen] = useState(false);
   const hasConversation = useAiChatStore((s) => s.entries.length > 0);
   const pending = useAiChatStore((s) => s.pending);
 
-  if (!aiAssistant.canView) return null;
+  if (!true) return null;
 
   return (
     <>

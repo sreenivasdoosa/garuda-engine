@@ -8,7 +8,6 @@ import { BsX } from 'react-icons/bs';
 import type { TerminalFilters as TFilters } from '@/types/terminal';
 import HelpIcon from '@/components/common/HelpIcon';
 import { terminalHelpContent } from '@/data/help/terminal-help';
-import { usePermissions } from '@/hooks/usePermissions';
 import UserSelect from '@/components/common/UserSelect';
 import { Badge, IconButton, Toggle } from '@/components/ui';
 
@@ -25,8 +24,6 @@ const selectCls =
 
 const TerminalFilters: React.FC<TerminalFiltersProps> = ({ filters, onFilterChange, brokers = [], totalCount, filteredCount }) => {
   const helpContent = terminalHelpContent;
-  const { algoBrokerCompare } = usePermissions();
-  const canCompare = algoBrokerCompare.canView;
   const hasActiveFilters = !!(
     filters.username ||
     filters.broker ||
@@ -74,10 +71,10 @@ const TerminalFilters: React.FC<TerminalFiltersProps> = ({ filters, onFilterChan
           <option value="capital">Sort: Capital</option>
           <option value="algoPnl">Sort: Algo P&L</option>
           <option value="algoPercent">Sort: Algo P&L %</option>
-          {canCompare && <option value="brokerPnl">Sort: Broker P&L</option>}
-          {canCompare && <option value="brokerPercent">Sort: Broker P&L %</option>}
+          {<option value="brokerPnl">Sort: Broker P&L</option>}
+          {<option value="brokerPercent">Sort: Broker P&L %</option>}
           <option value="activeTradesCount">Sort: Active</option>
-          {canCompare && <option value="mismatchSeverity">Sort: Mismatch</option>}
+          {<option value="mismatchSeverity">Sort: Mismatch</option>}
         </select>
 
         {/* Sort Order */}
@@ -90,12 +87,11 @@ const TerminalFilters: React.FC<TerminalFiltersProps> = ({ filters, onFilterChan
         <div className="mx-1 h-6 w-px bg-hairline" />
 
         {/* Quick Filters */}
-        {canCompare && (
-          <label className="mb-0 flex items-center gap-1.5 text-sm text-ink">
+                  <label className="mb-0 flex items-center gap-1.5 text-sm text-ink">
             <Toggle checked={filters.showOnlyWithMismatch || false} onChange={(v) => onFilterChange({ ...filters, showOnlyWithMismatch: v || undefined })} aria-label="Mismatch" />
             {switchLabel('Mismatch', helpContent['terminal.filters.mismatch'])}
           </label>
-        )}
+        
         <label className="mb-0 flex items-center gap-1.5 text-sm text-ink">
           <Toggle checked={filters.showOnlyWithActiveTrades || false} onChange={(v) => onFilterChange({ ...filters, showOnlyWithActiveTrades: v || undefined })} aria-label="Active" />
           {switchLabel('Active', helpContent['terminal.filters.active'])}

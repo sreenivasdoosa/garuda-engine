@@ -6,14 +6,10 @@
 import { BsGlobe } from 'react-icons/bs';
 import { PageHeader } from '@/components/common';
 import { Exchanges } from '@/components/exchanges';
-import { usePermissions } from '@/hooks/usePermissions';
 
 const ExchangesPage: React.FC = () => {
-  const permissions = usePermissions();
 
   // Permission flags for Exchanges tool
-  const canEdit = permissions.exchanges.canEdit;
-  const canManage = permissions.exchanges.canManage;
 
   return (
     <div className="fade-in">
@@ -25,10 +21,10 @@ const ExchangesPage: React.FC = () => {
 
       <Exchanges
         title="Exchanges"
-        hideCreate={!canEdit}
-        hideDelete={!canManage}
-        hideEnableDisable={!canEdit}
-        readOnly={!canEdit}
+        hideCreate={!true}
+        hideDelete={!true}
+        hideEnableDisable={!true}
+        readOnly={!true}
       />
     </div>
   );

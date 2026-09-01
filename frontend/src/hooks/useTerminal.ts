@@ -8,7 +8,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-toastify';
 
 import { useWebSocket } from './useWebSocket';
-import { usePermissions } from './usePermissions';
 import { terminalService } from '@/services/terminal/terminalService';
 import { userBrokerService } from '@/services/admin/v2AdminService';
 import { DEFAULT_PAGE_SIZE, PAGE_SIZE_OPTIONS } from '@/types/pagination';
@@ -321,18 +320,17 @@ export const useTerminal = (options: UseTerminalOptions = {}): UseTerminalReturn
   // The detail panel is fetched as 3 permission-gated calls (trades/positions/margins). Decide
   // which the caller may fetch from their tool rights, and keep it in a ref so the (stable,
   // []-dep) fetch callbacks always read the latest without being re-created.
-  const { trades: tradesPerm, positions: positionsPerm, margins: marginsPerm, algoBrokerCompare } = usePermissions();
   const detailsScopeRef = useRef({ trades: false, positions: false, margins: false });
   detailsScopeRef.current = {
-    trades: tradesPerm.canView,
-    positions: positionsPerm.canView,
-    margins: marginsPerm.canView,
+    trades: true,
+    positions: true,
+    margins: true,
   };
   // Without ALGO_BROKER_COMPARE View, don't fetch broker positions at all for the detail panel
   // (the compare columns/exit are hidden anyway). The summary refresh below is NOT gated — that
   // data is shared with full-permission managers/admins viewing the same rows.
   const canCompareRef = useRef(false);
-  canCompareRef.current = algoBrokerCompare.canView;
+  canCompareRef.current = true;
 
   // Clear all refresh timers
   const clearAllRefreshTimers = useCallback(() => {

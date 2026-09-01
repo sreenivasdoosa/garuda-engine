@@ -13,7 +13,6 @@ import React, { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-toastify';
 import { Modal, Button, Spinner } from '@/components/ui';
-import { usePermissions } from '@/hooks/usePermissions';
 import { statutoryChargesService } from '@/services/admin/v2AdminService';
 import { brokerService } from '@/services/broker/brokerService';
 import type { StatutoryCharges, StatutoryChargesBrokerOverride } from '@/types/billing';
@@ -39,7 +38,6 @@ const FIELDS: { key: ChargeField; label: string }[] = [
 const emptyForm = { broker: '', exchange: '', segment: '', product: '' } as Record<string, string>;
 
 const BrokerChargeOverrides: React.FC = () => {
-  const { tradingCharges } = usePermissions();
   const queryClient = useQueryClient();
 
   const [showModal, setShowModal] = useState(false);
@@ -86,7 +84,6 @@ const BrokerChargeOverrides: React.FC = () => {
       statutoryChargesService.deleteOverride(o.broker, o.exchange, o.segment, o.product),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['statutoryChargesOverrides'] });
-      setConfirmDelete(null);
       toast.success('Broker override deleted (broker back on defaults)');
     },
     onError: (error: { message?: string }) => toast.error(error.message || 'Failed to delete override'),
@@ -157,9 +154,8 @@ const BrokerChargeOverrides: React.FC = () => {
             Per-broker exceptions to the defaults — empty field = inherits; overridden values are highlighted
           </small>
         </div>
-        {tradingCharges.canEdit && (
-          <Button size="sm" onClick={openCreate}>Add Override</Button>
-        )}
+                  <Button size="sm" onClick={openCreate}>Add Override</Button>
+        
       </div>
 
       {isLoading ? (
@@ -188,18 +184,14 @@ const BrokerChargeOverrides: React.FC = () => {
                   {FIELDS.map((f) => <td key={f.key} className="!text-right tabular-nums">{cellFor(o, f.key)}</td>)}
                   <td className="!text-right">
                     <div className="flex justify-end gap-1">
-                      {tradingCharges.canEdit && (
-                        <Button variant="secondary" size="sm" onClick={() => openEdit(o)}>Edit</Button>
-                      )}
-                      {tradingCharges.canManage && (
-                        confirmDelete === o ? (
-                          <>
-                            <Button variant="danger" size="sm" onClick={() => deleteMutation.mutate(o)}>Confirm</Button>
-                            <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(null)}>Cancel</Button>
-                          </>
-                        ) : (
-                          <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(o)}>Delete</Button>
-                        )
+                      <Button variant="secondary" size="sm" onClick={() => openEdit(o)}>Edit</Button>
+                      {confirmDelete === o ? (
+                        <>
+                          <Button variant="danger" size="sm" onClick={() => deleteMutation.mutate(o)}>Confirm</Button>
+                          <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(null)}>Cancel</Button>
+                        </>
+                      ) : (
+                        <Button variant="ghost" size="sm" onClick={() => setConfirmDelete(o)}>Delete</Button>
                       )}
                     </div>
                   </td>

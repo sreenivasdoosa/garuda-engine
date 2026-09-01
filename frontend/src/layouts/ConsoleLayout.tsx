@@ -1,6 +1,4 @@
-import { useMemo } from 'react';
-import { Outlet, useLocation } from 'react-router-dom';
-import { Forbidden } from '@/components/errors/ErrorPages';
+import { Outlet } from 'react-router-dom';
 import {
   BsActivity,
   BsArrowRepeat,
@@ -38,21 +36,15 @@ import { IconType } from 'react-icons';
 
 import Header from '@/components/layout/Header';
 import Sidebar, { SidebarSection } from '@/components/layout/Sidebar';
-import { HelpDrawer, LicenseActivationBanner } from '@/components/common';
+import { HelpDrawer } from '@/components/common';
 import { useUIStore } from '@/store/uiStore';
-import { usePermissions, type PermissionCheck } from '@/hooks/usePermissions';
 import { allHelpContent } from '@/data/help';
 import clsx from 'clsx';
 
-// Extended item type with permission key
 interface NavItem {
   path: string;
   label: string;
   icon: IconType;
-  permission?: keyof ReturnType<typeof usePermissions>;
-  /** Require admin-level access (isAdmin) on top of any `permission`. For pages whose API hard-requires
-   *  admin (e.g. System Status) so they are hidden from a non-admin supervisor, not shown-then-403. */
-  adminOnly?: boolean;
 }
 
 interface NavSection {
@@ -62,7 +54,6 @@ interface NavSection {
 
 const ConsoleLayout: React.FC = () => {
   const { sidebarCollapsed } = useUIStore();
-  const permissions = usePermissions();
 
   // The Console's sections. One operator with every right, so no item carries
   // a permission key: what an operator may reach is decided by what is in this
@@ -136,66 +127,10 @@ const ConsoleLayout: React.FC = () => {
     },
   ];
 
-  // Filter sections based on permissions
-  const sidebarSections: SidebarSection[] = useMemo(() => {
-    return allSections
-      .map((section) => {
-        // Filter items based on view permission
-        const filteredItems = section.items.filter((item) => {
-          // Admin-only pages (API hard-requires admin) are hidden from non-admins regardless of any
-          // resource right they may hold (e.g. a supervisor with SYSTEM_CONFIG:view).
-          if (item.adminOnly && !permissions.isAdmin) return false;
-
-          // Items without permission key are always shown (e.g., Dashboard)
-          if (!item.permission) return true;
-
-          // Check if permission exists and has canView
-          const perm = permissions[item.permission];
-          if (perm && typeof perm === 'object' && 'canView' in perm) {
-            return (perm as PermissionCheck).canView;
-          }
-          return false;
-        });
-
-        return {
-          title: section.title,
-          items: filteredItems,
-        };
-      })
-      // Remove sections with no visible items
-      .filter((section) => section.items.length > 0);
-  }, [permissions]);
-
-  // Central per-route authorization. The console layout only requires management access, so without
-  // this any management-access user (e.g. a Portfolio Manager) could URL-navigate to a page they
-  // lack the specific tool right for. We gate the rendered route by the SAME permission its sidebar
-  // item declares — find the most specific item matching the current path and check its canView.
-  // Unmapped paths (e.g. the /console dashboard root) are always allowed (QUANT-188).
-  const location = useLocation();
-  const routeAllowed = useMemo(() => {
-    const path = location.pathname;
-    let match: NavItem | undefined;
-    for (const section of allSections) {
-      for (const item of section.items) {
-        if ((path === item.path || path.startsWith(item.path + '/')) &&
-            (!match || item.path.length > match.path.length)) {
-          match = item;
-        }
-      }
-    }
-    // Admin-only pages: block URL-navigation by a non-admin even if they hold the resource right.
-    if (match && match.adminOnly && !permissions.isAdmin) {
-      return false;
-    }
-    if (!match || !match.permission) {
-      return true; // dashboard root / unmapped route — no extra gate beyond management access
-    }
-    const perm = permissions[match.permission];
-    if (perm && typeof perm === 'object' && 'canView' in perm) {
-      return (perm as PermissionCheck).canView;
-    }
-    return false;
-  }, [location.pathname, permissions]);
+  // Every section shows. One operator with every right, so there is nothing
+  // to filter and nothing to gate a route by beyond being signed in -- which
+  // `ProtectedRoute` already does.
+  const sidebarSections: SidebarSection[] = allSections;
 
   return (
     <div className="app-wrapper admin-layout">
@@ -206,8 +141,7 @@ const ConsoleLayout: React.FC = () => {
           'sidebar-collapsed': sidebarCollapsed,
         })}
       >
-        <LicenseActivationBanner />
-        {routeAllowed ? <Outlet /> : <Forbidden />}
+        <Outlet />
       </main>
       <HelpDrawer contentMap={allHelpContent} />
     </div>

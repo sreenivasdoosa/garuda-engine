@@ -11,7 +11,6 @@ import { BsTerminal, BsClock, BsPieChart, BsGraphUp, BsXSquare, BsBarChartLine, 
 import { format } from 'date-fns';
 
 import { useTerminal } from '@/hooks/useTerminal';
-import { usePermissions } from '@/hooks/usePermissions';
 import { valueForMode, countForMode } from '@/utils/tradingMode';
 import { terminalService } from '@/services/terminal/terminalService';
 import { systemConfigService, exchangeService } from '@/services/admin/v2AdminService';
@@ -69,19 +68,11 @@ interface BulkCompleteTradeStatus {
 }
 
 const TerminalPage: React.FC = () => {
-  const { strategyEngine, isSysadmin, isAdmin, squareOff: squareOffPerms, trades: tradesPerms, algoBrokerCompare, strategySummaries: strategySummariesPerm, riskProfiles: riskProfilesPerm } = usePermissions();
   // Algo-vs-broker comparison (broker P&L row, mismatch tile, PnL-chart broker line) needs ALGO_BROKER_COMPARE View.
-  const canCompare = algoBrokerCompare.canView;
   // Fleet-wide Strategy Summary / Risk Profile panels — each gated by its own View right.
-  const canViewStrategySummaries = strategySummariesPerm.canView;
-  const canViewRiskProfile = riskProfilesPerm.canView;
-  const canManageEngine = strategyEngine.canManage || isSysadmin;
   // Strategy Signals (fleet strategy-states panel) requires STRATEGY_ENGINE View.
-  const canViewStrategyEngine = strategyEngine.canView;
   // Square off (single / per-user / by-strategy / all) requires SQUARE_OFF Manage.
-  const canSquareOff = squareOffPerms.canManage;
   // Set-to-complete (single + bulk) requires TRADES Edit.
-  const canEditTrades = tradesPerms.canEdit;
   // Exported Signals (strategy-bridge outbox) is read-only, so SIGNAL_OUT View —
   // the same tool the bridge requires on the shared API key.
 
@@ -731,8 +722,7 @@ const TerminalPage: React.FC = () => {
                   P&L Chart
                 </Button>
                 )}
-                {canViewStrategySummaries && (
-                <Button
+                                <Button
                   variant="outline-primary"
                   onClick={() => setShowStrategySummary(true)}
                   title="View aggregated strategy summary across all users"
@@ -740,9 +730,8 @@ const TerminalPage: React.FC = () => {
                   <BsPieChart className="me-1" />
                   Strategy Summary
                 </Button>
-                )}
-                {canViewRiskProfile && (
-                <Button
+                
+                                <Button
                   variant="outline-primary"
                   onClick={() => setShowRiskProfile(true)}
                   title="View combined risk profile across all users"
@@ -750,9 +739,8 @@ const TerminalPage: React.FC = () => {
                   <BsGraphUp className="me-1" />
                   Risk Profile
                 </Button>
-                )}
-                {canViewStrategyEngine && (
-                <Button
+                
+                                <Button
                   variant="outline-primary"
                   onClick={() => setShowStrategyStates(true)}
                   title="View strategy execution states and signals"
@@ -760,8 +748,8 @@ const TerminalPage: React.FC = () => {
                   <BsLightning className="me-1" />
                   Strategy Signals
                 </Button>
-                )}
-                {isAdmin && (
+                
+                {true && (
                 <Button
                   variant="outline-primary"
                   onClick={() => setShowHedgeWindows(true)}
@@ -774,8 +762,7 @@ const TerminalPage: React.FC = () => {
               </div>
 
               {/* Overall Square Off Dropdown — hidden unless SQUARE_OFF Manage */}
-              {canSquareOff && (
-              <Dropdown align="end">
+                            <Dropdown align="end">
                 <Dropdown.Toggle
                   variant="outline-danger"
                   size="sm"
@@ -822,9 +809,8 @@ const TerminalPage: React.FC = () => {
                   </Dropdown.Item>
                 </Dropdown.Menu>
               </Dropdown>
-              )}
-              {canEditTrades && (
-              <Button
+              
+                            <Button
                 variant="outline-success"
                 size="sm"
                 onClick={openBulkCompleteModal}
@@ -832,7 +818,7 @@ const TerminalPage: React.FC = () => {
               >
                 Bulk Set Complete
               </Button>
-              )}
+              
               {/* Last Update */}
               {lastUpdateTime && (
                 <div className="flex items-center gap-1 text-ink-soft text-[0.875em]">
@@ -885,15 +871,14 @@ const TerminalPage: React.FC = () => {
                   <span className="text-warning-700 dark:text-warning-400" title={`Cancelled: ${metrics.totalCancelledTrades}`}>CN-{metrics.totalCancelledTrades}</span>
                 </span>
               </div>
-              {canCompare && (
-              <div className="flex justify-between items-center">
+                            <div className="flex justify-between items-center">
                 <span className="text-ink-soft text-[0.875em]">Mismatches</span>
                 <span className={`font-bold ${metrics.usersWithMismatch > 0 ? 'text-danger-600 dark:text-danger-400' : 'text-success-500 dark:text-success-400'}`}>
                   {metrics.usersWithMismatch}
                   {metrics.criticalMismatches > 0 && <Badge bg="danger" className="ms-1 text-[0.875em]">{metrics.criticalMismatches}</Badge>}
                 </span>
               </div>
-              )}
+              
             </Card.Body>
           </Card>
         </Col>
@@ -922,8 +907,7 @@ const TerminalPage: React.FC = () => {
                       {metrics.algoReturnsPercent.toFixed(2)}%
                     </td>
                   </tr>
-                  {canCompare && (
-                  <tr>
+                                    <tr>
                     <td className="text-ink-soft font-semibold">Broker</td>
                     <td className="text-end"><PnLDisplay value={metrics.brokerIntradayPnl} fullFormat /></td>
                     <td className="text-end"><PnLDisplay value={metrics.brokerPositionalPnl} fullFormat /></td>
@@ -932,7 +916,7 @@ const TerminalPage: React.FC = () => {
                       {metrics.brokerReturnsPercent.toFixed(2)}%
                     </td>
                   </tr>
-                  )}
+                  
                 </tbody>
               </table>
             </Card.Body>
@@ -941,13 +925,12 @@ const TerminalPage: React.FC = () => {
       </Row>
 
       {/* Strategy Engine Controls - Sysadmin/Admin only */}
-      {canManageEngine && (
-        <Row className="mb-4">
+              <Row className="mb-4">
           <Col>
             <EngineMonitor compact />
           </Col>
         </Row>
-      )}
+      
 
       {/* Filters */}
       {/* totalCount = matching rows across ALL pages (server-side filtered). filteredCount = rows
@@ -1497,7 +1480,7 @@ const TerminalPage: React.FC = () => {
         subtitle="Aggregated view across all users"
         height="70vh"
       >
-        <PnlChart liveSummaries={summaries} tradingMode={tradingMode} algoOnly={!canCompare} />
+        <PnlChart liveSummaries={summaries} tradingMode={tradingMode} algoOnly={!true} />
       </BottomSlidePanel>
 
       {/* Strategy States Panel */}

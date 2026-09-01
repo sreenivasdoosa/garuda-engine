@@ -9,7 +9,6 @@ import { BsPlay, BsStop, BsArrowClockwise, BsActivity, BsCpu, BsClock, BsShieldC
 import { toast } from 'react-toastify';
 
 import { engineControlService } from '@/services/admin/strategyEngineService';
-import { usePermissions } from '@/hooks/usePermissions';
 import type { ExchangeEngineStatus } from '@/types/strategy-engine';
 import { ConfirmModal } from '@/components/common';
 import { Badge, Button, Spinner } from '@/components/ui';
@@ -21,7 +20,6 @@ interface EngineMonitorProps {
 
 interface ExchangeRowProps {
   status: ExchangeEngineStatus;
-  canManage: boolean;
   onStart: (exchange: string) => void;
   onStop: (exchange: string) => void;
   onReload: (exchange: string) => void;
@@ -36,7 +34,7 @@ const card = 'rounded-card border border-hairline bg-card';
 const cell = 'px-3 py-2';
 const dangerBox = 'rounded border border-danger-500/30 bg-danger-500/10 px-3 py-2 text-sm text-danger-600 dark:text-danger-400';
 
-const ExchangeRow: React.FC<ExchangeRowProps> = ({ status, canManage, onStart, onStop, onReload, onToggleDryRun, isStarting, isStopping, isReloading, isTogglingDryRun }) => {
+const ExchangeRow: React.FC<ExchangeRowProps> = ({ status, onStart, onStop, onReload, onToggleDryRun, isStarting, isStopping, isReloading, isTogglingDryRun }) => {
   const isMutating = isStarting || isStopping || isReloading || isTogglingDryRun;
   return (
     <tr className="hover:bg-raised/50">
@@ -50,8 +48,7 @@ const ExchangeRow: React.FC<ExchangeRowProps> = ({ status, canManage, onStart, o
       <td className={`${cell} text-center text-ink`}>{status.executedTranches}</td>
       <td className={`${cell} text-center text-ink`}>{status.scheduledHedges || 0}</td>
       <td className={`${cell} text-right`}>
-        {canManage && (
-          <div className="flex justify-end gap-1">
+                  <div className="flex justify-end gap-1">
             {status.running ? (
               <Button variant="danger" size="sm" onClick={() => onStop(status.exchange)} disabled={isMutating} title="Stop Engine">
                 {isStopping ? <Spinner size="sm" /> : <BsStop />}
@@ -68,7 +65,7 @@ const ExchangeRow: React.FC<ExchangeRowProps> = ({ status, canManage, onStart, o
               {isTogglingDryRun ? <Spinner size="sm" /> : <BsShieldCheck />}
             </Button>
           </div>
-        )}
+        
       </td>
     </tr>
   );
@@ -76,8 +73,6 @@ const ExchangeRow: React.FC<ExchangeRowProps> = ({ status, canManage, onStart, o
 
 const EngineMonitor: React.FC<EngineMonitorProps> = ({ compact = false, showExchange }) => {
   const queryClient = useQueryClient();
-  const { strategyEngine, isSysadmin } = usePermissions();
-  const canManage = strategyEngine.canManage || isSysadmin;
 
   const [mutatingExchange, setMutatingExchange] = React.useState<string | null>(null);
   const [mutationType, setMutationType] = React.useState<'start' | 'stop' | 'reload' | 'dryrun' | null>(null);
@@ -232,7 +227,7 @@ const EngineMonitor: React.FC<EngineMonitorProps> = ({ compact = false, showExch
                   ))}
                 </span>
               </div>
-              {canManage && actualRunningEngines > 0 && (
+              {actualRunningEngines > 0 && (
                 <Button
                   variant="danger"
                   size="sm"
@@ -273,8 +268,7 @@ const EngineMonitor: React.FC<EngineMonitorProps> = ({ compact = false, showExch
                         <td className={`${cell} text-center text-ink`}>{status.scheduledTranches}</td>
                         <td className={`${cell} text-center text-ink`}>{status.executedTranches}</td>
                         <td className={`${cell} text-right`}>
-                          {canManage && (
-                            <div className="flex justify-end gap-1">
+                                                      <div className="flex justify-end gap-1">
                               {status.running ? (
                                 <Button variant="danger" size="sm" onClick={(e) => { e.stopPropagation(); stopMutation.mutate(status.exchange); }} disabled={mutatingExchange === status.exchange} title="Stop">
                                   {mutatingExchange === status.exchange && mutationType === 'stop' ? <Spinner size="sm" /> : <BsStop size={14} />}
@@ -288,7 +282,7 @@ const EngineMonitor: React.FC<EngineMonitorProps> = ({ compact = false, showExch
                                 {mutatingExchange === status.exchange && mutationType === 'reload' ? <Spinner size="sm" /> : <BsArrowClockwise size={14} />}
                               </Button>
                             </div>
-                          )}
+                          
                         </td>
                       </tr>
                     ))}
@@ -320,7 +314,7 @@ const EngineMonitor: React.FC<EngineMonitorProps> = ({ compact = false, showExch
             <h5 className="mb-0 font-semibold text-ink">Strategy Engine</h5>
             <Badge tone={actualRunningEngines > 0 ? 'success' : 'neutral'}>{actualRunningEngines} / {allStatus.exchanges.length} Exchanges Running</Badge>
           </div>
-          {canManage && actualRunningEngines > 0 && (
+          {actualRunningEngines > 0 && (
             <Button variant="danger" onClick={() => setShowShutdownConfirm(true)} disabled={shutdownAllMutation.isPending} title="Shutdown all engines and tear down shared thread pools. Engines will need a fresh start to resume.">
               {shutdownAllMutation.isPending ? <Spinner size="sm" /> : <BsPower />}
               Shutdown All
@@ -358,7 +352,6 @@ const EngineMonitor: React.FC<EngineMonitorProps> = ({ compact = false, showExch
                   <ExchangeRow
                     key={status.exchange}
                     status={status}
-                    canManage={canManage}
                     onStart={(ex) => startMutation.mutate(ex)}
                     onStop={(ex) => stopMutation.mutate(ex)}
                     onReload={(ex) => reloadMutation.mutate(ex)}

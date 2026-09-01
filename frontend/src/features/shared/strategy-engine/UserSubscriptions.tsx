@@ -21,8 +21,7 @@ import {
   BsCheckCircle,
   BsXCircle,
   BsPencilSquare,
-  BsEye,
-} from 'react-icons/bs';
+  } from 'react-icons/bs';
 import Select from 'react-select';
 import { ConfirmModal } from '@/components/common';
 import HelpIcon from '@/components/common/HelpIcon';
@@ -30,7 +29,6 @@ import type { StrategyConfigTree } from '@/types/strategy-config-tree';
 import { capitalGridFor } from '@/utils/capitalGrid';
 import { strategyConfigTreeService } from '@/services/admin/v2AdminService';
 import { userSubscriptionHelpContent } from '@/data/help/user-subscription-help';
-import { usePermissions } from '@/hooks/usePermissions';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { userSubscriptionService, strategyCatalogService  } from '@/services/admin/strategyEngineService';
 import { userManagementService, allocationModelService, userBrokerService } from '@/services/admin/v2AdminService';
@@ -54,9 +52,6 @@ interface SubscriptionGroup {
 
 const UserSubscriptions: React.FC = () => {
   const queryClient = useQueryClient();
-  const permissions = usePermissions();
-  const canEdit = permissions.userSubscriptions.canEdit;
-  const canManage = permissions.userSubscriptions.canManage;
 
   // Filter and search state
   const [search, setSearch] = useState('');
@@ -737,8 +732,7 @@ const UserSubscriptions: React.FC = () => {
                       <td colSpan={3}></td>
                       <td>
                         <div className="flex gap-1">
-                          {canEdit && (
-                            <Button
+                                                      <Button
                               variant="outline-success"
                               size="sm"
                               onClick={() => handleAddClick(group.username, group.broker)}
@@ -747,9 +741,8 @@ const UserSubscriptions: React.FC = () => {
                             >
                               <BsPlusCircle />
                             </Button>
-                          )}
-                          {canEdit && (
-                            <Button
+                          
+                                                      <Button
                               variant="primary"
                               size="sm"
                               onClick={() => handleBulkEditClick(group)}
@@ -759,8 +752,8 @@ const UserSubscriptions: React.FC = () => {
                               <BsPencilSquare className="me-1" />
                               Edit All
                             </Button>
-                          )}
-                          {canManage && group.subscriptions.length > 0 && (
+                          
+                          {group.subscriptions.length > 0 && (
                             <Button
                               variant="outline-danger"
                               size="sm"
@@ -814,11 +807,11 @@ const UserSubscriptions: React.FC = () => {
                                 variant="outline-primary"
                                 size="sm"
                                 onClick={() => handleEditClick(sub)}
-                                title={canEdit ? 'Edit' : 'View'}
+                                title={'Edit'}
                               >
-                                {canEdit ? <BsPencil /> : <BsEye />}
+                                {<BsPencil />}
                               </Button>
-                              {canEdit && (sub.isActive ? (
+                              sub.isActive ? (
                                 <Button
                                   variant="outline-warning"
                                   size="sm"
@@ -838,9 +831,8 @@ const UserSubscriptions: React.FC = () => {
                                 >
                                   <BsToggleOn />
                                 </Button>
-                              ))}
-                              {canManage && (
-                                <Button
+                              )
+                                                              <Button
                                   variant="outline-danger"
                                   size="sm"
                                   onClick={() => handleDeleteClick(sub)}
@@ -848,7 +840,7 @@ const UserSubscriptions: React.FC = () => {
                                 >
                                   <BsTrash />
                                 </Button>
-                              )}
+                              
                             </div>
                           </td>
                         </tr>
@@ -866,8 +858,7 @@ const UserSubscriptions: React.FC = () => {
                         <td></td>
                         <td>
                           <div className="flex gap-1">
-                            {canEdit && (
-                              <Button
+                                                          <Button
                                 variant="outline-success"
                                 size="sm"
                                 onClick={() => handleAddClick(group.username, group.broker)}
@@ -875,9 +866,8 @@ const UserSubscriptions: React.FC = () => {
                               >
                                 <BsPlusCircle />
                               </Button>
-                            )}
-                            {canEdit && (
-                              <Button
+                            
+                                                          <Button
                                 variant="primary"
                                 size="sm"
                                 onClick={() => handleBulkEditClick(group)}
@@ -886,8 +876,8 @@ const UserSubscriptions: React.FC = () => {
                                 <BsPencilSquare className="me-1" />
                                 Edit All
                               </Button>
-                            )}
-                            {canManage && group.subscriptions.length > 0 && (
+                            
+                            {group.subscriptions.length > 0 && (
                               <Button
                                 variant="outline-danger"
                                 size="sm"
@@ -1015,9 +1005,9 @@ const UserSubscriptions: React.FC = () => {
       </Modal>
 
       {/* View/Edit Subscription Modal */}
-      <Modal show={showEditModal} onHide={handleCloseEditModal} backdrop={!canEdit ? true : 'static'}>
+      <Modal show={showEditModal} onHide={handleCloseEditModal} backdrop={!true}>
         <Modal.Header closeButton>
-          <Modal.Title>{canEdit ? 'Edit' : 'View'} Subscription</Modal.Title>
+          <Modal.Title>{'Edit'} Subscription</Modal.Title>
         </Modal.Header>
         <Modal.Body>
           <Form.Group className="mb-4">
@@ -1044,7 +1034,7 @@ const UserSubscriptions: React.FC = () => {
               min={0}
               value={editCapital}
               onChange={(e) => setEditCapital(parseInt(e.target.value) || 0)}
-              disabled={!canEdit}
+              disabled={!true}
             />
             {selectedSubscription && (() => {
               const grid = getCapitalGrid(selectedSubscription.strategyName, editCapital);
@@ -1060,7 +1050,7 @@ const UserSubscriptions: React.FC = () => {
               label="Paper Trading (simulate orders — no real broker order placed)"
               checked={editIsPaperTrading}
               onChange={(e) => setEditIsPaperTrading(e.target.checked)}
-              disabled={!canEdit}
+              disabled={!true}
             />
           </Form.Group>
 
@@ -1081,7 +1071,7 @@ const UserSubscriptions: React.FC = () => {
                     : 'Strategy default'}
                   value={editLeverage}
                   onChange={(e) => setEditLeverage(e.target.value)}
-                  disabled={!canEdit}
+                  disabled={!true}
                 />
                 <Form.Text className="text-ink-soft">
                   {getStrategyEquitySettings(selectedSubscription.strategyName).minLeverage != null &&
@@ -1101,7 +1091,7 @@ const UserSubscriptions: React.FC = () => {
                     : 'Strategy default'}
                   value={editMaxActivePositions}
                   onChange={(e) => setEditMaxActivePositions(e.target.value)}
-                  disabled={!canEdit}
+                  disabled={!true}
                 />
                 <Form.Text className="text-ink-soft">Cap on concurrent stock positions for this user</Form.Text>
               </Form.Group>
@@ -1125,7 +1115,7 @@ const UserSubscriptions: React.FC = () => {
                   min={getStrategyRiskSettings(selectedSubscription.strategyName).minRiskPct || 0}
                   max={getStrategyRiskSettings(selectedSubscription.strategyName).maxRiskPct || 100}
                   step={0.1}
-                  disabled={!canEdit}
+                  disabled={!true}
                 />
                 <Form.Text className="text-ink-soft">
                   {getStrategyRiskSettings(selectedSubscription.strategyName).minRiskPct !== undefined &&
@@ -1144,7 +1134,7 @@ const UserSubscriptions: React.FC = () => {
                   placeholder="Enter absolute max risk amount"
                   min={0}
                   step={1000}
-                  disabled={!canEdit}
+                  disabled={!true}
                 />
                 <Form.Text className="text-ink-soft">
                   Fixed maximum risk amount in rupees (overrides percentage)
@@ -1154,16 +1144,15 @@ const UserSubscriptions: React.FC = () => {
           )}
         </Modal.Body>
         <Modal.Footer>
-          <Button variant="secondary" onClick={handleCloseEditModal}>{canEdit ? 'Cancel' : 'Close'}</Button>
-          {canEdit && (
-            <Button
+          <Button variant="secondary" onClick={handleCloseEditModal}>{'Cancel'}</Button>
+                      <Button
               variant="primary"
               onClick={handleUpdateSubmit}
               disabled={updateMutation.isPending}
             >
               {updateMutation.isPending ? <><Spinner size="sm" className="me-2" />Saving...</> : 'Save Changes'}
             </Button>
-          )}
+          
         </Modal.Footer>
       </Modal>
 

@@ -6,12 +6,9 @@
 import { BsTags } from 'react-icons/bs';
 import { PageHeader } from '@/components/common';
 import { Symbols } from '@/components/symbols';
-import { usePermissions } from '@/hooks/usePermissions';
 
 const SymbolsPage: React.FC = () => {
-  const permissions = usePermissions();
 
-  const canEdit = permissions.symbolConfig.canEdit;
 
   return (
     <div className="fade-in">
@@ -23,8 +20,6 @@ const SymbolsPage: React.FC = () => {
 
       <Symbols
         title="Trading Symbols"
-        canEdit={canEdit}
-        readOnly={!canEdit}
         hideSync
       />
     </div>

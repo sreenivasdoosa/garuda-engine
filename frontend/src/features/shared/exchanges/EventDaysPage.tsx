@@ -6,14 +6,10 @@
 import { BsCalendarEvent } from 'react-icons/bs';
 import { PageHeader } from '@/components/common';
 import { EventDays } from '@/components/exchanges';
-import { usePermissions } from '@/hooks/usePermissions';
 
 const EventDaysPage: React.FC = () => {
-  const permissions = usePermissions();
 
   // Permission flags for Event Days tool
-  const canEdit = permissions.eventDays.canEdit;
-  const canManage = permissions.eventDays.canManage;
 
   return (
     <div className="fade-in">
@@ -25,9 +21,9 @@ const EventDaysPage: React.FC = () => {
 
       <EventDays
         title="Event Days"
-        hideCreate={!canEdit}
-        hideDelete={!canManage}
-        readOnly={!canEdit}
+        hideCreate={!true}
+        hideDelete={!true}
+        readOnly={!true}
       />
     </div>
   );

@@ -16,7 +16,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-toastify';
 
 import { PageHeader } from '@/components/common';
-import { usePermissions } from '@/hooks/usePermissions';
 import {
   tradeService,
   userManagementService,
@@ -40,8 +39,6 @@ const getDefaultDates = () => {
 };
 
 const RecomputeChargesPage: React.FC = () => {
-  const permissions = usePermissions();
-  const canManage = permissions.systemConfig.canManage;
 
   const queryClient = useQueryClient();
   const defaults = getDefaultDates();
@@ -171,8 +168,7 @@ const RecomputeChargesPage: React.FC = () => {
               </Button>
               <Button
                 variant="danger"
-                disabled={busy || !canManage}
-                title={!canManage ? 'Requires manage permission' : undefined}
+                disabled={busy || !true}
                 onClick={() => {
                   const v = validation();
                   if (v) { toast.error(v); return; }

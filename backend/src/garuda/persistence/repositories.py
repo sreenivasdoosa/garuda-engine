@@ -9,6 +9,7 @@ invented for a table that never needed one.
 
 from __future__ import annotations
 
+import datetime as dt
 from collections.abc import Sequence
 from datetime import date, datetime
 from typing import Any
@@ -346,6 +347,23 @@ class PcrCandlesRepository(Repository[models.PcrCandlesRow]):
 
 class ProductsRepository(Repository[models.ProductsRow]):
     model = models.ProductsRow
+
+
+class SystemConfigRepository(Repository[models.SystemConfigRow]):
+    model = models.SystemConfigRow
+
+    async def value_of(self, prop: str) -> str | None:
+        row = await self.get(prop)
+        return row.value if row is not None else None
+
+    async def put(self, prop: str, value: str, now: dt.datetime) -> None:
+        """Set a property, whether or not it was there."""
+        row = await self.get(prop)
+        if row is None:
+            self.add(models.SystemConfigRow(property=prop, value=value, updated_at=now))
+            return
+        row.value = value
+        row.updated_at = now
 
 
 class RmsBreachLogRepository(Repository[models.RmsBreachLogRow]):
@@ -700,6 +718,10 @@ class Repositories:
     @property
     def products(self) -> ProductsRepository:
         return self.of(ProductsRepository)
+
+    @property
+    def system_config(self) -> SystemConfigRepository:
+        return SystemConfigRepository(self._session)
 
     @property
     def rms_breach_log(self) -> RmsBreachLogRepository:

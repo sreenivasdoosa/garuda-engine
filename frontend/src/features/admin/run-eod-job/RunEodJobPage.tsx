@@ -15,7 +15,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-toastify';
 
 import { PageHeader } from '@/components/common';
-import { usePermissions } from '@/hooks/usePermissions';
 import { eodJobRunService } from '@/services/admin/v2AdminService';
 
 const extractError = (err: unknown): string => {
@@ -24,8 +23,6 @@ const extractError = (err: unknown): string => {
 };
 
 const RunEodJobPage: React.FC = () => {
-  const permissions = usePermissions();
-  const canManage = permissions.systemConfig.canManage;
   const queryClient = useQueryClient();
 
   const [exchange, setExchange] = useState<string>('');
@@ -68,7 +65,7 @@ const RunEodJobPage: React.FC = () => {
     onError: (err) => toast.error(extractError(err)),
   });
 
-  const canRunNow = canManage && !!selected && selected.eligible && !running && !runMutation.isPending;
+  const canRunNow = !!selected && selected.eligible && !running && !runMutation.isPending;
 
   return (
     <div>
@@ -113,11 +110,6 @@ const RunEodJobPage: React.FC = () => {
           {selected && !selected.eligible && selected.reason && (
             <Alert variant="warning" className="mt-4 mb-0">
               {selected.reason}
-            </Alert>
-          )}
-          {!canManage && (
-            <Alert variant="secondary" className="mt-4 mb-0">
-              You need system-config manage permission to run EOD jobs.
             </Alert>
           )}
         </Card.Body>

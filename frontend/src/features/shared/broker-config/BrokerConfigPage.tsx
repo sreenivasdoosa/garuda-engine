@@ -14,7 +14,6 @@ import { strategyDefinitionService } from '@/services/admin/strategyEngineServic
 import type { BrokerExchangeConfig, CreateBrokerExchangeConfigRequest } from '@/types/exchange';
 import type { BrokerStrategyConfig, CreateBrokerStrategyConfigRequest } from '@/services/admin/v2AdminService';
 import type { StrategyDefinition } from '@/types/strategy-engine';
-import { usePermissions } from '@/hooks/usePermissions';
 import HelpIcon from '@/components/common/HelpIcon';
 import { brokerConfigHelpContent } from '@/data/help/broker-config-help';
 import { Badge, Button, Spinner, Modal, Toggle } from '@/components/ui';
@@ -80,9 +79,6 @@ const TABS = [
 
 const BrokerConfigPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState('exchange');
-  const permissions = usePermissions();
-  const canEdit = permissions.brokerConfig.canEdit;
-  const canManage = permissions.brokerConfig.canManage;
 
   return (
     <BrokerSetupRequired>
@@ -96,8 +92,8 @@ const BrokerConfigPage: React.FC = () => {
             <button key={t.key} type="button" className={tabBtn(activeTab === t.key)} onClick={() => setActiveTab(t.key)}>{t.label}</button>
           ))}
         </div>
-        {activeTab === 'exchange' && <BrokerExchangeConfigPanel hideCreate={!canEdit} hideDelete={!canManage} readOnly={!canEdit} />}
-        {activeTab === 'strategy' && <BrokerStrategyConfigPanel hideCreate={!canEdit} hideDelete={!canManage} readOnly={!canEdit} />}
+        {activeTab === 'exchange' && <BrokerExchangeConfigPanel hideCreate={!true} hideDelete={!true} readOnly={!true} />}
+        {activeTab === 'strategy' && <BrokerStrategyConfigPanel hideCreate={!true} hideDelete={!true} readOnly={!true} />}
         {activeTab === 'stats' && <BrokerApiStatsPanel />}
       </div>
     </BrokerSetupRequired>

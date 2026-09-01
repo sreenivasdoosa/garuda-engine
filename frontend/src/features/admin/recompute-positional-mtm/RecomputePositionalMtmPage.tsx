@@ -16,7 +16,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-toastify';
 
 import { PageHeader } from '@/components/common';
-import { usePermissions } from '@/hooks/usePermissions';
 import { positionalMtmService, userManagementService } from '@/services/admin/v2AdminService';
 import { formatIndianNumber } from '@/utils/formatters';
 
@@ -36,8 +35,6 @@ const getDefaultDates = () => {
 };
 
 const RecomputePositionalMtmPage: React.FC = () => {
-  const permissions = usePermissions();
-  const canManage = permissions.systemConfig.canManage;
 
   const queryClient = useQueryClient();
   const defaults = getDefaultDates();
@@ -160,8 +157,7 @@ const RecomputePositionalMtmPage: React.FC = () => {
               </Button>
               <Button
                 variant="danger"
-                disabled={busy || !canManage}
-                title={!canManage ? 'Requires manage permission' : undefined}
+                disabled={busy || !true}
                 onClick={() => {
                   const v = validation();
                   if (v) { toast.error(v); return; }

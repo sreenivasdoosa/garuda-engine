@@ -71,6 +71,10 @@ def main(argv: list[str] | None = None) -> int:
     commands.add_parser("run", help="Start the engine and trade the day.")
     commands.add_parser("check", help="Build the engine and report, without connecting.")
     commands.add_parser("seed", help="Load reference data: venues, holidays, symbols, brokers.")
+    serve = commands.add_parser("serve", help="Serve the API the Console talks to.")
+    serve.add_argument("--host", default=None, help="Interface to bind. Defaults to the setting.")
+    serve.add_argument("--port", type=int, default=None, help="Port. Defaults to the setting.")
+    serve.add_argument("--reload", action="store_true", help="Restart on a source change.")
 
     args = parser.parse_args(argv)
     logging.basicConfig(
@@ -83,6 +87,8 @@ def main(argv: list[str] | None = None) -> int:
             return asyncio.run(_check())
         if args.command == "seed":
             return asyncio.run(_seed())
+        if args.command == "serve":
+            return _serve(args.host, args.port, reload=args.reload)
         return asyncio.run(_run())
     except KeyboardInterrupt:
         return 130
@@ -91,6 +97,27 @@ def main(argv: list[str] | None = None) -> int:
         # a stack trace through the composition root.
         print(f"garuda: {error}", file=sys.stderr)
         return 2
+
+
+def _serve(host: str | None, port: int | None, *, reload: bool) -> int:
+    """Run the HTTP surface.
+
+    Separate from `run`, which trades. An operator wanting both runs both:
+    the Console reads and writes configuration, and the engine acts on it, and
+    keeping them apart means a restart of one is not a restart of the other.
+    """
+    import uvicorn
+
+    settings = load_settings()
+    uvicorn.run(
+        "garuda.api:create_app",
+        factory=True,
+        host=host or settings.host,
+        port=port or settings.port,
+        reload=reload,
+        log_level="info",
+    )
+    return 0
 
 
 async def _build(settings: Settings, clock: Clock) -> _Assembled:

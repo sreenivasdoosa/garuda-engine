@@ -25,14 +25,8 @@ export const useAuth = () => {
   const { setUser, setLoading, logout: clearAuth } = useAuthStore();
   const { setServerConfig, setSupportedBrokers } = useConfigStore();
 
-  // Get redirect path based on user permissions (canManageUsers or isSysadmin)
-  const getRedirectPath = (user: User): string => {
-    // Users who can manage users (or are sysadmin) go to console, others to dashboard
-    if (user.canManageUsers || user.isSysadmin) {
-      return '/console';
-    }
-    return '/dashboard';
-  };
+  /** Where signing in lands. One operator, one place. */
+  const getRedirectPath = (_user: User): string => '/console';
 
   // Check authentication status using JWT
   const checkAuthStatus = useCallback(async () => {

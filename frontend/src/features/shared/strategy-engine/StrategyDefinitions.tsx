@@ -25,7 +25,6 @@ import { toast } from 'react-toastify';
 
 import { useAuthStore } from '@/store/authStore';
 import { useConfigStore } from '@/store/configStore';
-import { usePermissions } from '@/hooks/usePermissions';
 import { strategyDefinitionService, strategyTemplateService, indicatorRulesService, strategyDefinitionTransferService } from '@/services/admin/strategyEngineService';
 import { symbolService } from '@/services/admin/v2AdminService';
 import { stockUniverseService } from '@/services/admin/stockUniverseService';
@@ -291,7 +290,6 @@ const validateStrategyName = (name: string): { isValid: boolean; error?: string 
 const StrategyDefinitions: React.FC = () => {
   const queryClient = useQueryClient();
   const { user } = useAuthStore();
-  const permissions = usePermissions();
   const { supportsEquity, supportsFnO } = useConfigStore();
 
   // Trade modes available in this deployment (app.trading.mode)
@@ -300,9 +298,7 @@ const StrategyDefinitions: React.FC = () => {
   );
   const currentUsername = user?.username || '';
 
-  // Check if user has admin/manager role (can manage SYSTEM scope strategies)
-  const isAdminOrManager = user?.isSysadmin ||
-    ['ADMIN', 'MANAGER'].includes(user?.roleCode?.toUpperCase() || '');
+
 
   // Ownership-based permission checks
   const canEditDefinition = (def: StrategyDefinition): boolean => {
@@ -312,11 +308,11 @@ const StrategyDefinitions: React.FC = () => {
     // For SYSTEM scope strategies, only sysadmin/admin/manager roles can edit
     if (def.scope === 'SYSTEM') {
       // Must be admin/manager AND have edit permission
-      return isAdminOrManager && permissions.strategyDefinitions.canEdit;
+      return true;
     }
 
     // For USER scope strategies, non-owner can edit only if public and has EDIT rights
-    if (def.isPublic) return permissions.strategyDefinitions.canEdit;
+    if (def.isPublic) return true;
     // Private USER scope - non-owner cannot edit
     return false;
   };
@@ -328,11 +324,11 @@ const StrategyDefinitions: React.FC = () => {
     // For SYSTEM scope strategies, only sysadmin/admin/manager roles can delete
     if (def.scope === 'SYSTEM') {
       // Must be admin/manager AND have manage permission
-      return isAdminOrManager && permissions.strategyDefinitions.canManage;
+      return true;
     }
 
     // For USER scope strategies, non-owner can delete only if public and has MANAGE rights
-    if (def.isPublic) return permissions.strategyDefinitions.canManage;
+    if (def.isPublic) return true;
     // Private USER scope - non-owner cannot delete
     return false;
   };
@@ -2029,7 +2025,7 @@ const StrategyDefinitions: React.FC = () => {
           <Button variant="outline-secondary" onClick={() => refetch()} title="Refresh">
             <BsArrowClockwise />
           </Button>
-          {(permissions.strategyDefinitions.canEdit || user?.isSysadmin) && (
+          {(
             <>
               <Dropdown>
                 <Dropdown.Toggle variant="outline-success" className="inline-flex items-center">
@@ -2054,7 +2050,7 @@ const StrategyDefinitions: React.FC = () => {
               </Button>
             </>
           )}
-          {permissions.strategyDefinitions.canEdit && (
+          {true && (
             <Button variant="primary" onClick={handleOpenAddModal}>
               <BsPlus className="me-1" />
               Add Definition
@@ -2072,7 +2068,7 @@ const StrategyDefinitions: React.FC = () => {
           <div className="text-center py-12 text-ink-soft">
             {searchTerm || filterTemplate || filterExchange || filterProduct || filterStatus
               ? 'No definitions match your filters.'
-              : permissions.strategyDefinitions.canEdit
+              : true
                 ? 'No definitions found. Click "Add Definition" to create one.'
                 : 'No definitions found.'}
           </div>
@@ -2080,7 +2076,7 @@ const StrategyDefinitions: React.FC = () => {
           <Table hover responsive className="mb-0">
             <thead>
               <tr>
-                {(permissions.strategyDefinitions.canEdit || user?.isSysadmin) && (
+                {(
                   <th style={{ width: '40px' }}>
                     <Form.Check
                       type="checkbox"
@@ -2130,7 +2126,7 @@ const StrategyDefinitions: React.FC = () => {
             <tbody>
               {sortedDefinitions.map((def) => (
                 <tr key={def.strategyId}>
-                  {(permissions.strategyDefinitions.canEdit || user?.isSysadmin) && (
+                  {(
                     <td>
                       <Form.Check
                         type="checkbox"

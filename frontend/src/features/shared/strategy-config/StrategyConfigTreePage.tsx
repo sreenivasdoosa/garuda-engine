@@ -37,7 +37,6 @@ import TablePagination from '@/components/common/TablePagination';
 import { DEFAULT_PAGE_SIZE } from '@/types/pagination';
 import UserSelect from '@/components/common/UserSelect';
 import { strategyConfigTreeHelpContent } from '@/data/help';
-import { usePermissions } from '@/hooks/usePermissions';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   strategyConfigTreeService,
@@ -217,9 +216,7 @@ const mergeTrailConfigWithTrailToCost = (existingConfig: string | null | undefin
 
 // ==================== CONFIG LIST PANEL ====================
 const ConfigListPanel: React.FC<{
-  canEdit: boolean;
-  canManage: boolean;
-}> = ({ canEdit, canManage }) => {
+}> = () => {
   const [search, setSearch] = useState('');
   // Search is applied server-side (debounced) so it matches across the whole tree.
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -1040,8 +1037,7 @@ const ConfigListPanel: React.FC<{
               </InputGroup>
             </Col>
             <Col md={4} className="text-end">
-              {canEdit && (
-                <>
+                              <>
                   <Button
                     variant="outline-primary"
                     className="me-2"
@@ -1059,7 +1055,7 @@ const ConfigListPanel: React.FC<{
                     <BsPlus className="me-1" /> Add Configuration
                   </Button>
                 </>
-              )}
+              
             </Col>
           </Row>
         </Card.Header>
@@ -1143,7 +1139,7 @@ const ConfigListPanel: React.FC<{
                           <div className="flex flex-wrap gap-1" style={{ maxWidth: '400px' }}>
                             {/* Ordered: Hedge, Lots, StrikeType, Strike/Premium, ReEntry, Timing, SL, Target, TrailSL, TrailLogic, CombinedSL, CombinedTarget, CombinedTrailSL, CombinedTrailLogic */}
                             {renderValueBadge(config.hedgingEnabled, 'Hedge')}
-                            {config.hedgingEnabled === true && renderValueBadge(config.hedgeStrikeRoundingMinDistance, 'HedgeRound%')}
+                            {config.hedgingEnabled === renderValueBadge(config.hedgeStrikeRoundingMinDistance, 'HedgeRound%')}
                             {renderValueBadge(config.lotsPerTranch, 'Lots/Tranch')}
                             {config.strikeType && config.strikeType !== 'None' && renderValueBadge(config.strikeType, 'StrikeType')}
                             {config.strikeType === 'MoneyNess' && config.strikeValue && renderValueBadge(config.strikeValue, 'Strike')}
@@ -1166,8 +1162,8 @@ const ConfigListPanel: React.FC<{
                               config.useATMIfITM != null && renderValueBadge(config.useATMIfITM, 'ATMifITM')}
                             {renderValueBadge(config.volumeFilter, 'VolFilter')}
                             {renderValueBadge(config.oiFilter, 'OIFilter')}
-                            {config.applyVolumeFilterToHedge === true && renderValueBadge(config.applyVolumeFilterToHedge, 'VolFilter→Hedge')}
-                            {config.applyOIFilterToHedge === true && renderValueBadge(config.applyOIFilterToHedge, 'OIFilter→Hedge')}
+                            {config.applyVolumeFilterToHedge === renderValueBadge(config.applyVolumeFilterToHedge, 'VolFilter→Hedge')}
+                            {config.applyOIFilterToHedge === renderValueBadge(config.applyOIFilterToHedge, 'OIFilter→Hedge')}
                             {renderValueBadge(config.reEntry, 'ReEntry')}
                             {config.reEntry && renderValueBadge(config.maxReentries, 'MaxRE')}
                             {config.reEntry && renderValueBadge(config.minReentryLossPercentage, 'MinLoss%')}
@@ -1217,12 +1213,11 @@ const ConfigListPanel: React.FC<{
                               variant="outline-primary"
                               size="sm"
                               onClick={() => handleOpenEdit(config)}
-                              title={canEdit ? 'Edit' : 'View'}
+                              title={'Edit'}
                             >
-                              {canEdit ? <BsPencil /> : <BsEye />}
+                              {<BsPencil />}
                             </Button>
-                            {canManage && (
-                              <Button
+                                                          <Button
                                 variant="outline-danger"
                                 size="sm"
                                 onClick={() => handleDelete(config)}
@@ -1230,7 +1225,7 @@ const ConfigListPanel: React.FC<{
                               >
                                 <BsTrash />
                               </Button>
-                            )}
+                            
                           </div>
                         </td>
                       </tr>
@@ -1247,13 +1242,13 @@ const ConfigListPanel: React.FC<{
       </Card>
 
       {/* Create/View/Edit Modal */}
-      <Modal show={showModal} onHide={() => setShowModal(false)} size="xl" backdrop={editingConfig && !canEdit ? true : 'static'}>
+      <Modal show={showModal} onHide={() => setShowModal(false)} size="xl" backdrop>
         <Modal.Header closeButton>
-          <Modal.Title>{editingConfig ? (canEdit ? 'Edit' : 'View') : 'Create'} Strategy Configuration</Modal.Title>
+          <Modal.Title>{editingConfig ? ('Edit') : 'Create'} Strategy Configuration</Modal.Title>
         </Modal.Header>
         <Modal.Body>
           <Form>
-          <fieldset disabled={!!editingConfig && !canEdit}>
+          <fieldset>
             {/* Shape banner: the admin must know WHAT they are configuring before any field below
                 makes sense — for a combo, strike/moneyness and the hedging toggle do not apply and
                 the SL/target percentages change meaning (they are % of the MAIN leg's price). */}
@@ -2927,9 +2922,9 @@ const ConfigListPanel: React.FC<{
         </Modal.Body>
         <Modal.Footer>
           <Button variant="secondary" onClick={() => setShowModal(false)}>
-            {editingConfig && !canEdit ? 'Close' : 'Cancel'}
+            Cancel
           </Button>
-          {(canEdit || !editingConfig) && (
+          {(
             <Button
               variant="primary"
               onClick={handleSave}
@@ -3521,11 +3516,8 @@ const EffectiveConfigPreviewPanel: React.FC = () => {
 // ==================== MAIN PAGE ====================
 const StrategyConfigTreePage: React.FC = () => {
   const [activeTab, setActiveTab] = useState('configs');
-  const permissions = usePermissions();
 
   // Use strategies permission for this feature
-  const canEdit = permissions.strategyConfigs.canEdit;
-  const canManage = permissions.strategyConfigs.canManage;
 
   return (
     <div className="fade-in">
@@ -3543,7 +3535,7 @@ const StrategyConfigTreePage: React.FC = () => {
 
       <Tabs activeKey={activeTab} onSelect={(k) => setActiveTab(k || 'configs')} className="mb-4">
         <Tab eventKey="configs" title="Configurations">
-          <ConfigListPanel canEdit={canEdit} canManage={canManage} />
+          <ConfigListPanel />
         </Tab>
         <Tab eventKey="preview" title="Preview Effective Config">
           <EffectiveConfigPreviewPanel />

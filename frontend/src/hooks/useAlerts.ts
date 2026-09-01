@@ -2,7 +2,6 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, useCallback, useEffect, useRef } from 'react';
 
 import { alertsService } from '@/services/alerts/alertsService';
-import { userAlertsService } from '@/services/user-portal';
 import { useAuthStore } from '@/store/authStore';
 import type { AlertFilterParams, SystemAlert } from '@/types/common';
 
@@ -43,14 +42,11 @@ export const triggerAlertRefresh = () => {
 /**
  * Hook for fetching recent alerts (for bell icon in header).
  * Auto-refreshes every 30 seconds and on WebSocket alert event.
- * Uses admin endpoint for admins, user-portal endpoint for regular users.
+ * One admin, so one endpoint.
  */
 export const useRecentAlerts = (limit: number = 50, alertLevel?: string) => {
   const queryClient = useQueryClient();
   const { user } = useAuthStore();
-
-  // Check if user has admin access
-  const isAdmin = user?.canManageUsers || user?.isSysadmin;
 
   // Listen for custom refresh event (triggered when WebSocket alert received)
   useEffect(() => {
@@ -66,25 +62,8 @@ export const useRecentAlerts = (limit: number = 50, alertLevel?: string) => {
   }, [queryClient]);
 
   return useQuery({
-    queryKey: ['alerts', 'recent', limit, alertLevel, isAdmin],
-    queryFn: async (): Promise<SystemAlert[]> => {
-      if (isAdmin) {
-        // Admin users use the admin endpoint
-        return alertsService.getRecentAlerts(limit, alertLevel);
-      } else {
-        // Regular users use the user-portal endpoint
-        const userAlerts = await userAlertsService.getRecentAlerts(limit);
-        // Map user alerts to SystemAlert format
-        return userAlerts.map(alert => ({
-          timestamp: alert.timestamp,
-          alertLevel: alert.alertLevel,
-          entityType: alert.entityType,
-          entityName: alert.entityName,
-          operation: alert.operation,
-          alertMessage: alert.alertMessage,
-        }));
-      }
-    },
+    queryKey: ['alerts', 'recent', limit, alertLevel],
+    queryFn: (): Promise<SystemAlert[]> => alertsService.getRecentAlerts(limit, alertLevel),
     enabled: !!user,
     refetchInterval: 30000, // Refetch every 30 seconds
     staleTime: 10000, // Consider data stale after 10 seconds

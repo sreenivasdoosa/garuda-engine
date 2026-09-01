@@ -1,46 +1,29 @@
-import { Navigate, useLocation } from 'react-router-dom';
-import { Spinner } from '@/components/ui/rbShim';
-import { useAuthStore } from '@/store/authStore';
+import { Navigate } from 'react-router-dom';
+import type { ReactNode } from 'react';
 
+import { useAuthStore } from '@/store/authStore';
+import LoadingScreen from '@/components/common/LoadingScreen';
+
+/**
+ * Signed in, or sent to the login page.
+ *
+ * That is the whole authorization model. The engine this was copied from
+ * gated routes on a rights matrix as well; there is one operator here and
+ * they own every account on it, so being signed in is the only question.
+ */
 interface ProtectedRouteProps {
-  children: React.ReactNode;
-  /**
-   * If true, requires user to have canManageUsers permission (or isSysadmin).
-   * Used for Console/Terminal routes that require management access.
-   */
-  requiresManagement?: boolean;
+  children: ReactNode;
 }
 
-const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
-  children,
-  requiresManagement,
-}) => {
-  const location = useLocation();
-  const { isAuthenticated, user, isLoading } = useAuthStore();
+const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
+  const { isAuthenticated, isLoading } = useAuthStore();
 
-  // Wait for auth initialization to complete before making redirect decisions
   if (isLoading) {
-    return (
-      <div className="flex justify-center items-center" style={{ minHeight: '100vh' }}>
-        <Spinner animation="border" variant="primary" />
-      </div>
-    );
+    return <LoadingScreen />;
   }
-
-  // Not authenticated - redirect to login
-  if (!isAuthenticated || !user) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
   }
-
-  // Check permission-based access
-  if (requiresManagement) {
-    const hasManagementAccess = user.canManageUsers || user.isSysadmin;
-    if (!hasManagementAccess) {
-      // Regular users without management access go to dashboard
-      return <Navigate to="/dashboard" replace />;
-    }
-  }
-
   return <>{children}</>;
 };
 

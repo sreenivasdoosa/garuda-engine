@@ -1,7 +1,7 @@
 import { api } from '@/api/client';
 import { API_ENDPOINTS } from '@/api/endpoints';
 import { setRuntimeWsHost } from '@/config/env';
-import { setUserPortalClientSidePnl, setShowTerminalPnlChart, setAiClientConfig } from '@/config/featureFlags';
+import { setClientSidePnl, setShowTerminalPnlChart, setAiClientConfig } from '@/config/featureFlags';
 
 export interface OAuthConfig {
   authServiceUrl: string;
@@ -34,11 +34,11 @@ export interface ServerConfig {
    * Phase-2 flag (userportal.clientside.pnl.enabled): user portal uses the client-side
    * PnL engine when true; absent/false = legacy terminal-summary behavior.
    */
-  userPortalClientSidePnl?: boolean;
+  clientSidePnl?: boolean;
   /**
    * Show the intraday P&L chart on the client-side terminal. Server drives this off
    * `aggregated.pnl.snapshot.enabled` (the per-user snapshot writer); absent/false = hidden.
-   * Applies to BOTH the admin terminal and the user-portal terminal.
+   * Applies to the terminal.
    */
   showTerminalPnlChart?: boolean;
   /** AI assistant client hints (server-enforced limits mirrored to the UI). */
@@ -95,7 +95,7 @@ export const configService = {
   async getServerConfig(): Promise<ServerConfig> {
     const config = await api.get<ServerConfig>(API_ENDPOINTS.CONFIG.PUBLIC);
     setRuntimeWsHost(config.wsHost);
-    setUserPortalClientSidePnl(config.userPortalClientSidePnl);
+    setClientSidePnl(config.clientSidePnl);
     setShowTerminalPnlChart(config.showTerminalPnlChart);
     setAiClientConfig(config.ai);
     return config;

@@ -12,7 +12,6 @@ import TerminalSummaryRow from './TerminalSummaryRow';
 import PnLDisplay from './PnLDisplay';
 import HedgeDistanceBadge from './HedgeDistanceBadge';
 import { valueForMode, countForMode } from '@/utils/tradingMode';
-import { usePermissions } from '@/hooks/usePermissions';
 
 interface TerminalSummaryTableProps {
   summaries: UserTradeSummary[];
@@ -64,10 +63,7 @@ const TerminalSummaryTable: React.FC<TerminalSummaryTableProps> = ({
 }) => {
   // Broker-PnL + Mismatch columns require ALGO_BROKER_COMPARE View (kept consistent across
   // header/body/footer; TerminalSummaryRow checks the same right for its body cells).
-  const { algoBrokerCompare, margins } = usePermissions();
-  const canCompare = algoBrokerCompare.canView;
   // Margin % column requires MARGINS View (header/body/footer consistent with TerminalSummaryRow).
-  const canViewMargins = margins.canView;
   // Track which row is expanded (only one at a time)
   const [expandedRowKey, setExpandedRowKey] = useState<string | null>(null);
 
@@ -189,16 +185,16 @@ const TerminalSummaryTable: React.FC<TerminalSummaryTableProps> = ({
               Z
             </th>
             <th className="text-right">Capital</th>
-            {canCompare && <th className="text-right">Ext Capital</th>}
+            {<th className="text-right">Ext Capital</th>}
             <th className="text-right">Algo Pnl</th>
             <th className="text-right">Algo %</th>
-            {canCompare && <th className="text-right">Broker Pnl</th>}
-            {canCompare && <th className="text-right">Broker %</th>}
-            {canViewMargins && <th className="text-center">Margin %</th>}
+            {<th className="text-right">Broker Pnl</th>}
+            {<th className="text-right">Broker %</th>}
+            {<th className="text-center">Margin %</th>}
             <th className="text-center" title="Active POSITIONAL SHORT trades by current hedge distance — I = intraday, P = positional">
               Pos Hedges
             </th>
-            {canCompare && <th className="text-left">Mismatch</th>}
+            {<th className="text-left">Mismatch</th>}
             <th className="text-left" style={{ width: '120px' }}>Actions</th>
           </tr>
         </thead>
@@ -249,28 +245,26 @@ const TerminalSummaryTable: React.FC<TerminalSummaryTableProps> = ({
               )}
             </td>
             <td className="text-right tabular-nums">{footerCapital.toLocaleString('en-IN')}</td>
-            {canCompare && <td className="text-right tabular-nums">{footerExternalCapital.toLocaleString('en-IN')}</td>}
+            {<td className="text-right tabular-nums">{footerExternalCapital.toLocaleString('en-IN')}</td>}
             <td className="text-right">
               <PnLDisplay value={footerAlgoPnl} fullFormat />
             </td>
             <td className="text-right">
               <PnLDisplay value={footerCapital > 0 ? (footerAlgoPnl / footerCapital) * 100 : 0} size="sm" />
             </td>
-            {canCompare && (
-              <td className="text-right">
+                          <td className="text-right">
                 <PnLDisplay value={footerBrokerPnl} fullFormat />
               </td>
-            )}
-            {canCompare && (
-              <td className="text-right">
+            
+                          <td className="text-right">
                 <PnLDisplay value={footerCapital + footerExternalCapital > 0 ? (footerBrokerPnl / (footerCapital + footerExternalCapital)) * 100 : 0} size="sm" />
               </td>
-            )}
-            {canViewMargins && <td></td>}
+            
+            {<td></td>}
             <td className="text-center">
               <HedgeDistanceBadge intradayCount={footerIntradayHedges} positionalCount={footerPositionalHedges} />
             </td>
-            {canCompare && <td>{footerMismatchCount > 0 && <span className="text-danger-500">{footerMismatchCount} with issues</span>}</td>}
+            {<td>{footerMismatchCount > 0 && <span className="text-danger-500">{footerMismatchCount} with issues</span>}</td>}
             <td></td>
           </tr>
         </tfoot>

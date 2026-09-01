@@ -6,11 +6,8 @@
 import { BsCalendarCheck } from 'react-icons/bs';
 import { PageHeader } from '@/components/common';
 import { SpecialTradingDays } from '@/components/exchanges';
-import { usePermissions } from '@/hooks/usePermissions';
 
 const SpecialTradingDaysPage: React.FC = () => {
-  const permissions = usePermissions();
-  const canEdit = permissions.specialTradingDays?.canEdit ?? false;
 
   return (
     <div className="fade-in">
@@ -20,7 +17,7 @@ const SpecialTradingDaysPage: React.FC = () => {
         icon={<BsCalendarCheck size={24} />}
       />
 
-      <SpecialTradingDays title="Special Trading Days" canEdit={canEdit} />
+      <SpecialTradingDays title="Special Trading Days" />
     </div>
   );
 };

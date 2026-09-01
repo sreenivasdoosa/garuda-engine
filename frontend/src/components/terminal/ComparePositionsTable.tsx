@@ -11,7 +11,6 @@ import { Badge, Button, Modal, Spinner } from '@/components/ui';
 import type { TerminalPosition, PositionMismatch, ExitPositionsResponse } from '@/types/terminal';
 import { PRODUCT_BROKER_PRODUCT_TYPE, type SquareOffProduct } from '@/types/product';
 import PnLDisplay from './PnLDisplay';
-import { usePermissions } from '@/hooks/usePermissions';
 
 /**
  * Combined position for comparison view
@@ -75,9 +74,7 @@ const ComparePositionsTable: React.FC<ComparePositionsTableProps> = ({
   // Exiting the position diff requires POSITIONS Manage; the broker/diff comparison columns require
   // ALGO_BROKER_COMPARE View. Without compare, the table is algo-only (no broker/diff/exit columns,
   // no mismatch highlight) — and the caller also stops fetching broker positions entirely.
-  const { positions, algoBrokerCompare } = usePermissions();
-  const canCompare = algoBrokerCompare.canView;
-  const exitActionsHidden = disableActions || !positions.canManage || !canCompare;
+  const exitActionsHidden = disableActions || !true || !true;
   const [search, setSearch] = useState('');
   const [exitingPositions, setExitingPositions] = useState<Set<string>>(new Set());
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -380,7 +377,7 @@ const ComparePositionsTable: React.FC<ComparePositionsTableProps> = ({
   };
 
   const getRowClassName = (pos: ComparedPosition): string => {
-    if (canCompare && (!pos.existsInAlgo || !pos.existsInBroker)) {
+    if ((!pos.existsInAlgo || !pos.existsInBroker)) {
       return 'bg-warning-500/10';
     }
     if (pos.noOpenQty) {
@@ -471,21 +468,21 @@ const ComparePositionsTable: React.FC<ComparePositionsTableProps> = ({
               <th className={`${cell} text-left`}>Product</th>
               <th className={`${cell} text-right`}>CMP</th>
               <th className={`${cell} text-right`}>Algo Avg</th>
-              {canCompare && <th className={`${cell} text-right`}>Broker Avg</th>}
+              {<th className={`${cell} text-right`}>Broker Avg</th>}
               <th className={`${cell} text-right`}>Algo P&L</th>
               <th className={`${cell} text-right`}>Algo P&L (EOD)</th>
-              {canCompare && <th className={`${cell} text-right`}>Broker P&L</th>}
-              {canCompare && <th className={`${cell} text-right`}>P&L Diff</th>}
+              {<th className={`${cell} text-right`}>Broker P&L</th>}
+              {<th className={`${cell} text-right`}>P&L Diff</th>}
               <th className={`${cell} text-right`}>Algo Qty</th>
-              {canCompare && <th className={`${cell} text-right`}>Broker Qty</th>}
-              {canCompare && <th className={`${cell} text-right`}>Qty Diff</th>}
+              {<th className={`${cell} text-right`}>Broker Qty</th>}
+              {<th className={`${cell} text-right`}>Qty Diff</th>}
               {!exitActionsHidden && <th className={`${cell} text-right`}>Exit Diff</th>}
             </tr>
           </thead>
           <tbody className="divide-y divide-hairline">
             {comparedPositions.length === 0 ? (
               <tr>
-                <td colSpan={canCompare ? (exitActionsHidden ? 12 : 13) : 7} className="py-4 text-center text-ink-soft">
+                <td colSpan={true ? (exitActionsHidden ? 12 : 13) : 7} className="py-4 text-center text-ink-soft">
                   No positions to compare
                 </td>
               </tr>
@@ -505,12 +502,12 @@ const ComparePositionsTable: React.FC<ComparePositionsTableProps> = ({
                         <Badge tone={pos.isPaperTrading ? 'info' : 'neutral'} className="ml-1">
                           {pos.isPaperTrading ? 'P' : 'L'}
                         </Badge>
-                        {canCompare && !pos.existsInAlgo && (
+                        {!pos.existsInAlgo && (
                           <Badge tone="warning" className="ml-1">
                             !A
                           </Badge>
                         )}
-                        {canCompare && !pos.existsInBroker && (
+                        {!pos.existsInBroker && (
                           <Badge tone="warning" className="ml-1">
                             !B
                           </Badge>
@@ -521,26 +518,24 @@ const ComparePositionsTable: React.FC<ComparePositionsTableProps> = ({
                       </td>
                       <td className={`${cell} text-right tabular-nums text-ink`}>{formatNumber(pos.cmp)}</td>
                       <td className={`${cell} text-right tabular-nums text-ink`}>{formatNumber(pos.algoAvgPrice)}</td>
-                      {canCompare && <td className={`${cell} text-right tabular-nums text-ink`}>{formatNumber(pos.brokerAvgPrice)}</td>}
+                      {<td className={`${cell} text-right tabular-nums text-ink`}>{formatNumber(pos.brokerAvgPrice)}</td>}
                       <td className={`${cell} text-right`}>
                         <PnLDisplay value={pos.algoPnl} size="sm" fullFormat />
                       </td>
                       <td className={`${cell} text-right`}>
                         <PnLDisplay value={pos.algoPnlByEOD} size="sm" fullFormat />
                       </td>
-                      {canCompare && (
-                        <td className={`${cell} text-right`}>
+                                              <td className={`${cell} text-right`}>
                           <PnLDisplay value={pos.brokerPnl} size="sm" fullFormat />
                         </td>
-                      )}
-                      {canCompare && (
-                        <td className={`${cell} text-right`}>
+                      
+                                              <td className={`${cell} text-right`}>
                           <PnLDisplay value={pos.pnlDiff} size="sm" fullFormat />
                         </td>
-                      )}
+                      
                       <td className={`${cell} text-right tabular-nums text-ink`}>{pos.algoQty}</td>
-                      {canCompare && <td className={`${cell} text-right tabular-nums text-ink`}>{pos.brokerQty}</td>}
-                      {canCompare && <td className={`${cell} text-right tabular-nums ${pos.qtyDiff !== 0 ? 'font-bold text-danger-500' : 'text-ink'}`}>{pos.qtyDiff}</td>}
+                      {<td className={`${cell} text-right tabular-nums text-ink`}>{pos.brokerQty}</td>}
+                      {<td className={`${cell} text-right tabular-nums ${pos.qtyDiff !== 0 ? 'font-bold text-danger-500' : 'text-ink'}`}>{pos.qtyDiff}</td>}
                       {!exitActionsHidden && (
                         <td className={`${cell} text-right`}>
                           {pos.qtyDiff !== 0 ? (
@@ -564,7 +559,7 @@ const ComparePositionsTable: React.FC<ComparePositionsTableProps> = ({
 
                 {/* Totals row */}
                 <tr className="bg-raised font-bold">
-                  <td colSpan={canCompare ? 5 : 4} className={cell}>
+                  <td colSpan={true ? 5 : 4} className={cell}>
                     TOTAL
                   </td>
                   <td className={`${cell} text-right`}>
@@ -573,17 +568,15 @@ const ComparePositionsTable: React.FC<ComparePositionsTableProps> = ({
                   <td className={`${cell} text-right`}>
                     <PnLDisplay value={totals.algoPnlByEOD} size="sm" fullFormat />
                   </td>
-                  {canCompare && (
-                    <td className={`${cell} text-right`}>
+                                      <td className={`${cell} text-right`}>
                       <PnLDisplay value={totals.brokerPnl} size="sm" fullFormat />
                     </td>
-                  )}
-                  {canCompare && (
-                    <td className={`${cell} text-right`}>
+                  
+                                      <td className={`${cell} text-right`}>
                       <PnLDisplay value={totals.pnlDiff} size="sm" fullFormat />
                     </td>
-                  )}
-                  <td colSpan={canCompare ? (exitActionsHidden ? 3 : 4) : 1}></td>
+                  
+                  <td colSpan={true ? (exitActionsHidden ? 3 : 4) : 1}></td>
                 </tr>
               </>
             )}

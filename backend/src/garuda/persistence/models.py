@@ -1520,6 +1520,21 @@ class KillSwitchTypesRow(Base):
     updated_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
 
+class SystemConfigRow(Base):
+    """SYSTEM_CONFIG in the reference engine.
+
+    One row per property, for settings an operator changes while the engine
+    runs rather than at install time. The admin password hash lives here: a
+    password that needs a file edited and a restart is one nobody changes.
+    """
+
+    __tablename__ = "system_config"
+
+    property: Mapped[str] = mapped_column(String(250), primary_key=True)
+    value: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    updated_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class BrokeragePlansRow(Base):
     """BROKERAGE_PLANS in the reference engine."""
 

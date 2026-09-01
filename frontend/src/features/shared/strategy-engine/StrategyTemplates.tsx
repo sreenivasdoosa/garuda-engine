@@ -5,7 +5,6 @@ import { toast } from 'react-toastify';
 
 import HelpIcon from '@/components/common/HelpIcon';
 import { strategyTemplateHelpContent } from '@/data/help/strategy-template-help';
-import { useAuthStore } from '@/store/authStore';
 import { useConfigStore } from '@/store/configStore';
 import { strategyTemplateService } from '@/services/admin/strategyEngineService';
 import type { StrategyTemplate, CreateStrategyTemplateRequest, UpdateStrategyTemplateRequest, AssetClass } from '@/types/strategy-engine';
@@ -21,14 +20,12 @@ const panel = 'rounded bg-raised p-3';
 
 const StrategyTemplates: React.FC = () => {
   const queryClient = useQueryClient();
-  const { user } = useAuthStore();
   const [searchTerm, setSearchTerm] = useState('');
   const [showEditModal, setShowEditModal] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<StrategyTemplate | null>(null);
 
-  const isSysadmin = user?.isSysadmin ?? false;
   const { supportsEquity, supportsFnO } = useConfigStore();
 
   const [formData, setFormData] = useState<CreateStrategyTemplateRequest>({
@@ -90,10 +87,6 @@ const StrategyTemplates: React.FC = () => {
     );
 
   const handleOpenEditModal = (template: StrategyTemplate) => {
-    if (!isSysadmin) {
-      toast.error('Only sysadmin can edit templates');
-      return;
-    }
     setSelectedTemplate(template);
     setFormData({
       templateName: template.templateName,
@@ -118,21 +111,12 @@ const StrategyTemplates: React.FC = () => {
     setSelectedTemplate(null);
   };
 
-  const handleOpenViewModal = (template: StrategyTemplate) => {
-    setSelectedTemplate(template);
-    setShowViewModal(true);
-  };
-
   const handleCloseViewModal = () => {
     setShowViewModal(false);
     setSelectedTemplate(null);
   };
 
   const handleOpenDeleteModal = (template: StrategyTemplate) => {
-    if (!isSysadmin) {
-      toast.error('Only sysadmin can delete templates');
-      return;
-    }
     setSelectedTemplate(template);
     setShowDeleteModal(true);
   };
@@ -243,7 +227,7 @@ const StrategyTemplates: React.FC = () => {
                       )}
                     </td>
                     <td className={`${cell} text-right`}>
-                      {isSysadmin ? (
+
                         <div className="flex justify-end gap-1">
                           <Button variant="secondary" size="sm" onClick={() => handleOpenEditModal(template)} title="Edit">
                             <BsPencil />
@@ -252,11 +236,7 @@ const StrategyTemplates: React.FC = () => {
                             <BsTrash />
                           </Button>
                         </div>
-                      ) : (
-                        <Button variant="secondary" size="sm" onClick={() => handleOpenViewModal(template)} title="View Details">
-                          <BsEye />
-                        </Button>
-                      )}
+
                     </td>
                   </tr>
                 ))}

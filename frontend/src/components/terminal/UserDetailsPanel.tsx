@@ -27,7 +27,6 @@ import UserStrategyStatesTab from './UserStrategyStatesTab';
 import BreakoutWatchesTab from './BreakoutWatchesTab';
 import OrderBookTable from './OrderBookTable';
 import OrderDetailsDrawer from './OrderDetailsDrawer';
-import { usePermissions } from '@/hooks/usePermissions';
 
 // ---- Local token shims (react-bootstrap API surface -> design-system tokens) ----
 // This 2000+ line panel is form/table/modal-heavy; shimming the Bootstrap API it
@@ -351,23 +350,11 @@ const UserDetailsPanel: React.FC<UserDetailsPanelProps> = ({
   const helpContent = terminalHelpContent;
   // Square off (per-trade / by-strategy) requires SQUARE_OFF Manage; set-to-complete
   // requires TRADES Edit. Hide each control when the right is missing.
-  const { squareOff, trades, positions, margins, orders, breakoutWatches, strategySummaries: strategySummariesPerm, strategyEngine, riskProfiles, algoBrokerCompare } = usePermissions();
   // Algo-vs-broker comparison (mismatch badge + broker side of positions/risk) needs ALGO_BROKER_COMPARE View.
-  const canViewAlgoBrokerCompare = algoBrokerCompare.canView;
-  const canSquareOff = squareOff.canManage;
-  const canEditTrades = trades.canEdit;
   // Each tab is gated by its own View right: trade tabs + Signals → TRADES, Positions → POSITIONS,
   // Margins → MARGINS, Strategy Summaries → STRATEGY_SUMMARIES, Strategy States → STRATEGY_ENGINE,
   // Breakout Watches → BREAKOUT_WATCHES, Order Book → ORDERS, Risk Profile → RISK_PROFILES. Without
   // the right the tab shows a "no permission" message instead of data (and its fetch never fires).
-  const canViewTrades = trades.canView;
-  const canViewPositions = positions.canView;
-  const canViewMargins = margins.canView;
-  const canViewStrategySummaries = strategySummariesPerm.canView;
-  const canViewStrategyStates = strategyEngine.canView;
-  const canViewBreakoutWatches = breakoutWatches.canView;
-  const canViewOrders = orders.canView;
-  const canViewRiskProfile = riskProfiles.canView;
   // Per-section fetch errors/timeouts (from the 3 scoped detail calls) to surface in each tab.
   const tradesError = details?.sectionStatus?.trades?.status === 'error'
     ? (details.sectionStatus.trades.message || 'Failed to load trades') : null;
@@ -576,7 +563,7 @@ const UserDetailsPanel: React.FC<UserDetailsPanelProps> = ({
     try {
       // Don't fetch broker positions for risk when the viewer can't compare (algo-only risk).
       const res = await terminalService.getRiskProfiles(details.username, details.broker, {
-        fetchBrokerPositions: canViewAlgoBrokerCompare,
+        fetchBrokerPositions: true,
       });
       setRiskData(res);
     } catch (error) {
@@ -643,14 +630,6 @@ const UserDetailsPanel: React.FC<UserDetailsPanelProps> = ({
     return await onExitPositions(request);
   };
 
-  // Shown inside a tab when the user lacks the View right for that section — the tab stays
-  // visible (so its existence is discoverable) but its data is withheld.
-  const renderNoAccess = (what: string) => (
-    <Alert variant="secondary" className="text-center mb-0">
-      You don&apos;t have permission to view {what}.
-    </Alert>
-  );
-
   // Shown inside a tab when that section's fetch failed/timed out (server error message verbatim).
   const renderSectionError = (message: string) => (
     <Alert variant="danger" className="text-center mb-0">
@@ -658,9 +637,9 @@ const UserDetailsPanel: React.FC<UserDetailsPanelProps> = ({
     </Alert>
   );
 
-  // Gate a trade-data tab body: no-access (no TRADES View) → fetch error → the data node.
+  // Gate a trade-data tab body on the fetch: an error, or the data.
   const renderTradeTab = (node: React.ReactNode) =>
-    !canViewTrades ? renderNoAccess('trades') : tradesError ? renderSectionError(tradesError) : node;
+    tradesError ? renderSectionError(tradesError) : node;
 
   // Handler for strategy square off
   const handleStrategySquareOff = async (strategy: string) => {
@@ -978,10 +957,10 @@ const UserDetailsPanel: React.FC<UserDetailsPanelProps> = ({
     const key = tabKey || 'positions';
     setActiveTab(key);
     // Lazy-load the summary-derived tabs the first time they're opened (only if permitted).
-    if (key === 'strategies' && canViewStrategySummaries && strategyData === null && !isLoadingStrategies) {
+    if (key === 'strategies' && strategyData === null && !isLoadingStrategies) {
       loadStrategySummaries();
     }
-    if (key === 'risk' && canViewRiskProfile && riskData === null && !isLoadingRisk) {
+    if (key === 'risk' && riskData === null && !isLoadingRisk) {
       loadRiskProfiles();
     }
   };
@@ -1073,8 +1052,7 @@ const UserDetailsPanel: React.FC<UserDetailsPanelProps> = ({
               <td className="text-end pe-4"><PnLDisplay value={trade.plPercentage} size="sm" showSign={true} /></td>
               <td className="text-center">
                 <div className="inline-flex gap-1">
-                  {canEditTrades && (
-                  <OverlayTrigger
+                                    <OverlayTrigger
                     placement="top"
                     overlay={<Tooltip>Set As Complete</Tooltip>}
                   >
@@ -1088,9 +1066,8 @@ const UserDetailsPanel: React.FC<UserDetailsPanelProps> = ({
                       <BsCheckSquare size={14} />
                     </Button>
                   </OverlayTrigger>
-                  )}
-                  {canSquareOff && (
-                  <OverlayTrigger
+                  
+                                    <OverlayTrigger
                     placement="top"
                     overlay={<Tooltip>Square Off</Tooltip>}
                   >
@@ -1104,7 +1081,7 @@ const UserDetailsPanel: React.FC<UserDetailsPanelProps> = ({
                       <BsXSquare size={14} />
                     </Button>
                   </OverlayTrigger>
-                  )}
+                  
                 </div>
               </td>
               <td>{renderOrderDetailsLink()}</td>
@@ -1879,7 +1856,7 @@ const UserDetailsPanel: React.FC<UserDetailsPanelProps> = ({
               title={
                 <span>
                   Positions
-                  {canViewAlgoBrokerCompare && (details.mismatches?.length || 0) > 0 && (
+                  {(details.mismatches?.length || 0) > 0 && (
                     <Badge bg="danger" className="ms-1">
                       {details.mismatches?.length}
                     </Badge>
@@ -1888,9 +1865,7 @@ const UserDetailsPanel: React.FC<UserDetailsPanelProps> = ({
               }
             >
               <div className="p-4">
-                {!canViewPositions
-                  ? renderNoAccess('positions')
-                  : positionsError
+                {positionsError
                     ? renderSectionError(positionsError)
                     : (
                       <ComparePositionsTable
@@ -1988,8 +1963,7 @@ const UserDetailsPanel: React.FC<UserDetailsPanelProps> = ({
 
             {/* Tabs below are HIDDEN entirely without their respective View right (not shown with a
                 no-access message like the trade/position tabs above). */}
-            {canViewTrades && (
-            <Tab
+                        <Tab
               eventKey="signals"
               title={
                 <span>
@@ -2008,10 +1982,9 @@ const UserDetailsPanel: React.FC<UserDetailsPanelProps> = ({
                 </div>
               </div>
             </Tab>
-            )}
+            
 
-            {canViewStrategySummaries && (
-            <Tab eventKey="strategies" title="Strategy Summaries">
+                        <Tab eventKey="strategies" title="Strategy Summaries">
               <div className="p-4">
                 {isLoadingStrategies
                   ? <div className="text-center py-6"><Spinner animation="border" size="sm" /></div>
@@ -2023,17 +1996,16 @@ const UserDetailsPanel: React.FC<UserDetailsPanelProps> = ({
                           strategies={strategyData || {}}
                           username={details.username}
                           broker={details.broker}
-                          onSquareOff={onSquareOff && canSquareOff ? handleStrategySquareOff : undefined}
+                          onSquareOff={onSquareOff && handleStrategySquareOff}
                           tradingMode={tradingMode}
                         />
                       </div>
                     )}
               </div>
             </Tab>
-            )}
+            
 
-            {canViewStrategyStates && (
-            <Tab eventKey="strategyStates" title="Strategy States">
+                        <Tab eventKey="strategyStates" title="Strategy States">
               <div className="p-4">
                 <div className="terminal-tab-scroll">
                   <UserStrategyStatesTab
@@ -2043,10 +2015,9 @@ const UserDetailsPanel: React.FC<UserDetailsPanelProps> = ({
                 </div>
               </div>
             </Tab>
-            )}
+            
 
-            {canViewBreakoutWatches && (
-            <Tab eventKey="breakoutWatches" title="Breakout Watches">
+                        <Tab eventKey="breakoutWatches" title="Breakout Watches">
               <div className="p-4">
                 <div className="terminal-tab-scroll">
                   <BreakoutWatchesTab
@@ -2056,10 +2027,9 @@ const UserDetailsPanel: React.FC<UserDetailsPanelProps> = ({
                 </div>
               </div>
             </Tab>
-            )}
+            
 
-            {canViewRiskProfile && (
-            <Tab eventKey="risk" title="Risk Profile">
+                        <Tab eventKey="risk" title="Risk Profile">
               <div className="p-4">
                 {isLoadingRisk
                   ? <div className="text-center py-6"><Spinner animation="border" size="sm" /></div>
@@ -2073,15 +2043,14 @@ const UserDetailsPanel: React.FC<UserDetailsPanelProps> = ({
                         algoCapital={algoCapital}
                         externalCapital={externalCapital}
                         height={200}
-                        algoOnly={!canViewAlgoBrokerCompare}
+                        algoOnly={!true}
                       />
                     )}
               </div>
             </Tab>
-            )}
+            
 
-            {canViewMargins && (
-            <Tab eventKey="margins" title="Margins">
+                        <Tab eventKey="margins" title="Margins">
               <div className="p-4">
                 {marginsError
                   ? renderSectionError(marginsError)
@@ -2165,22 +2134,20 @@ const UserDetailsPanel: React.FC<UserDetailsPanelProps> = ({
                 )}
               </div>
             </Tab>
-            )}
+            
 
-            {canViewOrders && (
-            <Tab eventKey="orders" title="Order Book">
+                        <Tab eventKey="orders" title="Order Book">
               <div className="p-4">
                 {renderOrderBookTab()}
               </div>
             </Tab>
-            )}
-            {canViewOrders && (
-            <Tab eventKey="externalPnl" title="External PnL">
+            
+                        <Tab eventKey="externalPnl" title="External PnL">
               <div className="p-4">
                 {renderExternalPnlTab()}
               </div>
             </Tab>
-            )}
+            
           </Tabs>
         </Card.Body>
       </Card>

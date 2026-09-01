@@ -35,7 +35,6 @@ import { analyticsService } from '@/services/admin/analyticsService';
 import { brokerLoginStatusService } from '@/services/admin/v2AdminService';
 import { formatIndianNumber } from '@/utils/formatters';
 import { countChartOptions, currencyChartOptions } from '@/utils/chartOptions';
-import { usePermissions } from '@/hooks/usePermissions';
 
 // Register Chart.js components
 ChartJS.register(
@@ -126,26 +125,15 @@ const ConsoleDashboard: React.FC = () => {
   //   /capital                     → CAPITAL_ANALYTICS (analyticsCapital)
   //   /billing, /billing/revenue   → BILLING_ANALYTICS (analyticsBilling)
   //   /user-broker-login-status    → USER_BROKERS      (userBrokers)
-  const permissions = usePermissions();
-  const canViewUsers = permissions.analyticsUsers.canView;
-  const canViewTrades = permissions.analyticsTrades.canView;
-  const canViewCapital = permissions.analyticsCapital.canView;
-  const canViewBilling = permissions.analyticsBilling.canView;
-  const canViewUserBrokers = permissions.userBrokers.canView;
 
   // Quick Links target admin pages, so each link is gated by its OWN page permission
   // (not the analytics permissions above) — a link is shown only if the user can view that page.
-  const canManageUsersPage = permissions.users.canView;
   // "Manage Strategies" points at the Strategy Engine page → gate by the same permission the sidebar
   // uses for it (strategyEngine), so link visibility, the route, and the page stay consistent.
-  const canManageStrategiesPage = permissions.strategyEngine.canView;
-  const canManageBrokersPage = permissions.brokers.canView;
-  const canViewAuditLogs = permissions.auditLogs.canView;
   // Strategy catalog stats (Strategies tile + Strategy Summary) are strategy-engine data, so they
   // are gated by the strategy-engine permission — NOT trade analytics (QUANT-188).
-  const canViewStrategyEngine = permissions.strategyEngine.canView;
   const canViewAnyQuickLink =
-    canManageUsersPage || canManageStrategiesPage || canManageBrokersPage || canViewAuditLogs;
+    true || true || true || true;
 
   // Single date range applied to ALL date-filtered tiles + charts.
   const today = useMemo(() => new Date(), []);
@@ -197,7 +185,7 @@ const ConsoleDashboard: React.FC = () => {
     queryKey: ['dashboard', 'users'],
     queryFn: () => analyticsService.getUserStats(),
     staleTime: 5 * 60 * 1000, // 5 minutes
-    enabled: canViewUsers,
+    enabled: true,
   });
 
   // User growth honors the selected range too.
@@ -205,7 +193,7 @@ const ConsoleDashboard: React.FC = () => {
     queryKey: ['dashboard', 'userGrowth', range],
     queryFn: () => analyticsService.getUserGrowth(range.fromDate, range.toDate),
     staleTime: 5 * 60 * 1000,
-    enabled: canViewUsers,
+    enabled: true,
   });
 
   // Fetch broker stats
@@ -213,14 +201,14 @@ const ConsoleDashboard: React.FC = () => {
     queryKey: ['dashboard', 'brokers'],
     queryFn: () => analyticsService.getBrokerStats(),
     staleTime: 5 * 60 * 1000,
-    enabled: canViewTrades,
+    enabled: true,
   });
 
   const { data: brokerLoginStatuses } = useQuery({
     queryKey: ['dashboard', 'brokerLoginStatuses'],
     queryFn: () => brokerLoginStatusService.getStatus(),
     staleTime: 60 * 1000,
-    enabled: canViewUserBrokers,
+    enabled: true,
   });
 
   // Fetch strategy stats
@@ -228,7 +216,7 @@ const ConsoleDashboard: React.FC = () => {
     queryKey: ['dashboard', 'strategies'],
     queryFn: () => analyticsService.getStrategyStats(),
     staleTime: 5 * 60 * 1000,
-    enabled: canViewStrategyEngine,
+    enabled: true,
   });
 
   // Fast EOD-based trade summary (replaces the previous full-table scan
@@ -237,7 +225,7 @@ const ConsoleDashboard: React.FC = () => {
     queryKey: ['dashboard', 'tradesEod', range],
     queryFn: () => analyticsService.getEodTradeSummary(range.fromDate, range.toDate),
     staleTime: 5 * 60 * 1000,
-    enabled: canViewTrades,
+    enabled: true,
   });
 
   // Billing/revenue/capital all share the selected range.
@@ -245,21 +233,21 @@ const ConsoleDashboard: React.FC = () => {
     queryKey: ['dashboard', 'billing', range],
     queryFn: () => analyticsService.getBillingSummary(range.fromDate, range.toDate),
     staleTime: 5 * 60 * 1000,
-    enabled: canViewBilling,
+    enabled: true,
   });
 
   const { data: revenueData, isLoading: loadingRevenue } = useQuery({
     queryKey: ['dashboard', 'revenue', range],
     queryFn: () => analyticsService.getRevenueData(range.fromDate, range.toDate),
     staleTime: 5 * 60 * 1000,
-    enabled: canViewBilling,
+    enabled: true,
   });
 
   const { data: capitalData, isLoading: loadingCapital } = useQuery({
     queryKey: ['dashboard', 'capital', range],
     queryFn: () => analyticsService.getDailyCapitalSummary(range.fromDate, range.toDate),
     staleTime: 5 * 60 * 1000,
-    enabled: canViewCapital,
+    enabled: true,
   });
 
   // Total billing revenue (without GST) for the selected date range.
@@ -466,8 +454,7 @@ const ConsoleDashboard: React.FC = () => {
 
       {/* Main Stats Row — each tile gated by its analytics resource */}
       <Row className="mb-4">
-        {canViewUsers && (
-          <Col sm={6} lg={3} className="mb-2 lg:mb-0">
+                  <Col sm={6} lg={3} className="mb-2 lg:mb-0">
             <StatCard
               title="Users"
               value={`${userStats?.activeUsers || 0} / ${userStats?.totalUsers || 0}`}
@@ -477,9 +464,8 @@ const ConsoleDashboard: React.FC = () => {
               loading={loadingUsers}
             />
           </Col>
-        )}
-        {canViewStrategyEngine && (
-          <Col sm={6} lg={3} className="mb-2 lg:mb-0">
+        
+                  <Col sm={6} lg={3} className="mb-2 lg:mb-0">
             <StatCard
               title="Strategies"
               value={`${strategyStats?.activeStrategies || 0} / ${strategyStats?.totalStrategies || 0}`}
@@ -489,9 +475,8 @@ const ConsoleDashboard: React.FC = () => {
               loading={loadingStrategies}
             />
           </Col>
-        )}
-        {canViewTrades && (
-          <Col sm={6} lg={3} className="mb-2 lg:mb-0">
+        
+                  <Col sm={6} lg={3} className="mb-2 lg:mb-0">
             <StatCard
               title="User Brokers"
               value={`${brokerStats?.enabledMappings || 0} / ${brokerStats?.totalMappings || 0}`}
@@ -501,9 +486,8 @@ const ConsoleDashboard: React.FC = () => {
               loading={loadingBrokers}
             />
           </Col>
-        )}
-        {canViewBilling && (
-          <Col sm={6} lg={3}>
+        
+                  <Col sm={6} lg={3}>
             <StatCard
               title={`Revenue (${selectedRangeLabel})`}
               subtitle="excl. GST"
@@ -514,12 +498,11 @@ const ConsoleDashboard: React.FC = () => {
               loading={loadingRevenue}
             />
           </Col>
-        )}
+        
       </Row>
 
       {/* Trade Performance Row — entire row gated by TRADE_ANALYTICS */}
-      {canViewTrades && (
-        <Row className="mb-4">
+              <Row className="mb-4">
           <Col sm={6} lg={3} className="mb-2 lg:mb-0">
             <StatCard
               title={`Trading Days (${selectedRangeLabel})`}
@@ -559,14 +542,13 @@ const ConsoleDashboard: React.FC = () => {
             />
           </Col>
         </Row>
-      )}
+      
 
       {/* Charts Row 1 — User Growth gated by USER_ANALYTICS; Quick Links shown only when the user
           can view at least one linked admin page (each link is gated by its own page permission).
           When User Growth is hidden, Quick Links expands to full width. */}
       <Row className="mb-4">
-        {canViewUsers && (
-          <Col lg={8} className="mb-4 lg:mb-0">
+                  <Col lg={8} className="mb-4 lg:mb-0">
             <Card className="h-full">
               <Card.Header className="flex justify-between items-center py-2">
                 <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>User Growth ({selectedRangeLabel})</span>
@@ -589,36 +571,32 @@ const ConsoleDashboard: React.FC = () => {
               </Card.Body>
             </Card>
           </Col>
-        )}
+        
 
         {canViewAnyQuickLink && (
-        <Col lg={canViewUsers ? 4 : 12}>
+        <Col lg={4}>
           <Card className="h-full">
             <Card.Header className="py-2">
               <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>Quick Links</span>
             </Card.Header>
             <Card.Body className="p-2">
               <div className="grid gap-1">
-                {canManageUsersPage && (
-                  <Link to="/console/users" className="inline-flex items-center justify-center gap-1.5 rounded-control font-medium transition-colors cursor-pointer whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/50 border border-primary-600 text-primary-700 dark:border-primary-500 dark:text-primary-400 hover:bg-primary-500/10 px-2.5 py-1 text-xs" style={{ fontSize: '0.7rem' }}>
+                                  <Link to="/console/users" className="inline-flex items-center justify-center gap-1.5 rounded-control font-medium transition-colors cursor-pointer whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/50 border border-primary-600 text-primary-700 dark:border-primary-500 dark:text-primary-400 hover:bg-primary-500/10 px-2.5 py-1 text-xs" style={{ fontSize: '0.7rem' }}>
                     Manage Users
                   </Link>
-                )}
-                {canManageStrategiesPage && (
-                  <Link to="/console/strategy-engine" className="inline-flex items-center justify-center gap-1.5 rounded-control font-medium transition-colors cursor-pointer whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/50 border border-primary-600 text-primary-700 dark:border-primary-500 dark:text-primary-400 hover:bg-primary-500/10 px-2.5 py-1 text-xs" style={{ fontSize: '0.7rem' }}>
+                
+                                  <Link to="/console/strategy-engine" className="inline-flex items-center justify-center gap-1.5 rounded-control font-medium transition-colors cursor-pointer whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/50 border border-primary-600 text-primary-700 dark:border-primary-500 dark:text-primary-400 hover:bg-primary-500/10 px-2.5 py-1 text-xs" style={{ fontSize: '0.7rem' }}>
                     Manage Strategies
                   </Link>
-                )}
-                {canManageBrokersPage && (
-                  <Link to="/console/brokers" className="inline-flex items-center justify-center gap-1.5 rounded-control font-medium transition-colors cursor-pointer whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/50 border border-primary-600 text-primary-700 dark:border-primary-500 dark:text-primary-400 hover:bg-primary-500/10 px-2.5 py-1 text-xs" style={{ fontSize: '0.7rem' }}>
+                
+                                  <Link to="/console/brokers" className="inline-flex items-center justify-center gap-1.5 rounded-control font-medium transition-colors cursor-pointer whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/50 border border-primary-600 text-primary-700 dark:border-primary-500 dark:text-primary-400 hover:bg-primary-500/10 px-2.5 py-1 text-xs" style={{ fontSize: '0.7rem' }}>
                     Manage Brokers
                   </Link>
-                )}
-                {canViewAuditLogs && (
-                  <Link to="/console/audit-logs" className="inline-flex items-center justify-center gap-1.5 rounded-control font-medium transition-colors cursor-pointer whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/50 border border-primary-600 text-primary-700 dark:border-primary-500 dark:text-primary-400 hover:bg-primary-500/10 px-2.5 py-1 text-xs" style={{ fontSize: '0.7rem' }}>
+                
+                                  <Link to="/console/audit-logs" className="inline-flex items-center justify-center gap-1.5 rounded-control font-medium transition-colors cursor-pointer whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/50 border border-primary-600 text-primary-700 dark:border-primary-500 dark:text-primary-400 hover:bg-primary-500/10 px-2.5 py-1 text-xs" style={{ fontSize: '0.7rem' }}>
                     Audit Logs
                   </Link>
-                )}
+                
               </div>
             </Card.Body>
           </Card>
@@ -628,10 +606,9 @@ const ConsoleDashboard: React.FC = () => {
 
       {/* Charts Row 2 — Revenue (BILLING_ANALYTICS) + Capital
           (CAPITAL_ANALYTICS). When only one is visible it fills the row. */}
-      {(canViewBilling || canViewCapital) && (
+      {(true || true) && (
         <Row className="mb-4">
-          {canViewBilling && (
-            <Col lg={canViewCapital ? 6 : 12} className="mb-4 lg:mb-0">
+                      <Col lg={6} className="mb-4 lg:mb-0">
               <Card className="h-full">
                 <Card.Header className="flex justify-between items-center py-2">
                   <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>Billing Revenue ({selectedRangeLabel}) — excl. GST</span>
@@ -654,10 +631,9 @@ const ConsoleDashboard: React.FC = () => {
                 </Card.Body>
               </Card>
             </Col>
-          )}
+          
 
-          {canViewCapital && (
-            <Col lg={canViewBilling ? 6 : 12}>
+                      <Col lg={6}>
               <Card className="h-full">
                 <Card.Header className="flex justify-between items-center py-2">
                   <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>Capital Trend ({selectedRangeLabel})</span>
@@ -680,17 +656,16 @@ const ConsoleDashboard: React.FC = () => {
                 </Card.Body>
               </Card>
             </Col>
-          )}
+          
         </Row>
       )}
 
       {/* Summary Cards Row — Billing (BILLING_ANALYTICS), Broker Distribution (TRADE_ANALYTICS),
           Strategy Summary (STRATEGY_ENGINE). */}
-      {(canViewBilling || canViewTrades || canViewStrategyEngine) && (
+      {(true || true || true) && (
       <Row className="mb-4">
         {/* Billing Summary */}
-        {canViewBilling && (
-        <Col lg={4} className="mb-4 lg:mb-0">
+                <Col lg={4} className="mb-4 lg:mb-0">
           <Card className="h-full">
             <Card.Header className="flex justify-between items-center py-2">
               <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>
@@ -748,11 +723,10 @@ const ConsoleDashboard: React.FC = () => {
             </Card.Body>
           </Card>
         </Col>
-        )}
+        
 
         {/* Broker Distribution */}
-        {canViewTrades && (
-        <Col lg={4} className="mb-4 lg:mb-0">
+                <Col lg={4} className="mb-4 lg:mb-0">
           <Card className="h-full">
             <Card.Header className="py-2">
               <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>
@@ -793,11 +767,10 @@ const ConsoleDashboard: React.FC = () => {
             </Card.Body>
           </Card>
         </Col>
-        )}
+        
 
         {/* Strategy Summary */}
-        {canViewStrategyEngine && (
-        <Col lg={4}>
+                <Col lg={4}>
           <Card className="h-full">
             <Card.Header className="py-2">
               <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>
@@ -864,13 +837,13 @@ const ConsoleDashboard: React.FC = () => {
             </Card.Body>
           </Card>
         </Col>
-        )}
+        
       </Row>
       )}
 
       {/* Failed-logins alert — gated by USER_BROKERS (the source endpoint
           requires that resource). */}
-      {canViewUserBrokers && failedLoginsToday > 0 && (
+      {failedLoginsToday > 0 && (
         <Alert variant="warning" className="flex items-center py-2" style={{ fontSize: '0.75rem' }}>
           <BsExclamationTriangle className="me-2" size={14} />
           <div>

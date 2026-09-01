@@ -78,6 +78,12 @@ class Settings(BaseSettings):
     #: rotating one does not lock the operator out of the other -- rotating
     #: this key makes every stored credential unreadable until re-entered.
     secret_key: SecretStr = SecretStr("")
+    #: The one identity that signs in to the Console. There are no roles and
+    #: no second user; see `DESIGN.md` §13.1.
+    admin_username: str = "admin"
+    #: A first-run convenience, not a secret. An installer sets a real one,
+    #: and the API warns at startup while this is still what is in use.
+    admin_password: SecretStr = SecretStr("garuda@777")
     database: DatabaseSettings = Field(default_factory=DatabaseSettings)
 
 

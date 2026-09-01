@@ -16,7 +16,6 @@ export interface LocalLoginResponse {
   fullName: string;
   email: string;
   role: string;
-  isSysadmin: boolean;
 }
 
 // OAuth token response from backend
@@ -32,11 +31,7 @@ export interface OAuthTokenResponse {
     fullName: string;
     role: string;
     roleCode?: string;
-    isSysadmin: boolean;
     rights: Record<string, string>;
-    canManageUsers?: boolean;
-    canManageRights?: boolean;
-    roleHierarchyLevel?: number;
   };
 }
 
@@ -49,7 +44,6 @@ export interface LocalProfileResponse {
   role: string;
   isActive: boolean;
   isEmailVerified: boolean;
-  isSysadmin: boolean;
   lastLoginAt: number | null;
   createdAt: number;
 }
@@ -89,11 +83,6 @@ export function createUserFromOAuth(oauthUser: NonNullable<OAuthTokenResponse['u
     brokers: [],
     isActive: true,
     createdAt: new Date().toISOString(),
-    rights: oauthUser.rights || {},
-    isSysadmin: oauthUser.isSysadmin || false,
-    canManageUsers: oauthUser.canManageUsers || false,
-    canManageRights: oauthUser.canManageRights || false,
-    roleHierarchyLevel: oauthUser.roleHierarchyLevel || 0,
   };
 }
 
@@ -114,11 +103,6 @@ export function createUserFromUserInfo(userInfo: UserInfoResponse): User {
     isActive: true,
     createdAt: userInfo.created_at,
     lastLogin: userInfo.last_login_at,
-    rights: userInfo.rights || {},
-    isSysadmin: userInfo.is_sysadmin || false,
-    canManageUsers: userInfo.can_manage_users || false,
-    canManageRights: userInfo.can_manage_rights || false,
-    roleHierarchyLevel: userInfo.role_hierarchy_level || 0,
   };
 }
 
@@ -126,22 +110,17 @@ export function createUserFromUserInfo(userInfo: UserInfoResponse): User {
  * Create a User object from decoded JWT payload
  */
 function createUserFromJwt(decoded: JwtPayload): User {
-  const roleCode = decoded.role_code || decoded.roleCode || '';
+  const roleCode = decoded.role_code || '';
   return {
     id: decoded.sub,
     username: decoded.username,
     email: decoded.email,
-    name: decoded.full_name || decoded.fullName || decoded.username,
+    name: decoded.full_name || decoded.username,
     role: roleCode,
     roleCode: roleCode,
     brokers: [],
     isActive: true,
     createdAt: new Date().toISOString(),
-    rights: decoded.rights || {},
-    isSysadmin: decoded.is_sysadmin || decoded.isSysadmin || false,
-    canManageUsers: decoded.can_manage_users || decoded.canManageUsers || false,
-    canManageRights: decoded.can_manage_rights || decoded.canManageRights || false,
-    roleHierarchyLevel: decoded.role_hierarchy_level || decoded.roleHierarchyLevel || 0,
   };
 }
 
@@ -159,11 +138,6 @@ export function createUserFromLocalLogin(response: LocalLoginResponse): User {
     brokers: [],
     isActive: true,
     createdAt: new Date().toISOString(),
-    rights: {},
-    isSysadmin: response.isSysadmin || false,
-    canManageUsers: response.isSysadmin || false,
-    canManageRights: response.isSysadmin || false,
-    roleHierarchyLevel: response.isSysadmin ? 100 : 0,
   };
 }
 

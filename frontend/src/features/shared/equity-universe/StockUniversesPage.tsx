@@ -11,10 +11,9 @@
 
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { BsPencil, BsTrash, BsSearch, BsArrowClockwise, BsCollection, BsPlus, BsEye, BsCheckCircle, BsXCircle } from 'react-icons/bs';
+import { BsPencil, BsTrash, BsSearch, BsArrowClockwise, BsCollection, BsPlus, BsCheckCircle, BsXCircle } from 'react-icons/bs';
 import { toast } from 'react-toastify';
 
-import { usePermissions } from '@/hooks/usePermissions';
 import { stockUniverseService } from '@/services/admin/stockUniverseService';
 import type { StockUniverse } from '@/types/stock-universe';
 import { Badge, Button, Spinner, Modal, Toggle } from '@/components/ui';
@@ -42,8 +41,6 @@ const formatTimestamp = (ts?: string): string => (ts ? new Date(ts).toLocaleStri
 
 const StockUniversesPage: React.FC = () => {
   const queryClient = useQueryClient();
-  const permissions = usePermissions();
-  const canEdit = permissions.strategyEngine.canEdit;
 
   const [searchTerm, setSearchTerm] = useState('');
   const [showFormModal, setShowFormModal] = useState(false);
@@ -193,11 +190,10 @@ const StockUniversesPage: React.FC = () => {
           <Button variant="secondary" onClick={() => refetch()} title="Refresh">
             <BsArrowClockwise />
           </Button>
-          {canEdit && (
-            <Button variant="primary" onClick={handleOpenCreateModal}>
+                      <Button variant="primary" onClick={handleOpenCreateModal}>
               <BsPlus /> Add Custom Universe
             </Button>
-          )}
+          
         </div>
       </div>
       <div>
@@ -248,10 +244,10 @@ const StockUniversesPage: React.FC = () => {
                     </td>
                     <td className={`${cell} text-right`}>
                       <div className="flex justify-end gap-1">
-                        <Button variant="secondary" size="sm" onClick={() => handleOpenDetailModal(universe)} title={canEdit ? 'View / Edit' : 'View'}>
-                          {canEdit ? <BsPencil /> : <BsEye />}
+                        <Button variant="secondary" size="sm" onClick={() => handleOpenDetailModal(universe)} title={'View / Edit'}>
+                          {<BsPencil />}
                         </Button>
-                        {canEdit && universe.universeType === 'CUSTOM' && (
+                        {universe.universeType === 'CUSTOM' && (
                           <Button variant="danger" size="sm" onClick={() => { setSelectedUniverse(universe); setShowDeleteModal(true); }} title="Delete">
                             <BsTrash />
                           </Button>
@@ -273,14 +269,13 @@ const StockUniversesPage: React.FC = () => {
         size="lg"
         title={
           <span className="flex items-center gap-2">
-            <BsCollection /> {selectedUniverse ? (canEdit ? 'Edit' : 'View') + ' Universe' : 'Add Custom Universe'}
+            <BsCollection /> {selectedUniverse ? ('Edit') + ' Universe' : 'Add Custom Universe'}
           </span>
         }
         footer={
           <>
-            <Button variant="secondary" onClick={handleCloseFormModal}>{canEdit ? 'Cancel' : 'Close'}</Button>
-            {canEdit && (
-              <Button variant="primary" type="submit" form="universe-form" disabled={saving || detailLoading}>
+            <Button variant="secondary" onClick={handleCloseFormModal}>{'Cancel'}</Button>
+                          <Button variant="primary" type="submit" form="universe-form" disabled={saving || detailLoading}>
                 {saving ? (
                   <>
                     <Spinner size="sm" /> Saving...
@@ -291,7 +286,7 @@ const StockUniversesPage: React.FC = () => {
                   'Create Universe'
                 )}
               </Button>
-            )}
+            
           </>
         }
       >
@@ -305,15 +300,15 @@ const StockUniversesPage: React.FC = () => {
           )}
           <div className="mb-3">
             <label className={label}>Name <span className="text-danger-500">*</span></label>
-            <input type="text" className={ctrl} value={formName} onChange={(e) => setFormName(e.target.value)} disabled={!canEdit} required placeholder="e.g. My Momentum Basket" />
+            <input type="text" className={ctrl} value={formName} onChange={(e) => setFormName(e.target.value)} disabled={!true} required placeholder="e.g. My Momentum Basket" />
           </div>
           <div className="mb-3 flex flex-wrap items-end gap-6">
             <div style={{ width: 160 }}>
               <label className={label}>Exchange</label>
-              <input type="text" className={ctrl} value={formExchange} onChange={(e) => setFormExchange(e.target.value.toUpperCase())} disabled={!canEdit || isPredefined} />
+              <input type="text" className={ctrl} value={formExchange} onChange={(e) => setFormExchange(e.target.value.toUpperCase())} disabled={!true || isPredefined} />
             </div>
             <label className="flex cursor-pointer items-center gap-2 pb-1.5">
-              <Toggle checked={formIsActive} onChange={setFormIsActive} disabled={!canEdit} />
+              <Toggle checked={formIsActive} onChange={setFormIsActive} disabled={!true} />
               <span className="text-sm text-ink">Active</span>
             </label>
           </div>
@@ -329,7 +324,7 @@ const StockUniversesPage: React.FC = () => {
                 className={`${ctrl} font-mono`}
                 value={formMembersText}
                 onChange={(e) => setFormMembersText(e.target.value)}
-                disabled={!canEdit || isPredefined}
+                disabled={!true || isPredefined}
                 placeholder={'One NSE trading symbol per line (or comma-separated), e.g.\nRELIANCE\nTCS\nHDFCBANK'}
               />
             )}

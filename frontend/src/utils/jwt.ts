@@ -3,30 +3,13 @@
  */
 
 export interface JwtPayload {
-  sub: string;           // User ID
+  sub: string;
   username: string;
   email: string;
-  // Auth service uses snake_case in JWT
   full_name?: string;
-  fullName?: string;     // Legacy support
-  is_sysadmin?: boolean;
-  isSysadmin?: boolean;  // Legacy support
   role_code?: string;
-  roleCode?: string;     // Legacy support
-  role_name?: string;
-  roleName?: string;     // Legacy support
-  app_id?: string;
-  appId?: string;        // Legacy support
-  rights?: Record<string, string>;  // toolCode -> rightCode (V/E/M)
-  // Permission flags from auth service
-  can_manage_users?: boolean;
-  canManageUsers?: boolean;  // Legacy support
-  can_manage_rights?: boolean;
-  canManageRights?: boolean;  // Legacy support
-  role_hierarchy_level?: number;
-  roleHierarchyLevel?: number;  // Legacy support
-  iat: number;           // Issued at (seconds)
-  exp: number;           // Expires at (seconds)
+  iat: number; // issued at, seconds
+  exp: number; // expires at, seconds
 }
 
 /**
@@ -87,26 +70,3 @@ export function getTokenRemainingTime(decoded: JwtPayload | null): number {
 /**
  * Helper to get value from JWT payload supporting both snake_case and camelCase
  */
-export function getJwtFullName(decoded: JwtPayload): string {
-  return decoded.full_name || decoded.fullName || decoded.username;
-}
-
-export function getJwtIsSysadmin(decoded: JwtPayload): boolean {
-  return decoded.is_sysadmin || decoded.isSysadmin || false;
-}
-
-export function getJwtRoleCode(decoded: JwtPayload): string | undefined {
-  return decoded.role_code || decoded.roleCode;
-}
-
-export function getJwtCanManageUsers(decoded: JwtPayload): boolean {
-  return decoded.can_manage_users || decoded.canManageUsers || false;
-}
-
-export function getJwtCanManageRights(decoded: JwtPayload): boolean {
-  return decoded.can_manage_rights || decoded.canManageRights || false;
-}
-
-export function getJwtRoleHierarchyLevel(decoded: JwtPayload): number {
-  return decoded.role_hierarchy_level || decoded.roleHierarchyLevel || 0;
-}

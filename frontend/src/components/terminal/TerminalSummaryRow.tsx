@@ -17,7 +17,6 @@ import TerminalActions from './TerminalActions';
 import UserDetailsPanel from './UserDetailsPanel';
 import RowTradesActionModal from './RowTradesActionModal';
 import { valueForMode, countForMode, liveOnlyForMode } from '@/utils/tradingMode';
-import { usePermissions } from '@/hooks/usePermissions';
 
 interface TerminalSummaryRowProps {
   summary: UserTradeSummary;
@@ -60,10 +59,7 @@ const TerminalSummaryRow: React.FC<TerminalSummaryRowProps> = ({
 }) => {
   // Broker-PnL + Mismatch cells require ALGO_BROKER_COMPARE View (matches the header/footer gate
   // in TerminalSummaryTable so column counts stay aligned).
-  const { algoBrokerCompare, margins } = usePermissions();
-  const canCompare = algoBrokerCompare.canView;
   // Margin % cell requires MARGINS View (matches the TerminalSummaryTable header/footer gate).
-  const canViewMargins = margins.canView;
   const [details, setDetails] = useState<UserTradeDetails | null>(null);
   const [isLoadingDetails, setIsLoadingDetails] = useState(false);
   const [detailsError, setDetailsError] = useState<string | undefined>();
@@ -319,7 +315,7 @@ const TerminalSummaryRow: React.FC<TerminalSummaryRowProps> = ({
         <td className="text-right tabular-nums text-ink">{capital.toLocaleString('en-IN')}</td>
 
         {/* External Capital */}
-        {canCompare && <td className="text-right tabular-nums text-ink">{externalCapital ? externalCapital.toLocaleString('en-IN') : '-'}</td>}
+        {<td className="text-right tabular-nums text-ink">{externalCapital ? externalCapital.toLocaleString('en-IN') : '-'}</td>}
 
         {/* Algo Pnl */}
         <td className="text-right">
@@ -332,22 +328,19 @@ const TerminalSummaryRow: React.FC<TerminalSummaryRowProps> = ({
         </td>
 
         {/* Broker Pnl */}
-        {canCompare && (
-          <td className="text-right">
+                  <td className="text-right">
             <PnLDisplay value={brokerPnl} size="sm" fullFormat />
           </td>
-        )}
+        
 
         {/* Broker % */}
-        {canCompare && (
-          <td className="text-right">
+                  <td className="text-right">
             <PnLDisplay value={brokerPct} size="sm" />
           </td>
-        )}
+        
 
         {/* Margin Utilization */}
-        {canViewMargins && (
-          <td className="text-center">
+                  <td className="text-center">
             {showMargin ? (
               <div>
                 <span className={clsx(marginUtil < 50 ? 'text-success-500' : marginUtil < 80 ? 'text-warning-500' : 'text-danger-500')}>{marginUtil.toFixed(1)}%</span>
@@ -357,7 +350,7 @@ const TerminalSummaryRow: React.FC<TerminalSummaryRowProps> = ({
               <span className="text-ink-faint">-</span>
             )}
           </td>
-        )}
+        
 
         {/* Pos Hedges — counts of active POSITIONAL SHORT trades by current
             hedge distance (I = intraday, P = positional). Live snapshot of
@@ -370,8 +363,7 @@ const TerminalSummaryRow: React.FC<TerminalSummaryRowProps> = ({
         </td>
 
         {/* Mismatch (live-only — paper positions never reconcile) */}
-        {canCompare && (
-        <td>
+                <td>
           <MismatchBadge
             severity={mismatchSeverity}
             mismatchCount={mismatchCount}
@@ -380,7 +372,7 @@ const TerminalSummaryRow: React.FC<TerminalSummaryRowProps> = ({
             hasPnlMismatch={tradingMode === 'paper' ? false : summary.hasPnlMismatch}
           />
         </td>
-        )}
+        
 
         {/* Actions */}
         <td>

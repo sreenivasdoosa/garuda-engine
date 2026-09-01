@@ -4,11 +4,11 @@
  * page renders; pages read the getters synchronously.
  */
 
-let userPortalClientSidePnl = false;
+let clientSidePnl = false;
 
 /** Published by configService.getServerConfig() — do not call from components. */
-export function setUserPortalClientSidePnl(enabled: boolean | undefined): void {
-  userPortalClientSidePnl = enabled === true;
+export function setClientSidePnl(enabled: boolean | undefined): void {
+  clientSidePnl = enabled === true;
 }
 
 /**
@@ -18,8 +18,8 @@ export function setUserPortalClientSidePnl(enabled: boolean | undefined): void {
  * OFF -> legacy behavior, unchanged. OFF is the rollout default; flipping the
  *        instance's application.properties rolls back without a redeploy.
  */
-export function isUserPortalClientSidePnl(): boolean {
-  return userPortalClientSidePnl;
+export function isClientSidePnl(): boolean {
+  return clientSidePnl;
 }
 
 let showTerminalPnlChart = false;

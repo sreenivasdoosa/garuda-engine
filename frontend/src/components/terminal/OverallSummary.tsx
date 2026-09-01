@@ -9,7 +9,6 @@ import { Badge, Drawer, Spinner } from '@/components/ui';
 
 import type { UserTradeSummary, StrategySummary, TerminalBreakdown } from '@/types/terminal';
 import { terminalService } from '@/services/terminal/terminalService';
-import { usePermissions } from '@/hooks/usePermissions';
 import PnLDisplay from './PnLDisplay';
 import RiskProfileChart from './RiskProfileChart';
 import { valueForMode, countForMode, type TradingMode } from '@/utils/tradingMode';
@@ -49,8 +48,7 @@ const OverallSummary: React.FC<OverallSummaryProps> = ({
   tradingMode = 'live',
 }) => {
   // Algo-only risk (no broker) when the viewer lacks ALGO_BROKER_COMPARE.
-  const { algoBrokerCompare } = usePermissions();
-  const algoOnlyRisk = !algoBrokerCompare.canView;
+  const algoOnlyRisk = !true;
   // Strategy summaries + risk profiles no longer ride on the summary broadcast — fetch the
   // breakdown for the currently-viewed user-brokers once when the modal opens.
   const [breakdowns, setBreakdowns] = useState<TerminalBreakdown[]>([]);

@@ -22,7 +22,6 @@ import { useAuthStore } from '@/store/authStore';
 import { useUIStore } from '@/store/uiStore';
 import { useAuth } from '@/hooks/useAuth';
 import { useRecentAlerts, useAlertsCount } from '@/hooks/useAlerts';
-import { usePermissions } from '@/hooks/usePermissions';
 import { BrandLogo, TradeChecklistButton } from '@/components/common';
 import ThemeToggle from '@/components/ThemeToggle';
 import AiAssistantHeaderButton from '@/components/ai/AiAssistantHeaderButton';
@@ -102,7 +101,6 @@ const Header: React.FC<HeaderProps> = ({ showSidebarToggle = true }) => {
   const { logout } = useAuth();
   const { data: alerts, isLoading: isLoadingAlerts } = useRecentAlerts(50);
   const alertCounts = useAlertsCount();
-  const { mockTrading: mockTradingPerms } = usePermissions();
 
   const isTerminalPage = location.pathname === '/terminal-admin';
   const isLiveFeedPage = location.pathname === '/live-feed';
@@ -113,8 +111,6 @@ const Header: React.FC<HeaderProps> = ({ showSidebarToggle = true }) => {
     staleTime: Infinity,
   });
   const versionLabel = buildInfo?.core?.version ? `v${buildInfo.core.version}` : null;
-  // Use canManageUsers or isSysadmin to determine access to Console/Terminal
-  const canAccessConsole = user?.canManageUsers || user?.isSysadmin;
   const queryClient = useQueryClient();
 
   // Admin profile modal
@@ -144,13 +140,7 @@ const Header: React.FC<HeaderProps> = ({ showSidebarToggle = true }) => {
     },
   });
 
-  const handleProfileClick = () => {
-    if (canAccessConsole) {
-      setShowProfileModal(true);
-    } else {
-      navigate('/profile');
-    }
-  };
+  const handleProfileClick = () => setShowProfileModal(true);
 
   const handleTogglePref = (cat: EmailPreferenceCategory, checked: boolean) => {
     if (!emailPrefs) return;
@@ -162,7 +152,6 @@ const Header: React.FC<HeaderProps> = ({ showSidebarToggle = true }) => {
   const handleLogout = () => logout();
 
   const getPortalLabel = () => {
-    if (!canAccessConsole) return '';
     if (isTerminalPage) return 'Terminal';
     if (isLiveFeedPage) return 'Live Feed';
     return 'Console';
@@ -210,7 +199,7 @@ const Header: React.FC<HeaderProps> = ({ showSidebarToggle = true }) => {
         <HeaderIndexTickers />
 
         {/* Trade Checklist */}
-        {canAccessConsole && (
+        {(
           <div className="ml-3 flex items-center gap-2">
             {getPortalLabel() && (
               <span className="hidden md:inline-flex items-center rounded-full bg-white/15 px-2 py-0.5 text-xs font-medium text-white">
@@ -231,7 +220,7 @@ const Header: React.FC<HeaderProps> = ({ showSidebarToggle = true }) => {
         <RMSStatusHeaderBadge />
 
         {/* Mock-trading session indicator. */}
-        <MockSessionHeaderBadge canView={mockTradingPerms.canView} />
+        <MockSessionHeaderBadge canView />
 
         {/* AI assistant (AI_ANALYTICS gated — renders nothing without the tool). */}
         <AiAssistantHeaderButton />
@@ -296,7 +285,7 @@ const Header: React.FC<HeaderProps> = ({ showSidebarToggle = true }) => {
               <DropdownDivider />
               <DropdownItem
                 className="justify-center text-primary-500"
-                onClick={() => navigate(canAccessConsole ? '/console/alerts' : '/alerts')}
+                onClick={() => navigate('/console/alerts')}
               >
                 View All Alerts ({alertCounts.total})
               </DropdownItem>
@@ -304,7 +293,7 @@ const Header: React.FC<HeaderProps> = ({ showSidebarToggle = true }) => {
           )}
         </Dropdown>
 
-        {canAccessConsole && (
+        {(
           <Tooltip label={isLiveFeedPage ? 'Switch to Console' : 'Live Feed'}>
             <button
               type="button"
@@ -318,7 +307,7 @@ const Header: React.FC<HeaderProps> = ({ showSidebarToggle = true }) => {
         )}
 
         {/* Console/Terminal Toggle - Only for users who can manage users */}
-        {canAccessConsole && (
+        {(
           <Tooltip label={isTerminalPage ? 'Switch to Console' : 'Switch to Terminal'}>
             <button
               type="button"

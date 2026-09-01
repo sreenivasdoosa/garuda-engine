@@ -18,7 +18,7 @@ function useHomePath(): string {
   const { user, isAuthenticated } = useAuthStore();
   return useMemo(() => {
     if (!isAuthenticated || !user) return '/login';
-    return user.canManageUsers || user.isSysadmin ? '/console' : '/dashboard';
+    return '/console';
   }, [user, isAuthenticated]);
 }
 

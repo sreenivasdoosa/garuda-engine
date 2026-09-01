@@ -9,11 +9,10 @@
 import { useState, useMemo } from 'react';
 import { Row, Col, Card, Table, Badge, Button, Form, Tab, Tabs, Modal, Spinner, Alert, InputGroup, ProgressBar } from '@/components/ui/rbShim';
 import Select from 'react-select';
-import { BsPieChart, BsSearch, BsPencil, BsTrash, BsPlus, BsSun, BsMoon, BsEye, BsArrowRepeat } from 'react-icons/bs';
+import { BsPieChart, BsSearch, BsPencil, BsTrash, BsPlus, BsSun, BsMoon, BsArrowRepeat } from 'react-icons/bs';
 import { toast } from 'react-toastify';
 import { PageHeader, ConfirmModal } from '@/components/common';
 import { AllocationModels } from '@/components/allocation-models';
-import { usePermissions } from '@/hooks/usePermissions';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { strategyDaysAllocationService, allocationModelService } from '@/services/admin/v2AdminService';
 import { strategyDefinitionService } from '@/services/admin/strategyEngineService';
@@ -50,7 +49,7 @@ const formatCurrency = (value: number): string => {
 // Maps strategies to allocation models with capital tracking
 // Capital calculation: totalCapital = numOfLots × capitalPerLot
 // capitalPerLot is determined by P0 (base strategy) hedging config from backend
-const StrategyMappingsPanel: React.FC<{ canEdit: boolean; canManage: boolean }> = ({ canEdit, canManage }) => {
+const StrategyMappingsPanel: React.FC = () => {
   const [selectedModel, setSelectedModel] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [showSyncConfirm, setShowSyncConfirm] = useState(false);
@@ -331,7 +330,7 @@ const StrategyMappingsPanel: React.FC<{ canEdit: boolean; canManage: boolean }> 
                       strategyName: mapping.strategyName,
                       numOfLots: Number(e.target.value)
                     })}
-                    disabled={updateStrategyMutation.isPending || !canEdit}
+                    disabled={updateStrategyMutation.isPending}
                     title="Number of lots"
                   />
                 </td>
@@ -354,7 +353,7 @@ const StrategyMappingsPanel: React.FC<{ canEdit: boolean; canManage: boolean }> 
                       type="checkbox"
                       id={`overlap-${mapping.strategyName}`}
                       checked={!!mapping.mappingOverlapCapital}
-                      disabled={updateStrategyMutation.isPending || !canEdit}
+                      disabled={updateStrategyMutation.isPending}
                       title="Exclude this mapping from the allocation-model total (per-mapping)"
                       onChange={(e) => updateStrategyMutation.mutate({
                         strategyName: mapping.strategyName,
@@ -374,8 +373,7 @@ const StrategyMappingsPanel: React.FC<{ canEdit: boolean; canManage: boolean }> 
                   </small>
                 </td>
                 <td>
-                  {canManage && (
-                    <Button
+                                      <Button
                       variant="outline-danger"
                       size="sm"
                       onClick={() => removeStrategyMutation.mutate(mapping.strategyName)}
@@ -383,7 +381,7 @@ const StrategyMappingsPanel: React.FC<{ canEdit: boolean; canManage: boolean }> 
                     >
                       <BsTrash />
                     </Button>
-                  )}
+                  
                 </td>
               </tr>
             ))
@@ -414,8 +412,7 @@ const StrategyMappingsPanel: React.FC<{ canEdit: boolean; canManage: boolean }> 
               </Form.Select>
             </Col>
             <Col md={8} className="text-end">
-              {canEdit && (
-                <>
+                              <>
                   <Button
                     variant="warning"
                     className="me-2"
@@ -437,7 +434,7 @@ const StrategyMappingsPanel: React.FC<{ canEdit: boolean; canManage: boolean }> 
                     <BsPlus /> Add Strategy
                   </Button>
                 </>
-              )}
+              
             </Col>
           </Row>
         </Card.Header>
@@ -661,7 +658,7 @@ const getAllocationBadgeVariant = (value: number): string => {
 };
 
 // ==================== DAYWISE MAPPINGS PANEL (Strategy Days) ====================
-const DaywiseMappingsPanel: React.FC<{ canEdit: boolean; canManage: boolean }> = ({ canEdit, canManage }) => {
+const DaywiseMappingsPanel: React.FC = () => {
   const [search, setSearch] = useState('');
   const [selectedModel, setSelectedModel] = useState('');
   const [showModal, setShowModal] = useState(false);
@@ -827,8 +824,7 @@ const DaywiseMappingsPanel: React.FC<{ canEdit: boolean; canManage: boolean }> =
               </InputGroup>
             </Col>
             <Col md={4} className="text-end">
-              {canEdit && (
-                <Button
+                              <Button
                   variant="primary"
                   onClick={openAddModal}
                   disabled={!selectedModel}
@@ -836,7 +832,7 @@ const DaywiseMappingsPanel: React.FC<{ canEdit: boolean; canManage: boolean }> =
                 >
                   <BsPlus /> Add Day-wise Config
                 </Button>
-              )}
+              
             </Col>
           </Row>
         </Card.Header>
@@ -891,7 +887,7 @@ const DaywiseMappingsPanel: React.FC<{ canEdit: boolean; canManage: boolean }> =
                                 max={100}
                                 value={value}
                                 onChange={(e) => handleInlineUpdate(config, day.key, Number(e.target.value))}
-                                disabled={saveMutation.isPending || !canEdit}
+                                disabled={saveMutation.isPending }
                                 className="text-center"
                                 style={{ width: '75px', margin: '0 auto' }}
                                 title={`${day.fullLabel}: ${value}%`}
@@ -905,12 +901,11 @@ const DaywiseMappingsPanel: React.FC<{ canEdit: boolean; canManage: boolean }> =
                               variant="outline-primary"
                               size="sm"
                               onClick={() => openEditModal(config)}
-                              title={canEdit ? 'Edit all allocations' : 'View all allocations'}
+                              title={'Edit all allocations'}
                             >
-                              {canEdit ? <BsPencil /> : <BsEye />}
+                              {<BsPencil />}
                             </Button>
-                            {canManage && (
-                              <Button
+                                                          <Button
                                 variant="outline-danger"
                                 size="sm"
                                 onClick={() => setDeleteTarget(config)}
@@ -919,7 +914,7 @@ const DaywiseMappingsPanel: React.FC<{ canEdit: boolean; canManage: boolean }> =
                               >
                                 <BsTrash />
                               </Button>
-                            )}
+                            
                           </div>
                         </td>
                       </tr>
@@ -938,16 +933,16 @@ const DaywiseMappingsPanel: React.FC<{ canEdit: boolean; canManage: boolean }> =
       </Card>
 
       {/* Add/Edit/View Modal */}
-      <Modal show={showModal} onHide={() => setShowModal(false)} size="lg" backdrop={editingConfig && !canEdit ? true : 'static'}>
+      <Modal show={showModal} onHide={() => setShowModal(false)} size="lg" backdrop>
         <Modal.Header closeButton>
           <Modal.Title>
-            {editingConfig ? (canEdit ? <BsPencil className="me-2" /> : <BsEye className="me-2" />) : null}
-            {editingConfig ? (canEdit ? 'Edit' : 'View') : 'Add'} Day-wise Allocation
+            {editingConfig ? (<BsPencil className="me-2" />) : null}
+            {editingConfig ? ('Edit') : 'Add'} Day-wise Allocation
           </Modal.Title>
         </Modal.Header>
         <Modal.Body>
           <Form>
-            <fieldset disabled={!!editingConfig && !canEdit}>
+            <fieldset disabled={!!editingConfig && !true}>
             <Row className="mb-4">
               <Col md={6}>
                 <Form.Group>
@@ -1067,9 +1062,9 @@ const DaywiseMappingsPanel: React.FC<{ canEdit: boolean; canManage: boolean }> =
         </Modal.Body>
         <Modal.Footer>
           <Button variant="secondary" onClick={() => setShowModal(false)}>
-            {editingConfig && !canEdit ? 'Close' : 'Cancel'}
+            Cancel
           </Button>
-          {(canEdit || !editingConfig) && (
+          {(
             <Button
               variant="primary"
               onClick={handleSave}
@@ -1099,11 +1094,8 @@ const DaywiseMappingsPanel: React.FC<{ canEdit: boolean; canManage: boolean }> =
 // ==================== MAIN COMPONENT ====================
 const AllocationModelsPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState('models');
-  const permissions = usePermissions();
 
   // Permission flags for Allocation Models tool
-  const canEdit = permissions.allocationModels.canEdit;
-  const canManage = permissions.allocationModels.canManage;
 
   return (
     <div className="fade-in">
@@ -1115,13 +1107,13 @@ const AllocationModelsPage: React.FC = () => {
 
       <Tabs activeKey={activeTab} onSelect={(k) => setActiveTab(k || 'models')} className="mb-4">
         <Tab eventKey="models" title="Allocation Models">
-          <AllocationModels title="All Allocation Models" hideCreate={!canEdit} hideDelete={!canManage} readOnly={!canEdit} />
+          <AllocationModels title="All Allocation Models" hideCreate={!true} hideDelete={!true} readOnly={!true} />
         </Tab>
         <Tab eventKey="strategy-mappings" title="Strategy Mappings">
-          <StrategyMappingsPanel canEdit={canEdit} canManage={canManage} />
+          <StrategyMappingsPanel />
         </Tab>
         <Tab eventKey="daywise-mappings" title="Daywise Mappings">
-          <DaywiseMappingsPanel canEdit={canEdit} canManage={canManage} />
+          <DaywiseMappingsPanel />
         </Tab>
       </Tabs>
     </div>

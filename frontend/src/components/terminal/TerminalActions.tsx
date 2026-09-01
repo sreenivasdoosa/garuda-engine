@@ -6,7 +6,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import { BsArrowRepeat, BsXSquare, BsCheckSquare, BsPencilSquare, BsThreeDotsVertical } from 'react-icons/bs';
-import { usePermissions } from '@/hooks/usePermissions';
 import { Button, Modal, Spinner } from '@/components/ui';
 import { SQUARE_OFF_PRODUCT_OPTIONS, squareOffScopeLabel, type SquareOffProduct } from '@/types/product';
 
@@ -44,10 +43,7 @@ const TerminalActions: React.FC<TerminalActionsProps> = ({
   const [dropdownPosition, setDropdownPosition] = useState({ top: 0, left: 0 });
   const toggleRef = useRef<HTMLButtonElement>(null);
 
-  const { squareOff, trades } = usePermissions();
-  const canSquareOff = squareOff.canManage;
-  const canEditTrades = trades.canEdit;
-  const hasMenuActions = (canEditTrades && (!!onCompleteTrades || !!onAlterTrades)) || canSquareOff;
+  const hasMenuActions = ((!!onCompleteTrades || !!onAlterTrades)) || true;
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -101,7 +97,7 @@ const TerminalActions: React.FC<TerminalActionsProps> = ({
               className="fixed z-[1050] min-w-[12rem] rounded-card border border-hairline bg-card py-1 shadow-card dark:shadow-card-dark"
               style={{ top: `${dropdownPosition.top}px`, right: `${window.innerWidth - dropdownPosition.left}px` }}
             >
-              {onCompleteTrades && canEditTrades && (
+              {onCompleteTrades && (
                 <button
                   className={ddItem}
                   onClick={() => {
@@ -113,7 +109,7 @@ const TerminalActions: React.FC<TerminalActionsProps> = ({
                   Complete Trades
                 </button>
               )}
-              {onAlterTrades && canEditTrades && (
+              {onAlterTrades && (
                 <button
                   className={ddItem}
                   onClick={() => {
@@ -125,8 +121,7 @@ const TerminalActions: React.FC<TerminalActionsProps> = ({
                   Alter Trades
                 </button>
               )}
-              {canSquareOff && (
-                <>
+                              <>
                   <h6 className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-ink-faint">Square Off</h6>
                   {/* One entry per engine-managed product (TRADABLE_PRODUCTS), so CashBuy and MTF
                       positions are reachable here too — not just intraday/positional. */}
@@ -158,7 +153,7 @@ const TerminalActions: React.FC<TerminalActionsProps> = ({
                     All Positions
                   </button>
                 </>
-              )}
+              
             </div>,
             document.body,
           )}

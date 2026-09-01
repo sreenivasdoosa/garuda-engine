@@ -6,14 +6,10 @@
 import { BsBank } from 'react-icons/bs';
 import { PageHeader, MissingBrokerExchangeConfigAlert } from '@/components/common';
 import { Brokers } from '@/components/brokers';
-import { usePermissions } from '@/hooks/usePermissions';
 
 const BrokersPage: React.FC = () => {
-  const permissions = usePermissions();
 
   // Permission flags for Brokers tool
-  const canEdit = permissions.brokers.canEdit;
-  const canManage = permissions.brokers.canManage;
 
   return (
     <div className="fade-in">
@@ -27,10 +23,10 @@ const BrokersPage: React.FC = () => {
 
       <Brokers
         title="All Brokers"
-        hideCreate={!canEdit}
-        hideDelete={!canManage}
-        hideEnableDisable={!canEdit}
-        readOnly={!canEdit}
+        hideCreate={!true}
+        hideDelete={!true}
+        hideEnableDisable={!true}
+        readOnly={!true}
       />
     </div>
   );

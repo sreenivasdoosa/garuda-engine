@@ -1,3 +1,8 @@
+/**
+ * The operator. There is one, and they own every account on this engine, so
+ * there are no rights, no role hierarchy and no admin flag -- signing in is
+ * the whole of the authorization model.
+ */
 export interface User {
   id: string;
   username: string;
@@ -12,12 +17,6 @@ export interface User {
   updatedAt?: string;
   lastLogin?: string;
   settings?: UserSettings;
-  // Permission fields from JWT/Auth Service - USE THESE for access control
-  rights?: Record<string, string>;  // toolCode -> rightCode (V/E/M)
-  isSysadmin?: boolean;             // System admin flag - full access
-  canManageUsers?: boolean;         // Can manage users - Console/Terminal access
-  canManageRights?: boolean;        // Can manage rights/permissions
-  roleHierarchyLevel?: number;      // Role hierarchy level for filtering
 }
 
 export interface UserBroker {

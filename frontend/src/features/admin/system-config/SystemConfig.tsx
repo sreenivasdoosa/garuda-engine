@@ -21,11 +21,9 @@ import {
   CreateSystemConfigRequest,
   UpdateSystemConfigRequest,
 } from '@/services/admin/v2AdminService';
-import { usePermissions } from '@/hooks/usePermissions';
 
 const SystemConfig: React.FC = () => {
   const queryClient = useQueryClient();
-  const permissions = usePermissions();
   const [searchTerm, setSearchTerm] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -33,8 +31,6 @@ const SystemConfig: React.FC = () => {
   const [selectedConfig, setSelectedConfig] = useState<SystemConfigEntry | null>(null);
 
   // Permission flags for System Config tool
-  const canEdit = permissions.systemConfig.canEdit;
-  const canManage = permissions.systemConfig.canManage;
 
   // Form state
   const [formData, setFormData] = useState<CreateSystemConfigRequest>({
@@ -230,12 +226,11 @@ const SystemConfig: React.FC = () => {
             <Button variant="outline-secondary" onClick={() => refetch()} title="Refresh">
               <BsArrowClockwise />
             </Button>
-            {canEdit && (
-              <Button variant="primary" onClick={handleOpenAddModal}>
+                          <Button variant="primary" onClick={handleOpenAddModal}>
                 <BsPlus className="me-1" />
                 Add Config
               </Button>
-            )}
+            
           </div>
         </Card.Header>
         <Card.Body className="p-0">
@@ -280,8 +275,7 @@ const SystemConfig: React.FC = () => {
                       {getValueBadge(config.value)}
                     </td>
                     <td className="text-end">
-                      {canEdit && (
-                        <Button
+                                              <Button
                           variant="outline-primary"
                           size="sm"
                           className="me-1"
@@ -290,9 +284,8 @@ const SystemConfig: React.FC = () => {
                         >
                           <BsPencil />
                         </Button>
-                      )}
-                      {canManage && (
-                        <Button
+                      
+                                              <Button
                           variant="outline-danger"
                           size="sm"
                           onClick={() => handleOpenDeleteModal(config)}
@@ -300,7 +293,7 @@ const SystemConfig: React.FC = () => {
                         >
                           <BsTrash />
                         </Button>
-                      )}
+                      
                     </td>
                   </tr>
                 ))}

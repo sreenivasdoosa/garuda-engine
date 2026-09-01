@@ -30,7 +30,6 @@ import { toast } from 'react-toastify';
 import clsx from 'clsx';
 
 import { PageHeader } from '@/components/common';
-import { usePermissions } from '@/hooks/usePermissions';
 import { Badge, Button, Spinner, Modal } from '@/components/ui';
 import type { Tone } from '@/components/ui';
 import {
@@ -128,9 +127,8 @@ const formFactor = (f: CreateFormState): number => {
 
 const JournalTable: React.FC<{
   action: CorporateAction;
-  canManage: boolean;
   onReverse: (entry: CorporateActionJournalEntry) => void;
-}> = ({ action, canManage, onReverse }) => {
+}> = ({ action, onReverse }) => {
   const { data: journal = [], isLoading, error } = useQuery({
     queryKey: ['corporate-actions', action.id, 'journal'],
     queryFn: () => corporateActionService.getJournal(action.id),
@@ -202,8 +200,8 @@ const JournalTable: React.FC<{
                 <Button
                   variant="danger"
                   size="sm"
-                  disabled={!canManage}
-                  title={canManage ? 'Reverse this trade back to its pre-snapshot' : 'Requires manage permission'}
+                  
+                  title={'Reverse this trade back to its pre-snapshot'}
                   onClick={() => onReverse(e)}
                 >
                   <BsArrowCounterclockwise /> Reverse
@@ -221,9 +219,7 @@ const JournalTable: React.FC<{
 
 const CorporateActionsPage: React.FC = () => {
   const queryClient = useQueryClient();
-  const permissions = usePermissions();
-  const canManage = permissions.systemConfig.canManage;
-  const manageTitle = canManage ? undefined : 'Requires manage permission';
+  const manageTitle = undefined
 
   const [activeTab, setActiveTab] = useState<'approvals' | 'all'>('approvals');
   const [statusFilter, setStatusFilter] = useState<'ALL' | CorporateActionStatus>('ALL');
@@ -371,17 +367,17 @@ const CorporateActionsPage: React.FC = () => {
   const rowButtons = (a: CorporateAction) => (
     <div className="flex justify-end gap-1">
       {a.status === 'PENDING' && (
-        <Button variant="primary" size="sm" disabled={!canManage} title={manageTitle} onClick={() => setApproveTarget(a)}>
+        <Button variant="primary" size="sm"  title={manageTitle} onClick={() => setApproveTarget(a)}>
           <BsCheckCircle /> Approve
         </Button>
       )}
       {(a.status === 'PENDING' || a.status === 'APPROVED') && (
-        <Button variant="secondary" size="sm" disabled={!canManage} title={manageTitle} onClick={() => setCancelTarget(a)}>
+        <Button variant="secondary" size="sm"  title={manageTitle} onClick={() => setCancelTarget(a)}>
           <BsXCircle /> Cancel
         </Button>
       )}
       {(a.status === 'APPROVED' || a.status === 'APPLIED') && (
-        <Button variant="warning" size="sm" disabled={!canManage} title={manageTitle ?? (a.status === 'APPLIED' ? 'Re-run (already-adjusted trades are skipped via the journal)' : 'Apply to open trades now')} onClick={() => setApplyTarget(a)}>
+        <Button variant="warning" size="sm"  title={manageTitle ?? (a.status === 'APPLIED' ? 'Re-run (already-adjusted trades are skipped via the journal)' : 'Apply to open trades now')} onClick={() => setApplyTarget(a)}>
           <BsPlayCircle /> Apply Now
         </Button>
       )}
@@ -409,11 +405,10 @@ const CorporateActionsPage: React.FC = () => {
             <Button variant="secondary" onClick={() => refetch()} title="Refresh">
               <BsArrowClockwise />
             </Button>
-            {canManage && (
-              <Button variant="primary" onClick={handleOpenCreate}>
+                          <Button variant="primary" onClick={handleOpenCreate}>
                 <BsPlus /> Schedule Action
               </Button>
-            )}
+            
           </>
         }
       />
@@ -588,7 +583,7 @@ const CorporateActionsPage: React.FC = () => {
                               <div className="mb-1 text-xs font-medium uppercase text-ink-faint">
                                 Application journal — {a.description}
                               </div>
-                              <JournalTable action={a} canManage={canManage} onReverse={setReverseTarget} />
+                              <JournalTable action={a} onReverse={setReverseTarget} />
                             </td>
                           </tr>
                         )}

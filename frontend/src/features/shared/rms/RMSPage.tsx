@@ -15,15 +15,12 @@ import { rmsHelpContent } from '@/data/help/rms-help';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { RMSConfig, KillSwitchEntry, KillSwitchLevel, KillSwitchSource, KillSwitchActivateRequest, RMSConfigImportPreviewResult, RMSConfigImportApplyResult } from '@/services/admin/v2AdminService';
 import { rmsConfigService, exchangeService, symbolService, v2BrokerService } from '@/services/admin/v2AdminService';
-import { usePermissions } from '@/hooks/usePermissions';
 import { toast } from 'react-toastify';
 
 const RMSPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState('config');
-  const permissions = usePermissions();
 
   // Permission flags for RMS tool
-  const canEdit = permissions.rms.canEdit;
 
   return (
     <div className="admin-rms">
@@ -35,7 +32,7 @@ const RMSPage: React.FC = () => {
 
       <Tabs activeKey={activeTab} onSelect={(k) => setActiveTab(k || 'config')} className="mb-4">
         <Tab eventKey="config" title={<><BsGear className="me-1" /> Config</>}>
-          <RmsConfigPanel hideEdit={!canEdit} />
+          <RmsConfigPanel hideEdit={!true} />
         </Tab>
         <Tab eventKey="preview" title={<><BsEye className="me-1" /> Preview Effective Config</>}>
           <EffectiveConfigPreviewPanel />

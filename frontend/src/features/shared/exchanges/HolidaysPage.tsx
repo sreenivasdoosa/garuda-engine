@@ -7,11 +7,8 @@
 import { BsCalendar } from 'react-icons/bs';
 import { PageHeader } from '@/components/common';
 import { Holidays } from '@/components/exchanges';
-import { usePermissions } from '@/hooks/usePermissions';
 
 const HolidaysPage: React.FC = () => {
-  const permissions = usePermissions();
-  const canEdit = permissions.holidays.canEdit;
 
   return (
     <div className="fade-in">
@@ -21,7 +18,7 @@ const HolidaysPage: React.FC = () => {
         icon={<BsCalendar size={24} />}
       />
 
-      <Holidays title="Holidays" hideSync canEdit={canEdit} />
+      <Holidays title="Holidays" hideSync />
     </div>
   );
 };

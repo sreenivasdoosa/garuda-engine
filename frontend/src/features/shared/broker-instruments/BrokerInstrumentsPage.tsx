@@ -8,7 +8,6 @@ import clsx from 'clsx';
 import { BsBarChartFill, BsSearch, BsFileEarmarkText, BsCloudDownload, BsArrowClockwise, BsCheckCircle, BsXCircle, BsExclamationTriangle } from 'react-icons/bs';
 import { toast } from 'react-toastify';
 import { PageHeader, BrokerSetupRequired, MissingBrokerExchangeConfigAlert } from '@/components/common';
-import { usePermissions } from '@/hooks/usePermissions';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { brokerInstrumentsService } from '@/services/admin/v2AdminService';
 import { brokerService } from '@/services/broker/brokerService';
@@ -49,8 +48,6 @@ const TABS = [
 
 const BrokerInstrumentsPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState('stats');
-  const permissions = usePermissions();
-  const canEdit = permissions.instruments.canEdit;
 
   return (
     <BrokerSetupRequired>
@@ -64,7 +61,7 @@ const BrokerInstrumentsPage: React.FC = () => {
             <button key={t.key} type="button" className={tabBtn(activeTab === t.key)} onClick={() => setActiveTab(t.key)}>{t.label}</button>
           ))}
         </div>
-        {activeTab === 'stats' && <InstrumentStatsPanel canEdit={canEdit} />}
+        {activeTab === 'stats' && <InstrumentStatsPanel />}
         {activeTab === 'search' && <InstrumentSearchPanel />}
         {activeTab === 'lookup' && <InstrumentLookupPanel />}
       </div>
@@ -76,10 +73,9 @@ const BrokerInstrumentsPage: React.FC = () => {
 const FILE_SIZE_WARNING_THRESHOLD = 0.7;
 
 interface StatsPanelProps {
-  canEdit: boolean;
 }
 
-const InstrumentStatsPanel: React.FC<StatsPanelProps> = ({ canEdit }) => {
+const InstrumentStatsPanel: React.FC<StatsPanelProps> = () => {
   const queryClient = useQueryClient();
 
   const { data: stats, isLoading: statsLoading, error: statsError, refetch } = useQuery({
@@ -229,7 +225,7 @@ const InstrumentStatsPanel: React.FC<StatsPanelProps> = ({ canEdit }) => {
                 <th className={`${cell} text-left`}>Normalized File</th>
                 <th className={`${cell} text-left`}>Last Downloaded</th>
                 <th className={`${cell} text-left`}>Cache Status</th>
-                {canEdit && <th className={`${cell} text-left`}>Actions</th>}
+                <th className={`${cell} text-left`}>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -268,13 +264,12 @@ const InstrumentStatsPanel: React.FC<StatsPanelProps> = ({ canEdit }) => {
                         <Badge tone="warning" icon={<BsXCircle />}>Not Loaded</Badge>
                       )}
                     </td>
-                    {canEdit && (
-                      <td className={cell}>
+                                          <td className={cell}>
                         <Button variant={hasNoInstruments || isSuspicious ? 'primary' : 'secondary'} size="sm" onClick={() => downloadMutation.mutate(stat.brokerName)} disabled={downloadMutation.isPending}>
                           <BsCloudDownload /> {downloadMutation.isPending ? 'Downloading...' : 'Download'}
                         </Button>
                       </td>
-                    )}
+                    
                   </tr>
                 );
               })}
