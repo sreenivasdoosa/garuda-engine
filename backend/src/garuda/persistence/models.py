@@ -293,6 +293,31 @@ class HolidaysRow(Base):
     description: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
 
+class SpecialTradingDaysRow(Base):
+    """A day the venue is open that its weekly schedule would have closed.
+
+    Budget day on a Saturday is the ordinary case: the exchange trades its
+    usual hours on a day the weekend rule would shut. Diwali muhurat is the
+    other: a short evening session on a day that is otherwise a holiday.
+
+    ``market_open`` and ``market_close`` are nullable, and null is the first
+    case -- the venue's own hours apply. Set them for the second. The
+    reference engine's market-data service had this table without the two
+    columns and added them later "for partial holidays", which is the same
+    conclusion reached in the same order.
+    """
+
+    __tablename__ = "special_trading_days"
+
+    exchange: Mapped[str] = mapped_column(String(10), primary_key=True)
+    #: Text, like `holidays.date`, because that is the shape the Console sends
+    #: and a calendar key never needs arithmetic done to it in SQL.
+    trading_date: Mapped[str] = mapped_column(String(10), primary_key=True)
+    trading_day_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    market_open: Mapped[dt.time | None] = mapped_column(Time, nullable=True)
+    market_close: Mapped[dt.time | None] = mapped_column(Time, nullable=True)
+
+
 class EventDaysRow(Base):
     """EVENT_DAYS in the reference engine."""
 

@@ -10,10 +10,15 @@ import pytest
 from garuda.composition.venues import DEFAULT_WEEKEND, Venues, venues_from
 from garuda.domain.enums import ProductType, Segment
 from garuda.domain.money import Currency
-from garuda.persistence.models import ExchangesRow, HolidaysRow
+from garuda.persistence.models import (
+    ExchangesRow,
+    HolidaysRow,
+    SpecialTradingDaysRow,
+)
 
 IST = ZoneInfo("Asia/Kolkata")
 MONDAY = date(2026, 8, 31)
+SATURDAY = date(2026, 9, 5)
 
 
 def exchange_row(**overrides: object) -> ExchangesRow:
@@ -305,3 +310,90 @@ def test_segments_are_read_however_they_are_spaced() -> None:
     venues = venues_from([row], [])
 
     assert venues.exchanges["NSE"].segments == frozenset({Segment.EQUITY, Segment.FNO})
+
+
+def special_day(**overrides: object) -> SpecialTradingDaysRow:
+    defaults: dict[str, object] = {
+        "exchange": "NSE",
+        "trading_date": "2026-09-05",
+        "trading_day_name": "Union Budget",
+    }
+    return SpecialTradingDaysRow(**{**defaults, **overrides})
+
+
+class TestSpecialTradingDays:
+    """The case that motivates the table: the Budget lands on a Saturday and
+    the exchange trades anyway."""
+
+    def test_a_saturday_is_shut_without_one(self) -> None:
+        calendar = venues_from([exchange_row()], []).exchanges["NSE"].calendar
+
+        assert calendar.is_trading_day(SATURDAY) is False
+
+    def test_a_special_day_opens_a_weekend_at_the_venues_usual_hours(self) -> None:
+        venues = venues_from([exchange_row()], [], [special_day()])
+
+        calendar = venues.exchanges["NSE"].calendar
+        assert calendar.is_trading_day(SATURDAY) is True
+        window = calendar.windows_on(SATURDAY)[0]
+        assert window.start == datetime(2026, 9, 5, 9, 15, tzinfo=IST)
+        assert window.end == datetime(2026, 9, 5, 15, 30, tzinfo=IST)
+        assert calendar.is_open(datetime(2026, 9, 5, 10, 0, tzinfo=IST)) is True
+        assert calendar.is_open(datetime(2026, 9, 5, 16, 0, tzinfo=IST)) is False
+
+    def test_its_own_hours_replace_the_usual_ones(self) -> None:
+        """Diwali muhurat: a short evening session, not the normal day."""
+        row = special_day(market_open=time(18, 15), market_close=time(19, 15))
+
+        calendar = venues_from([exchange_row()], [], [row]).exchanges["NSE"].calendar
+
+        window = calendar.windows_on(SATURDAY)[0]
+        assert window.start == datetime(2026, 9, 5, 18, 15, tzinfo=IST)
+        assert window.end == datetime(2026, 9, 5, 19, 15, tzinfo=IST)
+        assert calendar.is_open(datetime(2026, 9, 5, 10, 0, tzinfo=IST)) is False
+        assert calendar.is_open(datetime(2026, 9, 5, 18, 30, tzinfo=IST)) is True
+
+    def test_it_opens_a_day_that_is_also_a_holiday(self) -> None:
+        """Diwali is a holiday and has a muhurat session, so the special day
+        has to win over the holiday as well as over the weekend."""
+        holiday = HolidaysRow(date="2026-09-05", exchange="NSE")
+        row = special_day(market_open=time(18, 15), market_close=time(19, 15))
+
+        calendar = venues_from([exchange_row()], [holiday], [row]).exchanges["NSE"].calendar
+
+        assert calendar.is_trading_day(SATURDAY) is True
+        assert calendar.is_open(datetime(2026, 9, 5, 18, 30, tzinfo=IST)) is True
+
+    def test_one_side_of_the_hours_falls_back_rather_than_inventing_the_other(self) -> None:
+        row = special_day(market_open=time(18, 15))
+
+        calendar = venues_from([exchange_row()], [], [row]).exchanges["NSE"].calendar
+
+        window = calendar.windows_on(SATURDAY)[0]
+        assert window.start == datetime(2026, 9, 5, 9, 15, tzinfo=IST)
+        assert window.end == datetime(2026, 9, 5, 15, 30, tzinfo=IST)
+
+    def test_a_special_day_for_another_venue_does_not_open_this_one(self) -> None:
+        row = special_day(exchange="BSE")
+
+        calendar = venues_from([exchange_row()], [], [row]).exchanges["NSE"].calendar
+
+        assert calendar.is_trading_day(SATURDAY) is False
+
+    def test_an_unparseable_date_is_ignored_rather_than_failing_the_venue(self) -> None:
+        row = special_day(trading_date="05-09-2026")
+
+        venues = venues_from([exchange_row()], [], [row])
+
+        assert "NSE" in venues.exchanges
+        assert venues.exchanges["NSE"].calendar.is_trading_day(SATURDAY) is False
+
+    def test_a_weekday_special_day_changes_nothing_it_should_not(self) -> None:
+        """A Monday is already open; naming it special must not shorten it."""
+        row = special_day(trading_date="2026-08-31")
+
+        calendar = venues_from([exchange_row()], [], [row]).exchanges["NSE"].calendar
+
+        window = calendar.windows_on(MONDAY)[0]
+        assert window.start == datetime(2026, 8, 31, 9, 15, tzinfo=IST)
+        assert window.end == datetime(2026, 8, 31, 15, 30, tzinfo=IST)

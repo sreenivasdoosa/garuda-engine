@@ -24,7 +24,7 @@ from pydantic import BaseModel
 from garuda.api import envelope
 from garuda.api.credentials import AdminCredentials
 from garuda.api.envelope import ok
-from garuda.api.routers import exchanges, holidays
+from garuda.api.routers import exchanges, holidays, special_trading_days
 from garuda.api.tokens import issue, read
 from garuda.config.settings import Settings, load_settings
 from garuda.core.clock import LiveClock
@@ -151,5 +151,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # One router per Console page, added as each page is made to work.
     app.include_router(exchanges.build(sessions))
     app.include_router(holidays.build(sessions))
+    app.include_router(special_trading_days.build(sessions))
 
     return app

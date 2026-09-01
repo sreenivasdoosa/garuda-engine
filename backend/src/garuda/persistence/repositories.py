@@ -191,6 +191,10 @@ class HolidaysRepository(Repository[models.HolidaysRow]):
     model = models.HolidaysRow
 
 
+class SpecialTradingDaysRepository(Repository[models.SpecialTradingDaysRow]):
+    model = models.SpecialTradingDaysRow
+
+
 class IvCandlesRepository(Repository[models.IvCandlesRow]):
     model = models.IvCandlesRow
 
@@ -678,6 +682,10 @@ class Repositories:
     @property
     def holidays(self) -> HolidaysRepository:
         return self.of(HolidaysRepository)
+
+    @property
+    def special_trading_days(self) -> SpecialTradingDaysRepository:
+        return self.of(SpecialTradingDaysRepository)
 
     @property
     def iv_candles(self) -> IvCandlesRepository:

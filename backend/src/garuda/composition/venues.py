@@ -27,7 +27,7 @@ from garuda.domain.errors import DomainError
 from garuda.domain.exchange import Exchange
 from garuda.domain.money import Currency
 from garuda.domain.phases import DayOffsets
-from garuda.persistence.models import ExchangesRow, HolidaysRow
+from garuda.persistence.models import ExchangesRow, HolidaysRow, SpecialTradingDaysRow
 from garuda.persistence.uow import UnitOfWork
 from garuda.trademgmt.squareoff_rules import ExitWindow
 
@@ -87,14 +87,19 @@ class Venues:
 
 
 async def load_venues(sessions: async_sessionmaker[AsyncSession]) -> Venues:
-    """Read every active exchange and its holidays."""
+    """Read every active exchange, its holidays and its special trading days."""
     async with UnitOfWork(sessions) as uow:
         rows = await uow.repositories.exchanges.all()
         holiday_rows = await uow.repositories.holidays.all()
-    return venues_from(rows, holiday_rows)
+        special_rows = await uow.repositories.special_trading_days.all()
+    return venues_from(rows, holiday_rows, special_rows)
 
 
-def venues_from(rows: Sequence[ExchangesRow], holiday_rows: Sequence[HolidaysRow]) -> Venues:
+def venues_from(
+    rows: Sequence[ExchangesRow],
+    holiday_rows: Sequence[HolidaysRow],
+    special_rows: Sequence[SpecialTradingDaysRow] = (),
+) -> Venues:
     """Turn configuration rows into venues. The whole mapping, and nothing else."""
     holidays: dict[str, set[date]] = {}
     for holiday in holiday_rows:
@@ -106,6 +111,18 @@ def venues_from(rows: Sequence[ExchangesRow], holiday_rows: Sequence[HolidaysRow
             continue
         holidays.setdefault(holiday.exchange, set()).add(parsed)
 
+    specials: dict[str, dict[date, SpecialTradingDaysRow]] = {}
+    for special in special_rows:
+        parsed = _parse_day(special.trading_date)
+        if parsed is None:
+            logger.warning(
+                "special trading day %r on %s is not a date; ignored",
+                special.trading_date,
+                special.exchange,
+            )
+            continue
+        specials.setdefault(special.exchange, {})[parsed] = special
+
     exchanges: dict[str, Exchange] = {}
     offsets: dict[str, DayOffsets] = {}
     blocks: dict[str, timedelta | None] = {}
@@ -114,7 +131,9 @@ def venues_from(rows: Sequence[ExchangesRow], holiday_rows: Sequence[HolidaysRow
             continue
         code = row.exchange_code
         try:
-            exchanges[code] = _exchange_from(row, frozenset(holidays.get(code, ())))
+            exchanges[code] = _exchange_from(
+                row, frozenset(holidays.get(code, ())), specials.get(code, {})
+            )
         except DomainError as error:
             # One misconfigured venue is not a reason for the others to stop
             # trading. It is reported by name and left out.
@@ -132,7 +151,11 @@ def venues_from(rows: Sequence[ExchangesRow], holiday_rows: Sequence[HolidaysRow
     return Venues(exchanges=exchanges, offsets=offsets, intraday_blocks=blocks)
 
 
-def _exchange_from(row: ExchangesRow, holidays: frozenset[date]) -> Exchange:
+def _exchange_from(
+    row: ExchangesRow,
+    holidays: frozenset[date],
+    specials: Mapping[date, SpecialTradingDaysRow] | None = None,
+) -> Exchange:
     code = row.exchange_code
     tz = ZoneInfo(row.timezone or "Asia/Kolkata")
     session = Session(opens=row.market_open, closes=row.market_close)
@@ -142,6 +165,7 @@ def _exchange_from(row: ExchangesRow, holidays: frozenset[date]) -> Exchange:
         timezone=tz,
         weekly={day: (session,) for day in range(7) if day not in weekend},
         holidays=holidays,
+        special_sessions=_special_sessions(specials or {}, session),
         pre_open=_pre_open(row),
     )
     return Exchange(
@@ -188,6 +212,32 @@ def _segments(row: ExchangesRow) -> frozenset[Segment]:
         return frozenset(Segment(name) for name in named)
     except ValueError as error:
         raise DomainError(f"{row.exchange_code} lists a segment that is not one: {error}") from None
+
+
+def _special_sessions(
+    specials: Mapping[date, SpecialTradingDaysRow], usual: Session
+) -> dict[date, tuple[Session, ...]]:
+    """The days this venue opens against its own weekly schedule.
+
+    A row with no hours of its own trades the venue's usual session -- Budget
+    day falling on a Saturday is that case, and it is the common one. A row
+    with hours replaces them, which is how a Diwali muhurat evening is
+    expressed. Half a pair is not enough to build a session from, so it falls
+    back to the usual hours and says so rather than inventing the missing end.
+    """
+    sessions: dict[date, tuple[Session, ...]] = {}
+    for day, row in specials.items():
+        if row.market_open is not None and row.market_close is not None:
+            sessions[day] = (Session(opens=row.market_open, closes=row.market_close),)
+            continue
+        if row.market_open is not None or row.market_close is not None:
+            logger.warning(
+                "%s on %s gives only one side of its hours; using the usual session",
+                row.exchange,
+                row.trading_date,
+            )
+        sessions[day] = (usual,)
+    return sessions
 
 
 def _pre_open(row: ExchangesRow) -> Session | None:
