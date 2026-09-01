@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import datetime as dt
 from collections.abc import AsyncIterator
+from typing import Any
 
 import httpx
 import pytest
@@ -79,9 +80,7 @@ async def test_an_empty_database_lists_nothing_rather_than_failing(
     assert body["data"] == []
 
 
-async def test_fetches_one_by_code_case_insensitively(
-    client: httpx.AsyncClient, nse: None
-) -> None:
+async def test_fetches_one_by_code_case_insensitively(client: httpx.AsyncClient, nse: None) -> None:
     for code in ("NSE", "nse", "Nse"):
         response = await client.get(f"/api/exchanges/{code}")
         assert response.status_code == 200
@@ -95,9 +94,7 @@ async def test_an_unknown_code_is_a_404_naming_it(client: httpx.AsyncClient) -> 
     assert "XSE" in response.json()["message"]
 
 
-async def test_an_update_touches_only_the_fields_sent(
-    client: httpx.AsyncClient, nse: None
-) -> None:
+async def test_an_update_touches_only_the_fields_sent(client: httpx.AsyncClient, nse: None) -> None:
     """The whole point of the partial update.
 
     The Console's exchange form round-trips some fields and not others. If an
@@ -172,19 +169,25 @@ async def test_creates_a_venue_and_normalises_its_code_and_currency(
 
 @pytest.mark.parametrize(
     "missing",
-    ["exchangeName", "currency", "marketOpen", "marketClose"],
+    ["exchangeName", "currency", "marketOpen", "marketClose", "segments"],
 )
 async def test_a_venue_missing_something_it_cannot_run_without_is_refused(
     client: httpx.AsyncClient, missing: str
 ) -> None:
-    """A venue with no hours has no session, and a P&L figure with no currency
-    is a number without a unit. Refused by name, not defaulted."""
-    body = {
+    """A venue with no hours has no session, a P&L figure with no currency is
+    a number without a unit, and no segments cannot build an exchange at all.
+    Refused by name, not defaulted.
+
+    The body is complete apart from the one field removed, so the refusal is
+    provably about that field and not about another one also missing.
+    """
+    body: dict[str, Any] = {
         "exchange": "NYSE",
         "exchangeName": "New York Stock Exchange",
         "currency": "USD",
         "marketOpen": "09:30",
         "marketClose": "16:00",
+        "segments": ["EQUITY"],
     }
     del body[missing]
 
@@ -237,6 +240,7 @@ async def test_seconds_on_a_time_are_accepted_and_dropped(client: httpx.AsyncCli
             "currency": "INR",
             "marketOpen": "09:15:00",
             "marketClose": "15:30:00",
+            "segments": ["EQUITY"],
         },
     )
 
@@ -262,3 +266,76 @@ async def test_a_blank_segment_does_not_become_a_segment(client: httpx.AsyncClie
         "EQUITY",
         "FNO",
     ]
+
+
+async def test_serves_the_options_a_venue_form_may_choose_from(
+    client: httpx.AsyncClient,
+) -> None:
+    """The Console asks rather than keeping its own copy of the enums, which
+    would drift the moment one gains a member."""
+    body = (await client.get("/api/exchanges/options")).json()
+
+    assert body["success"] is True
+    assert "INR" in body["data"]["currencies"]
+    assert set(body["data"]["segments"]) == {"EQUITY", "FNO", "CURRENCY", "COMMODITY"}
+    assert body["data"]["weekendDays"][:2] == ["MONDAY", "TUESDAY"]
+
+
+async def test_options_is_not_swallowed_by_the_code_route(
+    client: httpx.AsyncClient, nse: None
+) -> None:
+    """`/options` and `/{code}` are the same shape. If the order were wrong
+    this would 404 looking for an exchange called "options"."""
+    assert (await client.get("/api/exchanges/options")).status_code == 200
+
+
+async def test_a_currency_the_engine_does_not_know_is_refused(
+    client: httpx.AsyncClient, nse: None
+) -> None:
+    """Refused here rather than at startup.
+
+    The venue loader rejects an unknown currency when it builds the exchange,
+    which is a long way from the form that typed it -- and until then a P&L
+    figure would carry a currency nothing can price.
+    """
+    response = await client.put("/api/exchanges/NSE", json={"currency": "XYZ"})
+
+    assert response.status_code == 400
+    assert "XYZ" in response.json()["message"]
+    assert "INR" in response.json()["message"]
+    assert (await client.get("/api/exchanges/NSE")).json()["data"]["currency"] == "INR"
+
+
+async def test_a_segment_that_is_not_one_is_refused(client: httpx.AsyncClient, nse: None) -> None:
+    response = await client.put("/api/exchanges/NSE", json={"segments": ["EQUITY", "CRYPTO"]})
+
+    assert response.status_code == 400
+    assert "CRYPTO" in response.json()["message"]
+    assert (await client.get("/api/exchanges/NSE")).json()["data"]["segments"] == [
+        "EQUITY",
+        "FNO",
+    ]
+
+
+async def test_a_venue_that_lists_no_segments_is_refused_at_creation(
+    client: httpx.AsyncClient,
+) -> None:
+    """An empty list cannot build an exchange, so a row with one breaks
+    startup rather than this request. Refuse it while the caller is here."""
+    cases: list[list[str] | None] = [[], None]
+    for segments in cases:
+        body: dict[str, Any] = {
+            "exchange": "NYSE",
+            "exchangeName": "New York Stock Exchange",
+            "currency": "USD",
+            "marketOpen": "09:30",
+            "marketClose": "16:00",
+        }
+        if segments is not None:
+            body["segments"] = segments
+
+        response = await client.post("/api/exchanges", json=body)
+
+        assert response.status_code == 400, segments
+        assert "segments" in response.json()["message"]
+        assert (await client.get("/api/exchanges")).json()["data"] == []

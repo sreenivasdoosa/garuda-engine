@@ -6,10 +6,13 @@
  */
 
 import { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { Modal, Form, Row, Col, Button, Spinner, Badge, Tabs, Tab } from '@/components/ui/rbShim';
 import { BsGlobe } from 'react-icons/bs';
 import HelpIcon from '@/components/common/HelpIcon';
 import { exchangeHelpContent } from '@/data/help';
+import { exchangeService } from '@/services/admin/exchangeService';
+import { currencySymbol } from '@/utils/currency';
 import type { Exchange as ExchangeType, CreateExchangeRequest } from '@/types/exchange';
 
 export interface ExchangeProps {
@@ -27,7 +30,16 @@ export interface ExchangeProps {
   mode?: 'view' | 'edit' | 'create';
 }
 
-const WEEKEND_DAYS = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
+/**
+ * Used only until `GET /api/exchanges/options` answers, and if it never does.
+ * The server's list is authoritative -- these are its enums -- so this is a
+ * placeholder for the first paint rather than a second source of truth.
+ */
+const FALLBACK = {
+  currencies: ['INR', 'USD', 'EUR', 'GBP', 'JPY', 'AED', 'SGD', 'HKD', 'AUD'],
+  segments: ['COMMODITY', 'CURRENCY', 'EQUITY', 'FNO'],
+  weekendDays: ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY'],
+};
 
 const Exchange: React.FC<ExchangeProps> = ({
   exchange,
@@ -44,6 +56,7 @@ const Exchange: React.FC<ExchangeProps> = ({
     exchange: '',
     exchangeName: '',
     segments: [],
+    currency: 'INR',
     timezone: 'Asia/Kolkata',
     preMarketStart: '09:00:00',
     preMarketEnd: '09:08:00',
@@ -65,6 +78,7 @@ const Exchange: React.FC<ExchangeProps> = ({
         exchange: exchange.exchange,
         exchangeName: exchange.exchangeName,
         segments: exchange.segments ?? [],
+        currency: exchange.currency || 'INR',
         timezone: exchange.timezone || 'Asia/Kolkata',
         preMarketStart: exchange.preMarketStart || '',
         preMarketEnd: exchange.preMarketEnd || '',
@@ -84,6 +98,7 @@ const Exchange: React.FC<ExchangeProps> = ({
         exchange: '',
         exchangeName: '',
         segments: [],
+        currency: 'INR',
         timezone: 'Asia/Kolkata',
         preMarketStart: '09:00:00',
         preMarketEnd: '09:08:00',
@@ -101,17 +116,28 @@ const Exchange: React.FC<ExchangeProps> = ({
     }
   }, [exchange, show]);
 
+  // Kept for as long as the modal lives -- the enums do not change under it.
+  const { data: served } = useQuery({
+    queryKey: ['exchange-options'],
+    queryFn: () => exchangeService.getOptions(),
+    staleTime: Infinity,
+    enabled: !isViewMode,
+  });
+  const options = served ?? FALLBACK;
+
   const handleSubmit = () => {
     onSave(formData, isCreateMode);
   };
 
-  const handleWeekendDayToggle = (day: string) => {
-    const currentDays = formData.weekendDays || [];
-    if (currentDays.includes(day)) {
-      setFormData({ ...formData, weekendDays: currentDays.filter((d) => d !== day) });
-    } else {
-      setFormData({ ...formData, weekendDays: [...currentDays, day] });
-    }
+  /** Both weekend days and segments are sets of names; one toggle serves both. */
+  const toggle = (field: 'weekendDays' | 'segments', value: string) => {
+    const current = formData[field] || [];
+    setFormData({
+      ...formData,
+      [field]: current.includes(value)
+        ? current.filter((v) => v !== value)
+        : [...current, value],
+    });
   };
 
   const getModalTitle = () => {
@@ -144,6 +170,24 @@ const Exchange: React.FC<ExchangeProps> = ({
                 <Col md={4}>
                   <label className="text-ink-soft text-[0.875em]">Timezone</label>
                   <div>{exchange.timezone || 'N/A'}</div>
+                </Col>
+                <Col md={4}>
+                  <label className="text-ink-soft text-[0.875em]">Currency</label>
+                  <div className="font-medium">
+                    {currencySymbol(exchange.currency)} {exchange.currency || 'N/A'}
+                  </div>
+                </Col>
+                <Col md={4}>
+                  <label className="text-ink-soft text-[0.875em]">Segments</label>
+                  <div className="flex flex-wrap gap-1">
+                    {exchange.segments?.length
+                      ? exchange.segments.map((segment) => (
+                          <Badge key={segment} bg="secondary">
+                            {segment}
+                          </Badge>
+                        ))
+                      : 'N/A'}
+                  </div>
                 </Col>
                 <Col md={4}>
                   <label className="text-ink-soft text-[0.875em]">Status</label>
@@ -243,6 +287,51 @@ const Exchange: React.FC<ExchangeProps> = ({
                 </Row>
                 <Row>
                   <Col md={4}>
+                    <Form.Group className="mb-4">
+                      {/* Required: a P&L figure from this venue carries this
+                          currency, and a number without a unit is not a price. */}
+                      <Form.Label>Currency *</Form.Label>
+                      <Form.Select
+                        value={formData.currency ?? ''}
+                        onChange={(e) => setFormData({ ...formData, currency: e.target.value })}
+                      >
+                        <option value="">Select a currency…</option>
+                        {options.currencies.map((code) => (
+                          <option key={code} value={code}>
+                            {code} {currencySymbol(code)}
+                          </option>
+                        ))}
+                      </Form.Select>
+                    </Form.Group>
+                  </Col>
+                  <Col md={8}>
+                    <Form.Group className="mb-4">
+                      {/* Required too: the engine will not build a venue that
+                          does not say what it lists, so a blank set here
+                          produces a row that fails at startup instead. */}
+                      <Form.Label>Segments *</Form.Label>
+                      <div className="flex flex-wrap gap-3">
+                        {options.segments.map((segment) => (
+                          <Form.Check
+                            key={segment}
+                            type="checkbox"
+                            label={segment}
+                            checked={formData.segments?.includes(segment) ?? false}
+                            onChange={() => toggle('segments', segment)}
+                            inline
+                          />
+                        ))}
+                      </div>
+                      {!formData.segments?.length && (
+                        <small className="text-danger-500">
+                          Pick at least one — a venue that lists nothing cannot load.
+                        </small>
+                      )}
+                    </Form.Group>
+                  </Col>
+                </Row>
+                <Row>
+                  <Col md={4}>
                     <Form.Check
                       type="switch"
                       label={<span className="flex items-center">Active <HelpIcon article={exchangeHelpContent['exchange.isActive']} /></span>}
@@ -265,13 +354,13 @@ const Exchange: React.FC<ExchangeProps> = ({
                   <Col md={12}>
                     <Form.Label className="flex items-center">Weekend Days <HelpIcon article={exchangeHelpContent['exchange.weekendDays']} /></Form.Label>
                     <div className="flex flex-wrap gap-2">
-                      {WEEKEND_DAYS.map((day) => (
+                      {options.weekendDays.map((day) => (
                         <Form.Check
                           key={day}
                           type="checkbox"
                           label={day}
                           checked={formData.weekendDays?.includes(day) ?? false}
-                          onChange={() => handleWeekendDayToggle(day)}
+                          onChange={() => toggle('weekendDays', day)}
                           inline
                         />
                       ))}

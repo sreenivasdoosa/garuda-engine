@@ -14,6 +14,7 @@ import type {
   UpdateHolidayRequest,
   EventDay,
   CreateEventDayRequest,
+  ExchangeOptions,
 } from '@/types/exchange';
 
 // ==================== EXCHANGES ====================
@@ -22,6 +23,11 @@ export const exchangeService = {
   // Get all exchanges
   async getAll(): Promise<Exchange[]> {
     return api.get<Exchange[]>(API_ENDPOINTS.EXCHANGES.LIST);
+  },
+
+  // What the venue form may choose from — the engine's own enums.
+  async getOptions(): Promise<ExchangeOptions> {
+    return api.get<ExchangeOptions>(API_ENDPOINTS.EXCHANGES.OPTIONS);
   },
 
   // Get exchange by code

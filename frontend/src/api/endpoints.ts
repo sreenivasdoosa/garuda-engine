@@ -260,6 +260,7 @@ export const API_ENDPOINTS = {
     BASE: '/api/exchanges',
     LIST: '/api/exchanges',
     MARKET_STATUS: '/api/exchanges/market-status',
+    OPTIONS: '/api/exchanges/options',
     DETAILS: (code: string) => `/api/exchanges/${code}`,
     HOLIDAYS: (code: string) => `/api/exchanges/${code}/holidays`,
     EVENT_DAYS: (code: string) => `/api/exchanges/${code}/event-days`,

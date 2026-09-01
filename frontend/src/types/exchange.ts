@@ -61,6 +61,20 @@ export interface CreateExchangeRequest {
 
 export interface UpdateExchangeRequest extends Partial<CreateExchangeRequest> {}
 
+/**
+ * What a venue form may choose from, served by `GET /api/exchanges/options`.
+ *
+ * Asked for rather than kept here: these are the engine's own `Currency`,
+ * `Segment` and weekday spellings, and a second copy of them in the UI drifts
+ * the moment one gains a member — with the symptom being a venue the engine
+ * then refuses to load.
+ */
+export interface ExchangeOptions {
+  currencies: string[];
+  segments: string[];
+  weekendDays: string[];
+}
+
 // ==================== HOLIDAYS ====================
 
 export interface Holiday {

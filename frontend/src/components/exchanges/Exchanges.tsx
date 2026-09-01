@@ -14,6 +14,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { exchangeService } from '@/services/admin/v2AdminService';
 import type { Exchange as ExchangeType, CreateExchangeRequest } from '@/types/exchange';
 import Exchange from './Exchange';
+import { currencySymbol } from '@/utils/currency';
 
 export interface ExchangesProps {
   /** Card title */
@@ -141,6 +142,34 @@ const Exchanges: React.FC<ExchangesProps> = ({
           <small className="text-ink-soft">{e.exchangeName}</small>
         </div>
       ),
+    },
+    {
+      key: 'currency' as const,
+      header: 'Currency',
+      render: (e: ExchangeType) => (
+        <span className="font-medium">
+          {currencySymbol(e.currency)} <small className="text-ink-soft">{e.currency || 'N/A'}</small>
+        </span>
+      ),
+    },
+    {
+      key: 'segments' as const,
+      header: 'Segments',
+      render: (e: ExchangeType) =>
+        e.segments?.length ? (
+          <span className="flex flex-wrap gap-1">
+            {e.segments.map((segment) => (
+              <span
+                key={segment}
+                className="rounded bg-raised px-1.5 py-0.5 text-[0.72em] text-ink-soft"
+              >
+                {segment}
+              </span>
+            ))}
+          </span>
+        ) : (
+          <small className="text-danger-500">none</small>
+        ),
     },
     ...(hideColumns.includes('timezone') ? [] : [{
       key: 'timezone' as const,

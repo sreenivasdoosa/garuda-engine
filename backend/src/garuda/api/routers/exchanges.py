@@ -23,8 +23,22 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from garuda.api.envelope import ok
+from garuda.domain.enums import Segment
+from garuda.domain.money import Currency
 from garuda.persistence import models
 from garuda.persistence.repositories import ExchangesRepository
+
+#: Weekend is a set of day names in the row, so the Console needs the spelling
+#: `_parse_weekend` in the venue loader accepts.
+WEEKDAYS = (
+    "MONDAY",
+    "TUESDAY",
+    "WEDNESDAY",
+    "THURSDAY",
+    "FRIDAY",
+    "SATURDAY",
+    "SUNDAY",
+)
 
 
 #: Stored comma-separated in one column; a list on the wire, because that is
@@ -111,12 +125,40 @@ class NewExchange(ExchangeBody):
     exchange: str = Field(min_length=1, max_length=10)
 
 
+def _checked_currency(value: str | None) -> str | None:
+    """The loader refuses a currency it does not know, and refuses it at
+    startup -- a long way from the form that typed it. Refuse it here."""
+    if value is None:
+        return None
+    code = value.strip().upper()
+    if code not in {c.value for c in Currency}:
+        known = ", ".join(sorted(c.value for c in Currency))
+        raise HTTPException(status_code=400, detail=f"{value!r} is not a currency; one of {known}")
+    return code
+
+
+def _checked_segments(values: list[str] | None) -> str | None:
+    """Same: a venue that lists a segment the engine does not have will not
+    load, and an empty list will not build an exchange at all."""
+    if values is None:
+        return None
+    named = [v.strip().upper() for v in values if v.strip()]
+    unknown = sorted(set(named) - {s.value for s in Segment})
+    if unknown:
+        known = ", ".join(sorted(s.value for s in Segment))
+        raise HTTPException(
+            status_code=400,
+            detail=f"{', '.join(unknown)} is not a segment; some of {known}",
+        )
+    return ",".join(named) or None
+
+
 #: Wire name -> (column, converter). One table, so the mapping is written once
 #: and both create and update read it.
 _COLUMNS: dict[str, tuple[str, Any]] = {
     "exchangeName": ("exchange_name", lambda v: v),
-    "segments": ("segments", _join),
-    "currency": ("currency", lambda v: v.upper() if v else v),
+    "segments": ("segments", _checked_segments),
+    "currency": ("currency", _checked_currency),
     "timezone": ("timezone", lambda v: v),
     "preMarketStart": ("pre_market_start", _parse_time),
     "preMarketEnd": ("pre_market_end", _parse_time),
@@ -162,6 +204,22 @@ def build(sessions: async_sessionmaker[AsyncSession]) -> APIRouter:
         rows = await ExchangesRepository(db).all(order_by="exchange_code")
         return ok([_wire(row) for row in rows])
 
+    @router.get("/options")
+    async def options() -> dict[str, Any]:
+        """What the venue form may choose from.
+
+        Served rather than hardcoded in the Console: these are the engine's own
+        enums, and a second copy of them in the UI drifts the moment one gains
+        a member. Declared before `/{code}` so that path does not swallow it.
+        """
+        return ok(
+            {
+                "currencies": sorted(c.value for c in Currency),
+                "segments": sorted(s.value for s in Segment),
+                "weekendDays": list(WEEKDAYS),
+            }
+        )
+
     @router.get("/{code}")
     async def one_exchange(code: str, db: AsyncSession = Depends(session)) -> dict[str, Any]:
         row = await ExchangesRepository(db).get(code.upper())
@@ -187,6 +245,10 @@ def build(sessions: async_sessionmaker[AsyncSession]) -> APIRouter:
             ("currency", "currency"),
             ("marketOpen", "market_open"),
             ("marketClose", "market_close"),
+            # Not NOT NULL in the schema, but a venue with no segments cannot
+            # be built, so accepting one is accepting a row that breaks
+            # startup rather than this request.
+            ("segments", "segments"),
         ):
             if values.get(column) is None:
                 raise HTTPException(status_code=400, detail=f"{wire} is required")
