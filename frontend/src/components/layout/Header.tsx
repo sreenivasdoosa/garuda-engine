@@ -164,7 +164,7 @@ const Header: React.FC<HeaderProps> = ({ showSections = true }) => {
       'inline-flex items-center gap-1 rounded-control px-2.5 py-1.5 text-xs font-medium transition-colors',
       active
         ? 'bg-accent-gradient text-white shadow-glow'
-        : 'border border-white/20 text-white/80 hover:bg-white/10 hover:text-white',
+        : 'border border-hairline text-ink-soft hover:bg-raised hover:text-ink',
     );
 
   return (
@@ -172,10 +172,10 @@ const Header: React.FC<HeaderProps> = ({ showSections = true }) => {
       {/* Left section */}
       <div className="flex items-center">
         <Link to="/" className="header-brand flex flex-col no-underline">
-          <BrandLogo height={28} className="text-white" />
+          <BrandLogo height={28} className="text-ink" />
           {versionLabel && (
             <span
-              className="hidden md:block text-center text-white/50"
+              className="hidden md:block text-center text-ink-faint"
               style={{ fontSize: '0.6rem', marginTop: '2px', letterSpacing: '0.02em' }}
             >
               {versionLabel}
@@ -189,7 +189,7 @@ const Header: React.FC<HeaderProps> = ({ showSections = true }) => {
         <HeaderIndexTickers />
 
         {!showSections && (
-          <span className="ml-3 hidden shrink-0 items-center rounded-full bg-white/10 px-2.5 py-0.5 text-xs font-medium text-white/80 md:inline-flex">
+          <span className="ml-3 hidden shrink-0 items-center rounded-full bg-raised px-2.5 py-0.5 text-xs font-medium text-ink-soft md:inline-flex">
             {getPortalLabel()}
           </span>
         )}
@@ -213,7 +213,7 @@ const Header: React.FC<HeaderProps> = ({ showSections = true }) => {
           trigger={
             <button
               type="button"
-              className="relative p-2 text-white/80 hover:text-white transition-colors"
+              className="relative p-2 text-ink-soft hover:text-ink transition-colors"
               aria-label="Alerts"
             >
               <BsBell size={20} />
@@ -305,13 +305,13 @@ const Header: React.FC<HeaderProps> = ({ showSections = true }) => {
         <Dropdown
           align="end"
           trigger={
-            <button type="button" className="flex items-center gap-2 pl-1 text-white/90">
+            <button type="button" className="flex items-center gap-2 pl-1 text-ink">
               <div className="flex h-9 w-9 items-center justify-center rounded-full bg-accent-gradient text-sm font-semibold text-white">
                 {user?.name?.charAt(0).toUpperCase() || <BsPerson size={16} />}
               </div>
               <div className="hidden md:block text-left">
                 <div className="text-sm font-medium">{user?.name}</div>
-                <div className="text-xs text-white/60">{user?.email}</div>
+                <div className="text-xs text-ink-faint">{user?.email}</div>
               </div>
             </button>
           }
