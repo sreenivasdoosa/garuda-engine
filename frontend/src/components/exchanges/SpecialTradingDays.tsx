@@ -15,6 +15,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { specialTradingDayService, exchangeService } from '@/services/admin/v2AdminService';
 import { toast } from 'react-toastify';
 import type { SpecialTradingDay } from '@/services/admin/v2AdminService';
+import HelpIcon from '@/components/common/HelpIcon';
+import { specialTradingDaysHelpContent as help } from '@/data/help';
 
 export interface SpecialTradingDaysProps {
   /** Card title */
@@ -243,7 +245,10 @@ const SpecialTradingDays: React.FC<SpecialTradingDaysProps> = ({
     <>
       <Card>
         <Card.Header className="flex justify-between items-center">
-          <h5 className="mb-0">{title}</h5>
+          <h5 className="mb-0 flex items-center">
+            {title}
+            <HelpIcon article={help['specialTradingDays.overview']} />
+          </h5>
           <div className="flex items-center gap-2">
             <Button variant="primary" size="sm" onClick={handleOpenAddModal}>
                 <BsPlus className="me-1" />
@@ -311,7 +316,10 @@ const SpecialTradingDays: React.FC<SpecialTradingDaysProps> = ({
         </Modal.Header>
         <Modal.Body>
           <Form.Group className="mb-4">
-            <Form.Label>Exchange <span className="text-danger-600 dark:text-danger-400">*</span></Form.Label>
+            <Form.Label className="flex items-center">
+              Exchange <span className="text-danger-600 dark:text-danger-400">*</span>
+              <HelpIcon article={help['specialTradingDays.exchange']} />
+            </Form.Label>
             <Form.Select
               value={formData.exchange}
               onChange={(e) => setFormData((prev) => ({ ...prev, exchange: e.target.value }))}
@@ -324,7 +332,10 @@ const SpecialTradingDays: React.FC<SpecialTradingDaysProps> = ({
             </Form.Select>
           </Form.Group>
           <Form.Group className="mb-4">
-            <Form.Label>Date <span className="text-danger-600 dark:text-danger-400">*</span></Form.Label>
+            <Form.Label className="flex items-center">
+              Date <span className="text-danger-600 dark:text-danger-400">*</span>
+              <HelpIcon article={help['specialTradingDays.tradingDate']} />
+            </Form.Label>
             <Form.Control
               type="date"
               value={formData.tradingDate}
@@ -333,7 +344,10 @@ const SpecialTradingDays: React.FC<SpecialTradingDaysProps> = ({
             />
           </Form.Group>
           <Form.Group className="mb-4">
-            <Form.Label>Trading Day Name</Form.Label>
+            <Form.Label className="flex items-center">
+              Trading Day Name
+              <HelpIcon article={help['specialTradingDays.tradingDayName']} />
+            </Form.Label>
             <Form.Control
               type="text"
               placeholder="e.g., Muhurat Trading, Special Saturday"
@@ -344,7 +358,10 @@ const SpecialTradingDays: React.FC<SpecialTradingDaysProps> = ({
           <Row className="mb-4">
             <Col md={6}>
               <Form.Group>
-                <Form.Label>Market Open <small className="text-ink-soft">(optional)</small></Form.Label>
+                <Form.Label className="flex items-center">
+                  Market Open <small className="text-ink-soft ms-1">(optional)</small>
+                  <HelpIcon article={help['specialTradingDays.marketOpen']} />
+                </Form.Label>
                 <Form.Control
                   type="time"
                   value={formData.marketOpen}
@@ -354,7 +371,10 @@ const SpecialTradingDays: React.FC<SpecialTradingDaysProps> = ({
             </Col>
             <Col md={6}>
               <Form.Group>
-                <Form.Label>Market Close <small className="text-ink-soft">(optional)</small></Form.Label>
+                <Form.Label className="flex items-center">
+                  Market Close <small className="text-ink-soft ms-1">(optional)</small>
+                  <HelpIcon article={help['specialTradingDays.marketOpen']} />
+                </Form.Label>
                 <Form.Control
                   type="time"
                   value={formData.marketClose}
