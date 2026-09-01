@@ -30,7 +30,8 @@ licence in `README.md`, standalone (market data in-process), single-operator.
 | Broker adapters (execution) | Zerodha · Fyers (API v3) · Kotak Neo · Dhan |
 | Market data providers | Zerodha · Fyers · Dhan |
 
-- **No XTS**, no Noren, no IIFL, no UTrade, no 5paisa, no TrueData for now. XTS revisited later.
+- **No XTS**, and none of the other brokers or data vendors the reference supports, for now.
+  XTS revisited later.
 - The adapter seam must keep adding a broker cheap — that is the point of the contract test suite.
 
 ## 4. Broker login

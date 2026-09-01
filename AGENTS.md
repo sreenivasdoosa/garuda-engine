@@ -17,7 +17,12 @@ and MCX today, with a venue model built for other exchanges and timezones.
 It is a rewrite of a mature private Java engine. Refer to that system only as
 **"the reference engine"** — never by its product or company name, in code,
 config, docs, database identifiers, log strings, CSS classes or commit
-messages. This is a hard rule with no exceptions.
+messages. This is a hard rule with no exceptions, and CI enforces it:
+`scripts/check-no-reference-names.sh` fails the build on the product name or
+its Java package namespace anywhere in a tracked file.
+
+Third-party broker names are not covered by that rule — naming a broker
+garuda does not support is ordinary scope documentation.
 
 It is a **server application, not a library.** Strategies are configuration
 rows created in the Console, not user Python classes. `pip install

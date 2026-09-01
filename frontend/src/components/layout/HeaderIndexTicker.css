@@ -1,0 +1,102 @@
+/* HeaderIndexTicker — compact 32px-tall card for the app header. */
+
+.header-index-ticker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px 4px 12px;
+  height: 32px;
+  border: 1px solid #e2e6ea;
+  border-radius: 6px;
+  background: #fafbfc;
+  font-size: 12px;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s, background-color 0.15s;
+  position: relative;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.header-index-ticker:hover {
+  border-color: #c1c8d1;
+  background: #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.header-index-ticker:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 1px;
+}
+
+.header-index-ticker .hit-label {
+  font-weight: 700;
+  font-size: 11px;
+  color: #525f7f;
+  letter-spacing: 0.3px;
+}
+
+.header-index-ticker .hit-price {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.header-index-ticker .hit-change,
+.header-index-ticker .hit-pct {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.header-index-ticker.pos .hit-price,
+.header-index-ticker.pos .hit-change,
+.header-index-ticker.pos .hit-pct {
+  color: #16a34a;
+}
+
+.header-index-ticker.neg .hit-price,
+.header-index-ticker.neg .hit-change,
+.header-index-ticker.neg .hit-pct {
+  color: #dc2626;
+}
+
+.header-index-ticker .hit-chart-btn {
+  background: transparent;
+  border: none;
+  padding: 2px 4px;
+  color: #525f7f;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.header-index-ticker:hover .hit-chart-btn,
+.header-index-ticker:focus-visible .hit-chart-btn {
+  opacity: 1;
+}
+
+.header-index-ticker .hit-chart-btn:hover {
+  color: #2563eb;
+}
+
+.header-index-ticker .hit-live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #16a34a;
+  animation: hitPulse 2s infinite;
+  flex-shrink: 0;
+}
+
+@keyframes hitPulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.35; }
+}
+
+/* Hide below the lg breakpoint (992px) so headers don't get cramped on
+   tablet / mobile. The group wrapper has d-none d-lg-flex too — this is
+   belt-and-braces for any consumer that uses the card outside the group. */
+@media (max-width: 991px) {
+  .header-index-tickers-group { display: none !important; }
+}

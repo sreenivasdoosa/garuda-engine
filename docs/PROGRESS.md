@@ -94,7 +94,8 @@ configuration is refused loudly rather than silently ignored.
 | **1 trailing mode** | `HEIKIN_ASHI` — needs a candle transform, a wick search and a distance cap that nothing else uses |
 | **Automatic kill switches** | Operator-set switches load and fire. The reference also raises them from a daily loss, a volatility circuit or a rejection rate, with a state machine for when one may re-fire. `DailyLossCheck` refuses at the limit instead. |
 | **The `*_policy` tables** | Not read, and that is correct: they are Console-side templates with no key from a strategy. See `TRADE_MANAGEMENT.md`. |
-| **The API and the Console** | Empty packages. |
+| **The API** | `api/` holds one empty `__init__.py`. Nothing serves the Console. |
+| **The permission checks in the Console** | `usePermissions` is a shim returning true for everything, so the twenty components that branch on it compile unchanged. The branches are dead. Inlining them -- deleting the checks -- is follow-up work. |
 
 ---
 
@@ -118,7 +119,7 @@ Newest first. One line per chunk of work, not per commit.
 
 | Date | What landed |
 |---|---|
-| 2026-09-01 | RMS finished: the breach log, scoped kill switches, order rate limits. Trailing finished bar one mode: the group's trailing stop, and ATR/EMA/SuperTrend off closed bars. Progress tracking written down. |
+| 2026-09-01 | The Console copied from the reference and stripped: one brand, one deployment, one local admin, no SSO, no billing, no user portal. 30 pages, builds clean, and a CI gate that fails on the reference engine's name. RMS finished: the breach log, scoped kill switches, order rate limits. Trailing finished bar one mode: the group's trailing stop, and ATR/EMA/SuperTrend off closed bars. Progress tracking written down. |
 | 2026-08-31 | The strategy engine, end to end: rules, direction, selectors, strikes, indicators, synthetics, tranches, candle history. Then the risk gate wired in front of every order, exits gated on their own terms, limits resolved per order, the position cap, and combined stop and target. |
 | 2026-08-29 | The composition root, the `exchanges.currency` and `segments` columns, and the Intent → TradeSignal seam. |
 | 2026-08-28 | Project charter, scope, design documents, and the Phase 0 foundations. |
@@ -129,9 +130,12 @@ Newest first. One line per chunk of work, not per commit.
 
 In value order. **Ask before starting anything with a Console page.**
 
-1. **The API and the Console.** The biggest chunk left and the one that closes
-   every phase. Proposed in [`API_AND_CONSOLE.md`](API_AND_CONSOLE.md) —
-   26 pages to make work, 17 to delete, 7 to defer — and **not yet agreed**.
-2. **`HEIKIN_ASHI` trailing.** The last trailing mode.
-3. **Phase 4 leftovers that are not UI**: the adapter contract test suite, the
+1. **The API.** The Console is stripped and building; nothing serves it. This
+   is now the only thing between the engine and a usable product. See
+   [`API_AND_CONSOLE.md`](API_AND_CONSOLE.md).
+2. **Repoint the Console at the new API**, and inline the permission checks.
+   The pages still call the reference's endpoints and still branch on a
+   permission shim.
+3. **`HEIKIN_ASHI` trailing.** The last trailing mode.
+4. **Phase 4 leftovers that are not UI**: the adapter contract test suite, the
    order-fill escalation ladder, and the four exit policies above.

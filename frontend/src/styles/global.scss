@@ -1,0 +1,1818 @@
+// Note: Variables are auto-injected via vite.config.ts additionalData
+@use "sass:color";
+@use 'themes/index';
+
+// Global styles
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  font-size: 15px;
+}
+
+body {
+  font-family: $font-family-sans-serif;
+  font-size: $font-size-base;
+  color: $body-color;
+  background: linear-gradient(135deg, #f0f4f8 0%, #e2e8f0 50%, #f0f4f8 100%);
+  background-attachment: fixed;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  min-height: 100vh;
+}
+
+// Dark mode: the light body gradient shows through the transparent
+// .main-content as a whitish wash between components — use the dark app token
+// (theme-aware, flips per flavor) and drive text colour off the ink token too.
+html.dark body {
+  background: rgb(var(--c-app));
+  color: rgb(var(--c-ink));
+}
+
+.row > *,
+.tab-content,
+.tab-pane,
+.card,
+.card-body,
+.card-header,
+.card-footer,
+.modal-body,
+.modal-footer,
+.offcanvas-body,
+.accordion-body {
+  min-width: 0;
+}
+
+// Headings - Medium sizing
+h1 { font-size: 1.75rem; }
+h2 { font-size: 1.5rem; }
+h3 { font-size: 1.25rem; }
+h4 { font-size: 1.125rem; }
+h5 { font-size: 1rem; }
+h6 { font-size: 0.9375rem; }
+
+h1, h2, h3, h4, h5, h6 {
+  font-weight: $headings-font-weight;
+  // Token ink, not the fixed $gray-800: headings had no dark-mode bridge and
+  // went dark-on-dark (dimmer than their ink-soft subtext). Light is ~identical.
+  color: rgb(var(--c-ink));
+  margin-bottom: 0.375rem;
+}
+
+// Links
+a {
+  color: var(--brand-primary, $brand-fallback);
+  text-decoration: none;
+  transition: $transition-fast;
+
+  &:hover {
+    text-decoration: none;
+    opacity: 0.8;
+  }
+}
+
+// Scrollbars — token-driven so the thumb reads against the track in BOTH modes
+// on every brand. Standard properties (Chromium 121+/Firefox): NOTE once
+// scrollbar-color is set, Chromium IGNORES ::-webkit-scrollbar styling and
+// renders standard bars — scrollbar-width must be set per element (it does not
+// inherit), hence `*`, so the page bar and every panel bar get the SAME thin width.
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(var(--c-ink-faint)) rgb(var(--c-raised));
+}
+
+// Safari fallback only (no scrollbar-color support there; Chromium ignores these).
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgb(var(--c-raised));
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgb(var(--c-ink-faint));
+  border-radius: 4px;
+
+  &:hover {
+    background: rgb(var(--c-ink-soft));
+  }
+}
+
+// Card styles - Elegant with accent
+.card {
+  border: none !important;
+  border-radius: 1rem !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04) !important;
+  background: rgb(var(--c-card)) !important;
+  margin-bottom: 1rem;
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+              box-shadow 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  overflow: hidden;
+  position: relative;
+
+  // Gradient top accent line
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, #2dce89 0%, #11cdef 50%, #5e72e4 100%);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+
+  &:hover {
+    transform: translateY(-6px) !important;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.12), 0 8px 16px rgba(0, 0, 0, 0.08) !important;
+
+    &::before {
+      opacity: 1;
+    }
+  }
+
+  // Prevent hover effect on cards that shouldn't lift
+  &.no-hover:hover {
+    transform: none !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08) !important;
+
+    &::before {
+      opacity: 0;
+    }
+  }
+}
+
+.card-header {
+  background: rgb(var(--c-raised) / 0.5) !important;
+  border-bottom: 1px solid rgba($gray-200, 0.5) !important;
+  padding: 1rem 1.25rem !important;
+  font-weight: $font-weight-semibold;
+  font-size: $font-size-base;
+}
+
+.card-body {
+  padding: 1.25rem !important;
+}
+
+.card-footer {
+  background: rgb(var(--c-raised) / 0.3) !important;
+  border-top: 1px solid rgba($gray-200, 0.5) !important;
+  padding: 1rem 1.25rem !important;
+}
+
+// Button enhancements - Elegant
+.btn {
+  font-weight: $font-weight-medium !important;
+  font-size: $font-size-sm;
+  border-radius: 0.5rem !important;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  padding: $btn-padding-y $btn-padding-x;
+  position: relative;
+  overflow: hidden;
+
+  &:focus {
+    box-shadow: 0 0 0 3px rgba(45, 206, 137, 0.2) !important;
+  }
+
+  &:active {
+    transform: scale(0.98) !important;
+  }
+}
+
+.btn-sm {
+  padding: $btn-padding-y-sm $btn-padding-x-sm;
+  font-size: $font-size-xs;
+  border-radius: 0.375rem !important;
+}
+
+.btn-lg {
+  padding: 0.625rem 1.25rem;
+  font-size: $font-size-base;
+  border-radius: 0.625rem !important;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #2dce89 0%, #26c281 100%) !important;
+  border: none !important;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1) !important;
+  color: #fff !important;
+
+  &:hover, &:focus {
+    background: linear-gradient(135deg, #26c281 0%, #1fa06a 100%) !important;
+    box-shadow: 0 6px 20px rgba(45, 206, 137, 0.4) !important;
+    transform: translateY(-2px) !important;
+    color: #fff !important;
+  }
+
+  &:active {
+    transform: translateY(0) scale(0.98) !important;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1) !important;
+  }
+}
+
+.btn-outline-primary {
+  border: 1.5px solid #2dce89 !important;
+  color: #2dce89 !important;
+  background: transparent !important;
+
+  &:hover, &:focus {
+    background: rgba(45, 206, 137, 0.1) !important;
+    border-color: #2dce89 !important;
+    color: #2dce89 !important;
+    transform: translateY(-2px) !important;
+  }
+}
+
+.btn-outline-secondary {
+  border: 1.5px solid $gray-400 !important;
+  color: $gray-700 !important;
+
+  &:hover, &:focus {
+    background: $gray-100 !important;
+    border-color: $gray-500 !important;
+    color: $gray-800 !important;
+    transform: translateY(-2px) !important;
+  }
+}
+
+.btn-outline-danger {
+  border: 1.5px solid $danger !important;
+  color: $danger !important;
+
+  &:hover, &:focus {
+    background: rgba($danger, 0.1) !important;
+    border-color: $danger !important;
+    color: $danger !important;
+    transform: translateY(-2px) !important;
+  }
+}
+
+// Form styles - Elegant
+.form-control {
+  border-radius: 0.5rem;
+  border: 1.5px solid $gray-300;
+  padding: $input-padding-y $input-padding-x;
+  font-size: $font-size-sm;
+  transition: all var(--transition-smooth, 0.3s ease);
+  background: #fff;
+
+  &:hover:not(:focus) {
+    border-color: $gray-400;
+  }
+
+  &:focus {
+    border-color: var(--brand-primary, $brand-fallback);
+    box-shadow: 0 0 0 3px rgba(var(--brand-primary-rgb, 45, 206, 137), 0.12);
+    background: #fff;
+  }
+
+  &::placeholder {
+    color: $gray-400;
+    font-weight: $font-weight-normal;
+  }
+}
+
+.form-control-sm {
+  padding: 0.375rem 0.625rem;
+  font-size: $font-size-xs;
+  border-radius: 0.375rem;
+}
+
+.form-label {
+  font-weight: $font-weight-semibold;
+  color: $gray-700;
+  margin-bottom: 0.375rem;
+  font-size: $font-size-sm;
+  letter-spacing: 0.01em;
+}
+
+.form-select {
+  font-size: $font-size-sm;
+  padding: $input-padding-y $input-padding-x;
+  border-radius: 0.5rem;
+  border: 1.5px solid $gray-300;
+  transition: all var(--transition-smooth, 0.3s ease);
+  cursor: pointer;
+
+  &:hover:not(:focus) {
+    border-color: $gray-400;
+  }
+
+  &:focus {
+    border-color: var(--brand-primary, $brand-fallback);
+    box-shadow: 0 0 0 3px rgba(var(--brand-primary-rgb, 45, 206, 137), 0.12);
+  }
+}
+
+.form-select-sm {
+  padding: 0.375rem 0.625rem;
+  font-size: $font-size-xs;
+  border-radius: 0.375rem;
+}
+
+.form-check-label {
+  font-size: $font-size-sm;
+}
+
+.form-check-input {
+  border-radius: 0.25rem;
+  transition: all var(--transition-fast, 0.15s ease);
+
+  &:checked {
+    background-color: var(--brand-primary, $brand-fallback);
+    border-color: var(--brand-primary, $brand-fallback);
+  }
+
+  &:focus {
+    box-shadow: 0 0 0 3px rgba(var(--brand-primary-rgb, 45, 206, 137), 0.15);
+  }
+}
+
+// Switch toggle elegant style
+.form-switch .form-check-input {
+  border-radius: 2rem;
+  height: 1.25rem;
+  width: 2.25rem;
+
+  &:checked {
+    background-color: var(--brand-primary, $brand-fallback);
+  }
+}
+
+.input-group-text {
+  font-size: $font-size-sm;
+  padding: $input-padding-y $input-padding-x;
+  border-radius: 0.5rem;
+  border: 1.5px solid $gray-300;
+  background: $gray-50;
+}
+
+// Table styles - Elegant
+.table {
+  margin-bottom: 0;
+  font-size: $font-size-sm;
+  border-collapse: separate;
+  border-spacing: 0;
+
+  th {
+    font-weight: $font-weight-semibold;
+    color: rgb(var(--c-ink-soft));
+    text-transform: uppercase;
+    font-size: $font-size-xs;
+    letter-spacing: 0.5px;
+    border-top: none !important;
+    background: rgb(var(--c-raised)) !important;
+    padding: 0.75rem 1rem !important;
+    white-space: nowrap;
+    border-bottom: none !important;
+  }
+
+  td {
+    vertical-align: middle;
+    padding: 0.875rem 1rem !important;
+    border-bottom: 1px solid rgb(var(--c-hairline) / 0.5) !important;
+    border-top: none !important;
+    transition: all 0.2s ease;
+  }
+
+  tbody tr {
+    transition: all 0.2s ease;
+    background: rgb(var(--c-card));
+
+    &:last-child td {
+      border-bottom: none !important;
+    }
+  }
+}
+
+.table-sm {
+  th, td {
+    padding: 0.625rem 0.875rem !important;
+  }
+}
+
+.table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: visible;
+  -webkit-overflow-scrolling: touch;
+}
+
+.table-responsive > .table,
+.table-responsive > table {
+  min-width: max-content;
+  width: 100%;
+}
+
+.table-hover tbody tr:hover {
+  background: linear-gradient(90deg, rgba(45, 206, 137, 0.06) 0%, rgba(45, 206, 137, 0.02) 100%) !important;
+  transform: scale(1.005);
+
+  td {
+    color: rgb(var(--c-ink));
+  }
+}
+
+// Badge styles - Elegant
+.badge {
+  font-weight: $font-weight-semibold;
+  padding: 0.3em 0.6em;
+  font-size: $font-size-xs;
+  border-radius: 0.375rem;
+  letter-spacing: 0.02em;
+  transition: all var(--transition-fast, 0.15s ease);
+
+  // Subtle badges with better contrast
+  &.bg-success-subtle {
+    background: linear-gradient(135deg, rgba($success, 0.15) 0%, rgba($success, 0.08) 100%) !important;
+    color: color.adjust($success, $lightness: -10%) !important;
+  }
+
+  &.bg-danger-subtle {
+    background: linear-gradient(135deg, rgba($danger, 0.15) 0%, rgba($danger, 0.08) 100%) !important;
+    color: color.adjust($danger, $lightness: -10%) !important;
+  }
+
+  &.bg-warning-subtle {
+    background: linear-gradient(135deg, rgba($warning, 0.15) 0%, rgba($warning, 0.08) 100%) !important;
+    color: color.adjust($warning, $lightness: -10%) !important;
+  }
+
+  &.bg-info-subtle {
+    background: linear-gradient(135deg, rgba($info, 0.15) 0%, rgba($info, 0.08) 100%) !important;
+    color: color.adjust($info, $lightness: -15%) !important;
+  }
+
+  &.bg-primary-subtle {
+    background: linear-gradient(135deg, rgba(var(--brand-primary-rgb, 45, 206, 137), 0.15) 0%, rgba(var(--brand-primary-rgb, 45, 206, 137), 0.08) 100%) !important;
+  }
+}
+
+// Status badges
+.badge-success { background-color: $success; }
+.badge-danger { background-color: $danger; }
+.badge-warning { background-color: $warning; color: #fff; }
+.badge-info { background-color: $info; }
+.badge-secondary { background-color: $secondary; }
+
+// Dropdown - Elegant
+.dropdown-menu {
+  border: 1px solid rgba($gray-200, 0.8);
+  box-shadow: var(--shadow-lg, 0 10px 25px rgba(0, 0, 0, 0.1));
+  border-radius: 0.625rem;
+  padding: 0.375rem;
+  font-size: $font-size-sm;
+  animation: scaleIn 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  overflow: hidden;
+}
+
+.dropdown-item {
+  padding: 0.5rem 0.875rem;
+  font-size: $font-size-sm;
+  border-radius: 0.375rem;
+  transition: all var(--transition-fast, 0.15s ease);
+  margin: 0.125rem 0;
+
+  &:hover {
+    background: linear-gradient(135deg, rgba(var(--brand-primary-rgb, 45, 206, 137), 0.08) 0%, rgba(var(--brand-primary-rgb, 45, 206, 137), 0.04) 100%);
+    color: var(--brand-primary, $brand-fallback);
+  }
+
+  &:active {
+    background: linear-gradient(135deg, rgba(var(--brand-primary-rgb, 45, 206, 137), 0.15) 0%, rgba(var(--brand-primary-rgb, 45, 206, 137), 0.08) 100%);
+    color: var(--brand-primary, $brand-fallback);
+  }
+}
+
+.dropdown-divider {
+  margin: 0.375rem 0;
+  border-color: rgba($gray-200, 0.6);
+}
+
+.dropdown-header {
+  padding: 0.5rem 0.875rem;
+  font-size: $font-size-xs;
+  font-weight: $font-weight-semibold;
+  color: $gray-500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+// Modal - Elegant
+.modal-content {
+  border: none;
+  border-radius: 0.875rem;
+  box-shadow: var(--shadow-xl, 0 20px 50px rgba(0, 0, 0, 0.15));
+  overflow: hidden;
+}
+
+.modal-header {
+  border-bottom: 1px solid rgba($gray-200, 0.6);
+  padding: 1rem 1.25rem;
+  background: linear-gradient(180deg, #fff 0%, #fafbfc 100%);
+
+  .modal-title {
+    font-size: 1.125rem;
+    font-weight: $font-weight-semibold;
+    color: $gray-800;
+  }
+
+  .btn-close {
+    padding: 0.5rem;
+    opacity: 0.5;
+    transition: all var(--transition-fast, 0.15s ease);
+
+    &:hover {
+      opacity: 1;
+      transform: scale(1.1);
+    }
+  }
+}
+
+.modal-body {
+  padding: 1.25rem;
+}
+
+.modal-footer {
+  border-top: 1px solid rgba($gray-200, 0.6);
+  padding: 1rem 1.25rem;
+  background: linear-gradient(180deg, #fafbfc 0%, #f8f9fa 100%);
+}
+
+// Modal backdrop
+.modal-backdrop {
+  backdrop-filter: blur(2px);
+}
+
+// Modal animation
+.modal.fade .modal-dialog {
+  transform: translateY(-20px) scale(0.98);
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.modal.show .modal-dialog {
+  transform: translateY(0) scale(1);
+}
+
+// Utility classes
+.text-brand {
+  color: var(--brand-primary, $brand-fallback) !important;
+}
+
+.bg-brand {
+  background-color: var(--brand-primary, $brand-fallback) !important;
+}
+
+.border-brand {
+  border-color: var(--brand-primary, $brand-fallback) !important;
+}
+
+.cursor-pointer {
+  cursor: pointer;
+}
+
+.text-truncate-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+// Text sizes
+.text-xs { font-size: $font-size-xs !important; }
+.text-sm { font-size: $font-size-sm !important; }
+.text-base { font-size: $font-size-base !important; }
+.text-lg { font-size: $font-size-lg !important; }
+
+// Stats card - Elegant with colored accents
+.stat-card,
+.user-stat-card {
+  background: #fff !important;
+  border-radius: 1rem !important;
+  padding: 1.25rem;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08) !important;
+  border: none !important;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  position: relative;
+  overflow: hidden;
+
+  // Colorful gradient corner accent
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 120px;
+    height: 120px;
+    background: radial-gradient(circle at top right, rgba(45, 206, 137, 0.1) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  &::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, #2dce89 0%, #11cdef 100%);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+  }
+
+  &:hover {
+    transform: translateY(-6px) !important;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.12), 0 6px 16px rgba(45, 206, 137, 0.1) !important;
+
+    &::after {
+      opacity: 1;
+    }
+  }
+
+  .stat-icon {
+    width: 52px;
+    height: 52px;
+    border-radius: 0.875rem !important;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    position: relative;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+
+    // Gradient backgrounds for icons
+    &.bg-primary,
+    &[class*="bg-primary"] {
+      background: linear-gradient(135deg, #2dce89 0%, #26c281 100%) !important;
+      color: #fff !important;
+    }
+    &.bg-success,
+    &[class*="bg-success"] {
+      background: linear-gradient(135deg, #2dce89 0%, #1fa06a 100%) !important;
+      color: #fff !important;
+    }
+    &.bg-danger,
+    &[class*="bg-danger"] {
+      background: linear-gradient(135deg, #f5365c 0%, #d32f4f 100%) !important;
+      color: #fff !important;
+    }
+    &.bg-warning,
+    &[class*="bg-warning"] {
+      background: linear-gradient(135deg, #fb6340 0%, #f5365c 100%) !important;
+      color: #fff !important;
+    }
+    &.bg-info,
+    &[class*="bg-info"] {
+      background: linear-gradient(135deg, #11cdef 0%, #0da5c0 100%) !important;
+      color: #fff !important;
+    }
+  }
+
+  .stat-value {
+    font-size: 1.75rem;
+    font-weight: $font-weight-bold;
+    color: $gray-800;
+    letter-spacing: -0.02em;
+  }
+
+  .stat-label {
+    font-size: $font-size-sm;
+    color: $gray-500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: $font-weight-semibold;
+  }
+
+  .stat-change {
+    font-size: $font-size-sm;
+    font-weight: $font-weight-semibold;
+
+    &.positive { color: $success; }
+    &.negative { color: $danger; }
+  }
+}
+
+// Loading spinner
+.loading-screen {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  z-index: 9999;
+}
+
+// Page header - Elegant
+.page-header {
+  margin-bottom: 1.75rem;
+  padding: 1.25rem 1.5rem;
+  background: #fff;
+  border-radius: 1rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+
+  .page-title {
+    font-size: 1.5rem;
+    font-weight: $font-weight-bold;
+    color: $gray-800;
+    margin-bottom: 0.25rem;
+    letter-spacing: -0.02em;
+  }
+
+  .page-subtitle {
+    color: $gray-500;
+    font-size: $font-size-sm;
+    letter-spacing: 0.01em;
+  }
+}
+
+// User page header - Elegant with gradient background
+.user-page-header {
+  margin-bottom: 2rem;
+  padding: 1.5rem;
+  position: relative;
+  background: linear-gradient(135deg, #fff 0%, #f8fafc 100%);
+  border-radius: 1rem;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+  overflow: hidden;
+
+  // Decorative gradient accent
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: linear-gradient(90deg, #2dce89 0%, #11cdef 50%, #5e72e4 100%);
+  }
+
+  // Decorative corner gradient
+  &::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 200px;
+    height: 200px;
+    background: radial-gradient(circle at top right, rgba(45, 206, 137, 0.08) 0%, transparent 60%);
+    pointer-events: none;
+  }
+}
+
+// Sidebar styles - Elegant with gradient
+.sidebar {
+  position: fixed;
+  top: $navbar-height;
+  left: 0;
+  bottom: 0;
+  width: $sidebar-width;
+  background: linear-gradient(180deg, #1a1f2e 0%, #252d3d 100%) !important;
+  border-right: none !important;
+  overflow-y: auto;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  z-index: $zindex-sidebar;
+  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.15) !important;
+
+  &.collapsed {
+    width: $sidebar-collapsed-width;
+  }
+}
+
+.sidebar-nav {
+  padding: 1rem 0.75rem;
+
+  .nav-item {
+    margin-bottom: 0.25rem;
+  }
+
+  .nav-link {
+    display: flex;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    color: rgba(255, 255, 255, 0.7) !important;
+    font-weight: $font-weight-medium;
+    font-size: $font-size-base;
+    border-radius: 0.625rem !important;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    margin: 0 0.25rem;
+    position: relative;
+
+    .nav-icon {
+      margin-right: 0.75rem;
+      font-size: 1.125rem;
+      width: 1.375rem;
+      text-align: center;
+      transition: all 0.2s ease !important;
+      opacity: 0.8;
+    }
+
+    &:hover {
+      color: #fff !important;
+      background: linear-gradient(135deg, rgba(45, 206, 137, 0.2) 0%, rgba(45, 206, 137, 0.1) 100%) !important;
+
+      .nav-icon {
+        transform: scale(1.1);
+        opacity: 1;
+        color: #2dce89 !important;
+      }
+    }
+
+    &.active {
+      color: #fff !important;
+      background: linear-gradient(135deg, rgba(45, 206, 137, 0.25) 0%, rgba(45, 206, 137, 0.15) 100%) !important;
+      font-weight: $font-weight-semibold;
+      box-shadow: 0 4px 12px rgba(45, 206, 137, 0.2) !important;
+
+      .nav-icon {
+        color: #2dce89 !important;
+        opacity: 1;
+      }
+
+      // Active indicator bar
+      &::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 4px;
+        height: 70%;
+        background: linear-gradient(180deg, #2dce89 0%, #26c281 100%);
+        border-radius: 0 4px 4px 0;
+        box-shadow: 0 0 8px rgba(45, 206, 137, 0.5);
+      }
+    }
+  }
+}
+
+// Sidebar section titles
+.sidebar-section-title {
+  color: rgba(255, 255, 255, 0.4) !important;
+  font-size: 0.6875rem !important;
+  letter-spacing: 1px !important;
+  margin-top: 0.75rem;
+  margin-bottom: 0.5rem;
+  padding-left: 1rem !important;
+}
+
+// Header styles - Elegant with gradient
+.header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: $navbar-height;
+  background: linear-gradient(135deg, #1a1f2e 0%, #252d3d 100%) !important;
+  border-bottom: none !important;
+  display: flex;
+  align-items: center;
+  padding: 0 1.25rem;
+  z-index: $zindex-header;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15) !important;
+
+  .header-brand {
+    display: flex;
+    align-items: center;
+    transition: opacity 0.2s ease;
+
+    &:hover {
+      opacity: 0.9;
+    }
+
+    .brand-logo {
+      height: 32px;
+      width: auto;
+      filter: brightness(0) invert(1);
+    }
+
+    .brand-name {
+      font-size: 1.125rem;
+      font-weight: $font-weight-bold;
+      color: #fff !important;
+      margin-left: 0.625rem;
+      letter-spacing: -0.01em;
+    }
+  }
+
+  // Make header icons and text white
+  .btn-link {
+    color: rgba(255, 255, 255, 0.8) !important;
+
+    &:hover {
+      color: #fff !important;
+    }
+  }
+
+  .text-dark {
+    color: rgba(255, 255, 255, 0.9) !important;
+  }
+
+  .text-muted {
+    color: rgba(255, 255, 255, 0.6) !important;
+  }
+
+  .badge.bg-secondary {
+    background: rgba(255, 255, 255, 0.15) !important;
+    color: #fff !important;
+  }
+
+  .rounded-circle.bg-secondary {
+    background: linear-gradient(135deg, #2dce89 0%, #26c281 100%) !important;
+  }
+}
+
+// Main content - Elegant
+.main-content {
+  margin-left: $sidebar-width;
+  margin-top: $navbar-height;
+  padding: 1.5rem;
+  min-height: calc(100vh - #{$navbar-height});
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  background: transparent;
+
+  &.sidebar-collapsed {
+    margin-left: $sidebar-collapsed-width;
+  }
+
+  &.no-sidebar {
+    margin-left: 0;
+  }
+}
+
+// Responsive
+@media (max-width: 991.98px) {
+  .sidebar {
+    transform: translateX(-100%);
+
+    &.open {
+      transform: translateX(0);
+    }
+  }
+
+  .main-content {
+    margin-left: 0;
+  }
+}
+
+// User Portal Layout - Different color scheme
+.user-layout {
+  .sidebar {
+    background: linear-gradient(180deg, #0d1f22 0%, #134e4a 100%) !important;
+  }
+
+  .header {
+    background: linear-gradient(135deg, #0d1f22 0%, #134e4a 100%) !important;
+
+    // Make the brand (logo) block span the sidebar width so everything after it —
+    // the NIFTY/SENSEX index tickers — begins at the sidebar's right edge (aligned
+    // with the main-content area) instead of immediately after the logo.
+    // lg+ only: the tickers are hidden below the lg breakpoint anyway, and the
+    // sidebar is off-canvas on small screens. The logo stays left-aligned.
+    @media (min-width: 992px) {
+      .header-brand {
+        width: calc(#{$sidebar-width} - 1.25rem);
+        align-items: flex-start;
+      }
+    }
+  }
+}
+
+// In dark mode the user portal drops its teal bars and matches the
+// admin/console dark-slate sidebar/header (teal reads as "green background"
+// against the dark app surfaces). Light mode keeps the teal identity.
+html.dark .user-layout {
+  .sidebar {
+    background: linear-gradient(180deg, #1a1f2e 0%, #252d3d 100%) !important;
+  }
+
+  .header {
+    background: linear-gradient(135deg, #1a1f2e 0%, #252d3d 100%) !important;
+  }
+}
+
+// Toast customization
+.Toastify__toast {
+  border-radius: $border-radius;
+  font-family: $font-family-sans-serif;
+  font-size: $font-size-sm;
+}
+
+// React-Select - Match Bootstrap form-select height
+.react-select__control {
+  min-height: 0 !important;
+  border-color: $gray-300 !important;
+  border-radius: $border-radius !important;
+  font-size: $font-size-sm !important;
+
+  &:hover {
+    border-color: $gray-400 !important;
+  }
+
+  &--is-focused {
+    border-color: var(--brand-primary, $brand-fallback) !important;
+    box-shadow: 0 0 0 2px rgba(var(--brand-primary-rgb, 0, 176, 255), 0.1) !important;
+  }
+}
+
+.react-select__value-container {
+  padding: $input-padding-y $input-padding-x !important;
+}
+
+.react-select__input-container {
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+.react-select__indicator {
+  padding: 4px 8px !important;
+}
+
+.react-select__indicator-separator {
+  display: none;
+}
+
+.react-select__menu {
+  font-size: $font-size-sm !important;
+  border-radius: $border-radius !important;
+  box-shadow: $box-shadow-lg !important;
+}
+
+.react-select__option {
+  padding: 0.375rem 0.625rem !important;
+  font-size: $font-size-sm !important;
+}
+
+// Token-aware theming for react-select — adapts to the active flavor + light/dark
+// mode (design-system migration). react-select sets its own white bg/dark text
+// inline, so these need !important. Applies to every instance via classNamePrefix.
+.react-select__control {
+  background-color: rgb(var(--c-card)) !important;
+  border-color: rgb(var(--c-hairline)) !important;
+  color: rgb(var(--c-ink)) !important;
+}
+.react-select__single-value,
+.react-select__input-container,
+.react-select__input {
+  color: rgb(var(--c-ink)) !important;
+}
+.react-select__placeholder { color: rgb(var(--c-ink-faint)) !important; }
+.react-select__menu {
+  background-color: rgb(var(--c-card)) !important;
+  border: 1px solid rgb(var(--c-hairline)) !important;
+}
+.react-select__option {
+  background-color: transparent !important;
+  color: rgb(var(--c-ink)) !important;
+}
+.react-select__option--is-focused { background-color: rgb(var(--c-raised)) !important; }
+.react-select__option--is-selected {
+  background-color: rgb(var(--c-primary-500)) !important;
+  color: #fff !important;
+}
+.react-select__indicator { color: rgb(var(--c-ink-faint)) !important; }
+.react-select__multi-value { background-color: rgb(var(--c-raised)) !important; }
+.react-select__multi-value__label { color: rgb(var(--c-ink)) !important; }
+.react-select__clear-indicator:hover,
+.react-select__dropdown-indicator:hover { color: rgb(var(--c-ink)) !important; }
+
+// ---------------------------------------------------------------------------
+// Theme-aware Bootstrap color/bg utilities (design-system migration).
+// The shim-migrated page bodies still use Bootstrap utility classes whose
+// colours are FIXED (grey text-muted, light bg-light/table-light) and don't
+// adapt to dark mode → low-contrast/unreadable. Remap them to design tokens so
+// they follow the active flavor + light/dark. Scoped header overrides (which
+// force white on the dark header) keep higher specificity and still win.
+// (In Phase 4, when bootstrap.min.css is removed, these bodies get a full
+// utility sweep and this bridge can go away.)
+// ---------------------------------------------------------------------------
+// NOTE (post-Phase-4): `.text-black` and `.bg-white` are REAL Tailwind
+// utilities now used deliberately (black text on colored chips, white toggle
+// knobs) — they must NOT be remapped to mode-flipping tokens (the ink remap
+// made chip text near-white on amber in dark mode). The remaining names below
+// are Bootstrap-only (no Tailwind collision) and are kept as a harmless
+// safety net for any straggler markup.
+.text-muted { color: rgb(var(--c-ink-soft)) !important; }
+.text-secondary { color: rgb(var(--c-ink-soft)) !important; }
+.text-body, .text-body-emphasis { color: rgb(var(--c-ink)) !important; }
+.text-dark { color: rgb(var(--c-ink)) !important; }
+.bg-light { background-color: rgb(var(--c-raised)) !important; }
+.bg-body, .bg-body-tertiary, .bg-body-secondary { background-color: rgb(var(--c-app)) !important; }
+.table-light,
+.table-light > th,
+.table-light > td,
+thead.table-light th {
+  background-color: rgb(var(--c-raised)) !important;
+  color: rgb(var(--c-ink)) !important;
+  --bs-table-bg: transparent;
+}
+// Bootstrap striped/hover table row tints are opaque light greys → set them on
+// tokens so striped tables stay readable on dark surfaces.
+html .table {
+  --bs-table-color: rgb(var(--c-ink));
+  --bs-table-bg: transparent; // cells show the (token) surface behind them, not Bootstrap's light default
+  --bs-table-striped-color: rgb(var(--c-ink));
+  --bs-table-hover-color: rgb(var(--c-ink));
+  --bs-table-striped-bg: rgb(var(--c-raised) / 0.5);
+  --bs-table-hover-bg: rgb(var(--c-raised) / 0.7);
+  color: rgb(var(--c-ink));
+  border-color: rgb(var(--c-hairline));
+}
+
+// Root bridge: the app toggles dark via the `.dark` CLASS, but Bootstrap's own
+// component variables only flip under its `[data-bs-theme=dark]` attribute (which
+// we never set) — so --bs-body-bg etc. stay light and leak white into any raw
+// Bootstrap component (tables, list-groups, etc.) on dark. Re-point Bootstrap's
+// core vars at design tokens under .dark so those components inherit dark values.
+html.dark {
+  --bs-body-bg: rgb(var(--c-app));
+  --bs-body-color: rgb(var(--c-ink));
+  --bs-emphasis-color: rgb(var(--c-ink));
+  --bs-secondary-color: rgb(var(--c-ink-soft));
+  --bs-tertiary-color: rgb(var(--c-ink-faint));
+  --bs-border-color: rgb(var(--c-hairline));
+  --bs-secondary-bg: rgb(var(--c-raised));
+  --bs-tertiary-bg: rgb(var(--c-raised));
+}
+
+// Chart container - Compact
+.chart-container {
+  position: relative;
+  height: 250px;
+
+  &.small { height: 160px; }
+  &.large { height: 350px; }
+}
+
+// Empty state - Elegant
+.empty-state {
+  text-align: center;
+  padding: 3rem 2rem;
+  position: relative;
+
+  // Subtle background
+  &::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 200px;
+    height: 200px;
+    background: radial-gradient(circle, rgba(var(--brand-primary-rgb, 45, 206, 137), 0.05) 0%, transparent 70%);
+    border-radius: 50%;
+    pointer-events: none;
+  }
+
+  .empty-icon {
+    font-size: 3.5rem;
+    color: $gray-400;
+    margin-bottom: 1.25rem;
+    opacity: 0.7;
+    position: relative;
+  }
+
+  .empty-title {
+    font-size: 1.25rem;
+    font-weight: $font-weight-semibold;
+    color: $gray-700;
+    margin-bottom: 0.5rem;
+    letter-spacing: -0.01em;
+    position: relative;
+  }
+
+  .empty-text {
+    color: $gray-500;
+    margin-bottom: 1.5rem;
+    font-size: $font-size-base;
+    max-width: 320px;
+    margin-left: auto;
+    margin-right: auto;
+    position: relative;
+  }
+}
+
+// PnL colors
+.text-profit, .text-positive {
+  color: $success !important;
+}
+
+.text-loss, .text-negative {
+  color: $danger !important;
+}
+
+// Animation utilities - Elegant
+.fade-in {
+  animation: fadeIn 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.slide-in {
+  animation: slideIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.slide-up {
+  animation: slideUp 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.scale-in {
+  animation: scaleIn 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+// Stagger animation for lists
+.stagger-item {
+  opacity: 0;
+  animation: fadeIn 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@for $i from 1 through 10 {
+  .stagger-item:nth-child(#{$i}) {
+    animation-delay: #{$i * 0.05}s;
+  }
+}
+
+// Spin animation for refresh buttons
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+// Pulse animation for status indicators
+.pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+// Glow animation for highlighted cards
+.glow {
+  animation: glow 2s ease-in-out infinite alternate;
+}
+
+@keyframes glow {
+  from {
+    box-shadow: 0 0 5px rgba(var(--brand-primary-rgb, 45, 206, 137), 0.2);
+  }
+  to {
+    box-shadow: 0 0 20px rgba(var(--brand-primary-rgb, 45, 206, 137), 0.4);
+  }
+}
+
+// Compact utility classes
+.gap-1 { gap: 0.25rem !important; }
+.gap-2 { gap: 0.5rem !important; }
+.gap-3 { gap: 0.75rem !important; }
+
+.p-compact { padding: 0.625rem !important; }
+.px-compact { padding-left: 0.625rem !important; padding-right: 0.625rem !important; }
+.py-compact { padding-top: 0.375rem !important; padding-bottom: 0.375rem !important; }
+
+// Nav pills - Compact
+.nav-pills {
+  .nav-link {
+    padding: 0.375rem 0.75rem;
+    font-size: $font-size-sm;
+    border-radius: $border-radius;
+  }
+}
+
+// Tabs - Compact
+.nav-tabs {
+  .nav-link {
+    padding: 0.5rem 0.875rem;
+    font-size: $font-size-sm;
+  }
+}
+
+// Accordion - Compact
+.accordion-button {
+  padding: 0.625rem 1rem;
+  font-size: $font-size-sm;
+}
+
+.accordion-body {
+  padding: 0.75rem 1rem;
+}
+
+// List group - Compact
+.list-group-item {
+  padding: 0.5rem 0.875rem;
+  font-size: $font-size-sm;
+}
+
+// Alert - Elegant
+.alert {
+  padding: 0.875rem 1.125rem;
+  font-size: $font-size-sm;
+  border-radius: 0.625rem;
+  border: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+
+  &.alert-success {
+    background: linear-gradient(135deg, rgba($success, 0.12) 0%, rgba($success, 0.06) 100%);
+    color: color.adjust($success, $lightness: -15%);
+  }
+
+  &.alert-danger {
+    background: linear-gradient(135deg, rgba($danger, 0.12) 0%, rgba($danger, 0.06) 100%);
+    color: color.adjust($danger, $lightness: -15%);
+  }
+
+  &.alert-warning {
+    background: linear-gradient(135deg, rgba($warning, 0.12) 0%, rgba($warning, 0.06) 100%);
+    color: color.adjust($warning, $lightness: -15%);
+  }
+
+  &.alert-info {
+    background: linear-gradient(135deg, rgba($info, 0.12) 0%, rgba($info, 0.06) 100%);
+    color: color.adjust($info, $lightness: -20%);
+  }
+
+  &.alert-primary {
+    background: linear-gradient(135deg, rgba(var(--brand-primary-rgb, 45, 206, 137), 0.12) 0%, rgba(var(--brand-primary-rgb, 45, 206, 137), 0.06) 100%);
+  }
+}
+
+// Pagination - Compact
+.pagination {
+  .page-link {
+    padding: 0.3rem 0.6rem;
+    font-size: $font-size-sm;
+  }
+}
+
+// Progress - Compact
+.progress {
+  height: 6px;
+  border-radius: $border-radius-sm;
+}
+
+// Tooltip - Compact
+.tooltip {
+  font-size: $font-size-xs;
+}
+
+// Popover - Compact
+.popover {
+  font-size: $font-size-sm;
+}
+
+// ===========================================
+// Admin Layout - Compact Spacing
+// ===========================================
+// Applied to Console and Terminal pages only
+// User portal retains the more spacious layout
+
+.admin-layout {
+  // Compact main content padding
+  .main-content {
+    padding: 1rem !important;
+  }
+
+  // Compact sidebar navigation
+  .sidebar-nav {
+    padding: 0.5rem 0.5rem !important;
+
+    .nav-item {
+      margin-bottom: 0.125rem !important;
+    }
+
+    .nav-link {
+      padding: 0.5rem 0.75rem !important;
+      font-size: $font-size-xs !important;
+      border-radius: 0.5rem !important;
+      margin: 0 0.125rem !important;
+
+      .nav-icon {
+        margin-right: 0.5rem !important;
+        font-size: 0.9375rem !important;
+        width: 1.125rem !important;
+      }
+    }
+  }
+
+  // Compact sidebar section titles
+  .sidebar-section-title {
+    font-size: 0.5625rem !important;
+    margin-top: 0.5rem !important;
+    margin-bottom: 0.25rem !important;
+    padding-left: 0.75rem !important;
+  }
+
+  // Compact cards
+  .card {
+    margin-bottom: 0.75rem !important;
+    border-radius: 0.75rem !important;
+
+    &:hover {
+      transform: translateY(-3px) !important;
+    }
+  }
+
+  .card-header {
+    padding: 0.75rem 1rem !important;
+    font-size: $font-size-sm !important;
+  }
+
+  .card-body {
+    padding: 0.875rem !important;
+  }
+
+  .card-footer {
+    padding: 0.625rem 1rem !important;
+  }
+
+  // Compact page header
+  .page-header {
+    margin-bottom: 1rem !important;
+    padding: 0.875rem 1rem !important;
+    border-radius: 0.75rem !important;
+
+    .page-title {
+      font-size: 1.25rem !important;
+      margin-bottom: 0.125rem !important;
+    }
+
+    .page-subtitle {
+      font-size: $font-size-xs !important;
+    }
+  }
+
+  // Compact stat cards
+  .stat-card,
+  .user-stat-card {
+    padding: 0.875rem !important;
+    border-radius: 0.75rem !important;
+
+    &:hover {
+      transform: translateY(-3px) !important;
+    }
+
+    .stat-icon {
+      width: 44px !important;
+      height: 44px !important;
+      border-radius: 0.625rem !important;
+      font-size: 1.25rem !important;
+    }
+
+    .stat-value {
+      font-size: 1.375rem !important;
+    }
+
+    .stat-label {
+      font-size: $font-size-xs !important;
+    }
+  }
+
+  // Compact tables
+  .table {
+    font-size: $font-size-xs !important;
+
+    th {
+      padding: 0.5rem 0.75rem !important;
+      font-size: 0.6875rem !important;
+    }
+
+    td {
+      padding: 0.5rem 0.75rem !important;
+    }
+  }
+
+  .table-sm {
+    th, td {
+      padding: 0.375rem 0.625rem !important;
+    }
+  }
+
+  .card-body,
+  .modal-body,
+  .offcanvas-body,
+  .tab-pane,
+  .accordion-body {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .table-responsive {
+    margin-bottom: 0;
+  }
+
+  .table-responsive > .table,
+  .table-responsive > table,
+  .card-body > .table,
+  .card-body > table,
+  .modal-body > .table,
+  .modal-body > table,
+  .tab-pane > .table,
+  .tab-pane > table,
+  .accordion-body > .table,
+  .accordion-body > table {
+    min-width: max-content;
+  }
+
+  // Compact forms
+  .form-control,
+  .form-select {
+    padding: 0.3125rem 0.5rem !important;
+    font-size: $font-size-xs !important;
+  }
+
+  .form-label {
+    font-size: $font-size-xs !important;
+    margin-bottom: 0.25rem !important;
+  }
+
+  // Compact buttons
+  .btn {
+    padding: 0.3125rem 0.625rem !important;
+    font-size: $font-size-xs !important;
+  }
+
+  .btn-sm {
+    padding: 0.1875rem 0.375rem !important;
+    font-size: 0.6875rem !important;
+  }
+
+  // Compact badges
+  .badge {
+    padding: 0.2em 0.5em !important;
+    font-size: 0.6875rem !important;
+  }
+
+  // Compact modals
+  .modal-header {
+    padding: 0.75rem 1rem !important;
+
+    .modal-title {
+      font-size: 1rem !important;
+    }
+  }
+
+  .modal-body {
+    padding: 1rem !important;
+  }
+
+  .modal-footer {
+    padding: 0.75rem 1rem !important;
+  }
+
+  // Compact spacing utilities — retargeted to the Tailwind names the
+  // Bootstrap-utility codemod produced (bs mb-3=1rem → mb-4, bs mb-4=1.5rem
+  // → mb-6, …), so admin keeps the same compact rendering it always had.
+  .mb-4 { margin-bottom: 0.75rem !important; }
+  .mb-6 { margin-bottom: 1rem !important; }
+  .mt-4 { margin-top: 0.75rem !important; }
+  .mt-6 { margin-top: 1rem !important; }
+  .py-4 { padding-top: 0.75rem !important; padding-bottom: 0.75rem !important; }
+  .py-6 { padding-top: 1rem !important; padding-bottom: 1rem !important; }
+  .px-4 { padding-left: 0.75rem !important; padding-right: 0.75rem !important; }
+  .px-6 { padding-left: 1rem !important; padding-right: 1rem !important; }
+
+  // Compact row gaps
+  .row {
+    --bs-gutter-x: 0.75rem;
+    --bs-gutter-y: 0.75rem;
+  }
+
+  // Compact empty state
+  .empty-state {
+    padding: 2rem 1.5rem !important;
+
+    .empty-icon {
+      font-size: 2.5rem !important;
+      margin-bottom: 0.875rem !important;
+    }
+
+    .empty-title {
+      font-size: 1rem !important;
+    }
+
+    .empty-text {
+      font-size: $font-size-sm !important;
+      margin-bottom: 1rem !important;
+    }
+  }
+
+  // Compact dropdowns
+  .dropdown-menu {
+    padding: 0.25rem !important;
+  }
+
+  .dropdown-item {
+    padding: 0.375rem 0.625rem !important;
+    font-size: $font-size-xs !important;
+  }
+
+  .dropdown-header {
+    padding: 0.375rem 0.625rem !important;
+    font-size: 0.625rem !important;
+  }
+
+  // Compact alerts
+  .alert {
+    padding: 0.625rem 0.875rem !important;
+    font-size: $font-size-xs !important;
+  }
+
+  // Compact nav tabs/pills
+  .nav-tabs .nav-link,
+  .nav-pills .nav-link {
+    padding: 0.375rem 0.625rem !important;
+    font-size: $font-size-xs !important;
+  }
+
+  // Fix form check/switch alignment
+  .form-check,
+  .form-switch {
+    display: flex !important;
+    align-items: center !important;
+    min-height: auto !important;
+    padding-left: 2.25em !important;
+
+    .form-check-input {
+      margin-top: 0 !important;
+      float: none !important;
+    }
+
+    .form-check-label {
+      line-height: 1.2 !important;
+    }
+  }
+
+  // Fix metric card badge alignment (retargeted post-Bootstrap: flex rows are
+  // flex, badges are ui/Badge spans — alignment now handled by items-center
+  // in markup; only the badge nudge remains useful at element level)
+  .metric-card {
+    .inline-flex {
+      vertical-align: middle;
+    }
+  }
+
+  // Fix terminal filters badge alignment
+  .terminal-filters {
+    .badge {
+      vertical-align: middle !important;
+      line-height: 1 !important;
+    }
+
+    .small {
+      display: inline-flex !important;
+      align-items: center !important;
+    }
+  }
+
+  // Compact accordion
+  .accordion-button {
+    padding: 0.5rem 0.875rem !important;
+    font-size: $font-size-xs !important;
+  }
+
+  .accordion-body {
+    padding: 0.625rem 0.875rem !important;
+  }
+
+  // Compact list group
+  .list-group-item {
+    padding: 0.375rem 0.75rem !important;
+    font-size: $font-size-xs !important;
+  }
+
+  // Terminal summary table - extra compact rows
+  .terminal-summary-table {
+    tbody tr td {
+      padding: 0.1875rem 0.375rem !important;
+      vertical-align: middle !important;
+      line-height: 1.2 !important;
+    }
+
+    thead tr th {
+      padding: 0.25rem 0.375rem !important;
+      line-height: 1.2 !important;
+    }
+
+    tfoot tr td {
+      padding: 0.25rem 0.375rem !important;
+    }
+
+    // Compact the user summary row content
+    .terminal-summary-row {
+      td {
+        padding: 0.1875rem 0.375rem !important;
+      }
+
+      .d-block {
+        line-height: 1.1 !important;
+      }
+
+      small {
+        font-size: 0.625rem !important;
+        line-height: 1 !important;
+      }
+
+      .badge {
+        padding: 0.125em 0.375em !important;
+        font-size: 0.625rem !important;
+      }
+    }
+  }
+
+  // User details panel compact spacing
+  .user-details-panel {
+    padding: 0.5rem !important;
+
+    .p-3 {
+      padding: 0.5rem !important;
+    }
+
+    // Compact tables inside user details — element-level so it covers the
+    // token tables the Bootstrap-class codemod produced (no .table class).
+    table {
+      font-size: 0.6875rem !important;
+
+      th {
+        padding: 0.25rem 0.375rem !important;
+      }
+
+      td {
+        padding: 0.25rem 0.375rem !important;
+      }
+    }
+
+    .p-4 {
+      padding: 0.5rem !important;
+    }
+
+    .mb-4 {
+      margin-bottom: 0.5rem !important;
+    }
+
+    .mb-2 {
+      margin-bottom: 0.375rem !important;
+    }
+  }
+}

@@ -25,8 +25,8 @@
 - plan_name: FIXED_BROKERAGE_5K
   unit_type: order
   brokerage_per_unit: 0
-  description: 'Fixed brokerage of 5000 per month. '
-  broker_name: shareindia
+  description: Fixed brokerage of 5000 per month
+  broker_name: default
   plan_type: FIXED_PERIOD
   fixed_fee: 5000
   billing_period: MONTHLY

@@ -1,0 +1,99 @@
+/**
+ * AlertNotifications styles
+ * Popup notifications in bottom-right corner with playing-card stacking
+ */
+
+.alert-notifications-container {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  z-index: 1060; // Above most Bootstrap components but below modals
+  max-width: 400px;
+  width: 100%;
+  max-height: 25vh; // Never exceed 25% of viewport height
+  overflow: hidden;
+  pointer-events: none; // Don't block clicks on UI elements beneath
+
+  @media (max-width: 576px) {
+    left: 10px;
+    right: 10px;
+    max-width: none;
+  }
+}
+
+// Re-enable pointer events on interactive children
+.dismiss-all-wrapper,
+.alert-notification-wrapper {
+  pointer-events: auto;
+}
+
+// Front card — newest notification, fully visible
+.alert-notification-wrapper.front {
+  .alert-notification {
+    margin-bottom: 0;
+  }
+}
+
+// Stacked cards — collapsed to a peek strip (playing-card effect)
+.alert-notification-wrapper.stacked {
+  max-height: 26px;
+  overflow: hidden;
+  opacity: 1;
+  margin-top: 2px;
+  transition: max-height 0.2s ease, opacity 0.2s ease;
+
+  .alert-notification {
+    margin-bottom: 0 !important;
+    box-shadow: none !important;
+    animation: none !important;
+    border-radius: 4px;
+  }
+}
+
+// Level colors/backgrounds now live in the component's Tailwind classes
+// (solid bg-card + tint gradient — see levelStyles in AlertNotifications.tsx).
+.alert-notification {
+  font-size: 0.9rem;
+  background-clip: padding-box;
+  opacity: 1;
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.18);
+
+  .alert-notification-body {
+    .alert-message {
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+    }
+  }
+}
+
+// Slide-in animation
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.animate-slide-in {
+  animation: slideInRight 0.3s ease-out;
+}
+
+// Fade out animation for dismissing
+@keyframes fadeOut {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+}
+
+.animate-slide-out {
+  animation: fadeOut 0.2s ease-in forwards;
+}

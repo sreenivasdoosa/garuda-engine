@@ -1,0 +1,555 @@
+/**
+ * Terminal Styles
+ * Styles for the trading terminal page
+ */
+
+// Variables
+$pnl-positive: #28a745;
+$pnl-negative: #dc3545;
+$mismatch-critical: #dc3545;
+$mismatch-warning: #ffc107;
+$connection-live: #28a745;
+$connection-disconnected: #dc3545;
+
+// Terminal Page
+.terminal-page {
+  min-height: calc(100vh - 60px);
+  background-color: rgb(var(--c-app));
+}
+
+// Metric Cards
+.metric-card {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  border-radius: 8px;
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  }
+
+  &.border-success {
+    border-left: 4px solid $pnl-positive !important;
+  }
+
+  &.border-danger {
+    border-left: 4px solid $pnl-negative !important;
+  }
+}
+
+// Header actions toolbar — the summary/action buttons render as raised pill
+// chips (card fill + shadow) so they stand out on the page. Targets only the
+// toolbar's own buttons (direct + one level, i.e. group chips and the dropdown
+// TOGGLE); dropdown MENU items sit two levels deep and keep their look. The
+// buttons' colored borders/text come from the shim outline variants; hover
+// tint utilities (higher specificity) also still win.
+.terminal-actions-toolbar > button,
+.terminal-actions-toolbar > div > button {
+  border-radius: 9999px;
+  background-color: rgb(var(--c-card));
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+html.dark .terminal-actions-toolbar > button,
+html.dark .terminal-actions-toolbar > div > button {
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+
+// Connection Status Badge
+.connection-status {
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 500;
+
+  &.bg-success {
+    animation: pulse-green 2s infinite;
+  }
+}
+
+@keyframes pulse-green {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(40, 167, 69, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(40, 167, 69, 0);
+  }
+}
+
+// Terminal Filters
+.terminal-filters {
+  border: 1px solid rgb(var(--c-hairline));
+
+  .form-check-label {
+    font-size: 0.8rem;
+  }
+}
+
+// Terminal Summary Table
+// (The old .terminal-table-card/.table-responsive scroll+container wrapper is gone —
+// post-migration the summary table's card div in TerminalSummaryTable.tsx carries
+// `overflow-x-auto [container-type:inline-size]` itself; the 100cqw rule below resolves
+// against that scrollport.)
+
+// Expanded detail row: pin the panel to the left edge and size it to the visible scrollport (100cqw)
+// rather than the full table width. This way the panel's OWN content scrolls horizontally (scrollbar
+// right under the row) instead of forcing you to the table's bottom scrollbar (below the Total row).
+.terminal-details-row .user-details-panel {
+  position: sticky;
+  left: 0;
+  width: 100cqw;
+}
+
+// Per-tab inner scroll: a long list scrolls within the tab (sticky header stays visible)
+// instead of making the expanded row enormous. 70% of the viewport so it scales on desktop/tablet.
+// BOTH axes scroll HERE: the nested table wrappers (Tailwind .overflow-x-auto from the shim
+// Table / token tables) are forced to overflow visibly so the horizontal scrollbar lives at the
+// bottom edge of this always-visible viewport — not below the full table height where it could
+// only be found by scrolling to the very bottom.
+.terminal-tab-scroll {
+  max-height: 70vh;
+  overflow: auto;
+
+  .overflow-x-auto {
+    overflow-x: visible !important;
+  }
+}
+
+.terminal-summary-table {
+  font-size: 0.9rem;
+
+  thead {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+
+    th {
+      font-weight: 600;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: rgb(var(--c-ink-soft));
+      border-bottom: 2px solid rgb(var(--c-hairline));
+      white-space: nowrap;
+    }
+  }
+
+  tbody {
+    tr {
+      transition: background-color 0.15s ease;
+
+      &:hover {
+        background-color: rgba(0, 123, 255, 0.05);
+      }
+
+      &.expanded {
+        background-color: rgba(0, 123, 255, 0.1);
+      }
+    }
+  }
+
+  tfoot {
+    tr {
+      border-top: 2px solid rgb(var(--c-hairline));
+
+      td {
+        padding-top: 12px;
+        padding-bottom: 12px;
+      }
+    }
+  }
+
+  .expand-cell {
+    cursor: pointer;
+    text-align: center;
+    color: rgb(var(--c-ink-soft));
+    transition: color 0.15s ease;
+
+    &:hover {
+      color: #007bff;
+    }
+  }
+}
+
+// Terminal Summary Row
+.terminal-summary-row {
+  &.table-danger {
+    --bs-table-bg: rgba(220, 53, 69, 0.1);
+
+    &:hover {
+      --bs-table-hover-bg: rgba(220, 53, 69, 0.15);
+    }
+  }
+
+  &.table-warning {
+    --bs-table-bg: rgba(255, 193, 7, 0.1);
+
+    &:hover {
+      --bs-table-hover-bg: rgba(255, 193, 7, 0.15);
+    }
+  }
+}
+
+// Terminal Details Row
+.terminal-details-row {
+  td {
+    padding: 0 !important;
+  }
+}
+
+// User Details Panel
+.user-details-panel {
+  background-color: rgb(var(--c-raised));
+  border-top: 2px solid rgb(var(--c-hairline));
+  animation: slideDown 0.3s ease;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+// P&L Display
+.pnl-display {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+
+  &.pnl-animate {
+    animation: pnlPulse 0.5s ease;
+  }
+
+  .pnl-percentage {
+    font-size: 0.8em;
+    font-weight: 400;
+  }
+}
+
+@keyframes pnlPulse {
+  0%, 100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+}
+
+// Mismatch Badge
+.mismatch-badge {
+  font-size: 0.75rem;
+  padding: 4px 8px;
+  border-radius: 12px;
+}
+
+// Strategy Breakdown
+.strategy-breakdown-compact {
+  .strategy-badge {
+    font-size: 0.75rem;
+    border-radius: 12px;
+
+    .strategy-name {
+      font-weight: 400;
+    }
+
+    .strategy-pnl {
+      font-weight: 600;
+    }
+  }
+}
+
+.strategy-breakdown-table {
+  font-size: 0.85rem;
+
+  th {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    color: rgb(var(--c-ink-soft));
+  }
+
+  tfoot {
+    border-top: 2px solid rgb(var(--c-hairline));
+
+    td {
+      padding-top: 8px;
+    }
+  }
+}
+
+// Terminal Actions
+.terminal-actions {
+  position: relative;
+
+  .btn-sm {
+    padding: 4px 8px;
+
+    svg {
+      font-size: 0.9rem;
+    }
+  }
+}
+
+// Portal dropdown menu - rendered at body level
+.terminal-portal-dropdown {
+  position: fixed !important;
+  z-index: 2147483647 !important; // Max z-index
+  background: rgb(var(--c-card)) !important;
+  border: 1px solid rgb(var(--c-hairline)) !important;
+  border-radius: 0.25rem !important;
+  padding: 0.5rem 0 !important;
+  min-width: 160px !important;
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+
+  .dropdown-item,
+  .dropdown-header,
+  .dropdown-divider,
+  button {
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+  }
+
+  .dropdown-item,
+  button.dropdown-item {
+    width: 100%;
+    padding: 0.5rem 1rem;
+    clear: both;
+    font-weight: 400;
+    color: rgb(var(--c-ink));
+    text-align: inherit;
+    white-space: nowrap;
+    background-color: transparent;
+    border: 0;
+    cursor: pointer;
+
+    &:hover:not(:disabled) {
+      background-color: rgb(var(--c-raised));
+    }
+
+    &:disabled {
+      color: rgb(var(--c-ink-faint));
+      cursor: not-allowed;
+    }
+  }
+
+  .dropdown-header {
+    padding: 0.5rem 1rem;
+    font-size: 0.75rem;
+    color: rgb(var(--c-ink-soft));
+  }
+
+  .dropdown-divider {
+    height: 0;
+    margin: 0.5rem 0;
+    overflow: hidden;
+    border-top: 1px solid rgb(var(--c-hairline));
+  }
+}
+
+
+// Risk Profile Chart
+.risk-profile-chart {
+  canvas {
+    max-height: 150px;
+  }
+}
+
+// Custom font size utility
+.fs-7 {
+  font-size: 0.85rem !important;
+}
+
+// Responsive adjustments
+@media (max-width: 768px) {
+  .terminal-page {
+    .metric-card {
+      .fs-4 {
+        font-size: 1.1rem !important;
+      }
+    }
+  }
+
+  .terminal-summary-table {
+    font-size: 0.8rem;
+
+    thead th {
+      font-size: 0.7rem;
+    }
+  }
+
+  .terminal-filters {
+    .form-control,
+    .form-select {
+      font-size: 0.85rem;
+    }
+  }
+}
+
+// Dark mode support (if theme context supports it)
+// Dark mode uses the `.dark` class on <html> (data-theme is for brand FLAVORS,
+// not light/dark) — this block used the wrong selector and was dead, leaving
+// .metric-card / .terminal-table-card on their default light bg. Re-point at
+// html.dark and drive off tokens.
+html.dark {
+  .terminal-page {
+    background-color: rgb(var(--c-app));
+  }
+
+  .terminal-table-card,
+  .metric-card {
+    background-color: rgb(var(--c-card)) !important;
+    border-color: rgb(var(--c-hairline));
+  }
+
+  // Force raw <table> CELLS transparent so the dark card shows through (cells
+  // only — not descendants, so Badge/PnL colours are untouched). Belt-and-braces
+  // for the Algo/Broker P&L breakdown that resisted the generic .table override.
+  .metric-card table > thead > tr > th,
+  .metric-card table > tbody > tr > td,
+  .metric-card table > tbody > tr > th {
+    background-color: transparent !important;
+    color: rgb(var(--c-ink));
+  }
+
+  .terminal-summary-table {
+    thead th {
+      color: rgb(var(--c-ink-soft));
+    }
+  }
+
+  .user-details-panel {
+    background-color: rgb(var(--c-raised));
+  }
+}
+
+// ==================== Strategy States Panel ====================
+
+.strategy-states-panel {
+  .offcanvas-header {
+    border-bottom: 1px solid rgb(var(--c-hairline));
+    background-color: rgb(var(--c-raised));
+  }
+
+  .summary-card {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    border-radius: 8px;
+
+    &:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    }
+  }
+
+  .nav-tabs {
+    .nav-link {
+      font-size: 0.9rem;
+      font-weight: 500;
+
+      &.active {
+        border-bottom: 2px solid var(--bs-primary);
+      }
+    }
+  }
+
+  // (dead .table-responsive scrollbar block removed — the class no longer
+  // exists post-migration; global token scrollbar styles apply instead)
+}
+
+// Strategy Table in StrategyStatesPanel
+.strategy-states-table {
+  font-size: 0.85rem;
+
+  thead {
+    th {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: rgb(var(--c-ink-soft));
+      font-weight: 600;
+    }
+  }
+
+  tbody tr {
+    transition: background-color 0.15s ease;
+
+    &:hover {
+      background-color: rgba(0, 123, 255, 0.05);
+    }
+  }
+}
+
+// User Strategy States Tab
+.user-strategy-states-tab {
+  .table {
+    font-size: 0.85rem;
+
+    thead th {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: rgb(var(--c-ink-soft));
+    }
+
+    tbody tr {
+      transition: background-color 0.15s ease;
+
+      &:hover {
+        background-color: rgba(0, 123, 255, 0.05);
+      }
+
+      &.table-active {
+        background-color: rgba(0, 123, 255, 0.1);
+      }
+    }
+  }
+
+  // Tranch details card
+  .card {
+    background-color: rgb(var(--c-card));
+    border: 1px solid rgb(var(--c-hairline));
+
+    .card-body {
+      font-size: 0.85rem;
+    }
+  }
+
+  // Tranch details table
+  .table-bordered {
+    font-size: 0.8rem;
+
+    thead th {
+      font-size: 0.7rem;
+      background-color: rgb(var(--c-raised));
+    }
+  }
+}
+
+// Expand/Collapse animation
+.collapse {
+  transition: height 0.2s ease;
+}
+
+// Status indicators
+.status-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+
+  &.active {
+    color: rgb(var(--c-success-500));
+  }
+
+  &.pending {
+    color: $mismatch-warning;
+  }
+
+  &.inactive {
+    color: rgb(var(--c-ink-soft));
+  }
+}

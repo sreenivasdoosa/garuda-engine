@@ -547,7 +547,7 @@ self-heals, and no scheduled job attempts to renew it.
 ### 9.3 Supported adapters
 
 Zerodha (Kite Connect) · Fyers (API v3) · Kotak Neo · Dhan. Plus the paper broker (§9.4). XTS,
-Noren, IIFL, UTrade and 5paisa are not ported; the contract suite is what makes adding one later
+The remaining brokers the reference supports are not ported; the contract suite is what makes adding one later
 cheap.
 
 ### 9.4 Paper trading

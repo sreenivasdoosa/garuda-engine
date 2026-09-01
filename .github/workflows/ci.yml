@@ -22,6 +22,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: no reference-engine names
+        working-directory: .
+        run: scripts/check-no-reference-names.sh
+
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true

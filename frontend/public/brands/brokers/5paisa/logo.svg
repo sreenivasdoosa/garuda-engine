@@ -1,0 +1,9 @@
+<svg width="150" height="40" viewBox="0 0 150 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Red square icon with stylized "5" -->
+  <rect x="0" y="4" width="32" height="32" rx="4" fill="#E31837"/>
+  <text x="16" y="28" font-family="Inter, system-ui, sans-serif" font-size="22" font-weight="800" fill="#ffffff" text-anchor="middle">5</text>
+  <!-- Brand text -->
+  <text x="40" y="22" font-family="Inter, system-ui, sans-serif" font-size="18" font-weight="700" fill="#E31837">5</text>
+  <text x="52" y="22" font-family="Inter, system-ui, sans-serif" font-size="18" font-weight="700" fill="#ffffff">paisa</text>
+  <text x="40" y="35" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="rgba(255,255,255,0.6)" letter-spacing="1.5">ALGO TRADING</text>
+</svg>

@@ -1,0 +1,12 @@
+<svg width="140" height="40" viewBox="0 0 140 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Icon background -->
+  <rect x="0" y="4" width="32" height="32" rx="6" fill="#1a3a5c"/>
+  <!-- Upward arrow / growth symbol -->
+  <path d="M8 26 L16 12 L24 26" stroke="#f0c040" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <line x1="16" y1="12" x2="16" y2="28" stroke="#f0c040" stroke-width="2" stroke-linecap="round"/>
+  <line x1="10" y1="28" x2="22" y2="28" stroke="#f0c040" stroke-width="2" stroke-linecap="round"/>
+  <!-- Text -->
+  <text x="40" y="22" font-family="Inter, system-ui, sans-serif" font-size="16" font-weight="700" fill="#1a3a5c">Share</text>
+  <text x="92" y="22" font-family="Inter, system-ui, sans-serif" font-size="16" font-weight="700" fill="#f0c040">India</text>
+  <text x="40" y="35" font-family="Inter, system-ui, sans-serif" font-size="9" font-weight="400" fill="#6b7280" letter-spacing="1.5">ALGO TRADING</text>
+</svg>

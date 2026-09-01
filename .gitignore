@@ -34,3 +34,5 @@ backup/
 .idea/
 .vscode/
 .DS_Store
+
+frontend/.vite/
