@@ -31,7 +31,8 @@ Read the relevant one before proposing anything. They win over your priors.
 |---|---|
 | `docs/SCOPE_DECISIONS.md` | Is this feature in or out, and why |
 | `docs/DESIGN.md` | How is it built |
-| `docs/IMPLEMENTATION_PLAN.md` | What phase are we in, what comes next |
+| `docs/PROGRESS.md` | What exists today, what is named but not built, what is next |
+| `docs/IMPLEMENTATION_PLAN.md` | What we intend to build, and in what order |
 | `ARCHITECTURE.md` | The principles the design holds to |
 
 `docs/JAVA_FEATURE_INVENTORY.md` maps the reference engine's internals. It is
@@ -173,6 +174,10 @@ only a human can certify it. Full policy in `CONTRIBUTING.md`.
 
 ## Working style
 
+- **Update `docs/PROGRESS.md` when a chunk of work lands**, in the same change
+  as the work. A tracker updated later is one nobody trusts. Say what is *not*
+  built as well as what is: a table, an enum member or a config column is not
+  a delivered feature.
 - Small blocks first, connected one at a time. Every phase ends with a system
   that runs and tests that prove it — never a half-wired subsystem.
 - Changes to order execution, position state and P&L arithmetic get reviewed
