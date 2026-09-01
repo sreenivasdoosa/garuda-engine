@@ -17,7 +17,7 @@ import TerminalLayout from '@/layouts/TerminalLayout';
 import LoginPage from '@/features/auth/LoginPage';
 
 // Console
-import ConsoleDashboard from '@/features/console/dashboard/ConsoleDashboard';
+import SetupGuide from '@/features/console/setup/SetupGuide';
 import AllocationModelsPage from '@/features/shared/allocation-models/AllocationModelsPage';
 import AuditLogsPage from '@/features/shared/audit-logs/AuditLogsPage';
 import BrokerConfigPage from '@/features/shared/broker-config/BrokerConfigPage';
@@ -97,7 +97,7 @@ function App() {
           </ProtectedRoute>
         }
       >
-        <Route path="/console" element={<ConsoleDashboard />} />
+        <Route path="/console" element={<SetupGuide />} />
 
         {/* Accounts */}
         <Route path="/console/brokers" element={<BrokersPage />} />
