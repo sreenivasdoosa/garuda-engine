@@ -6,6 +6,7 @@ export type { Column } from './DataTable';
 export { default as StatusBadge } from './StatusBadge';
 export { default as ConfirmModal } from './ConfirmModal';
 export { default as BrandLogo } from './BrandLogo';
+export { GarudaHero, GarudaBird, GarudaGlyph } from './GarudaMark';
 export { default as BottomSlidePanel } from './BottomSlidePanel';
 export { default as HelpIcon } from './HelpIcon';
 export { default as HelpDrawer } from './HelpDrawer';

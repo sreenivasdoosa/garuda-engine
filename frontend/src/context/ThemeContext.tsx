@@ -17,8 +17,6 @@ interface BrandConfig {
   displayName: string;
   productName: string;
   tagline: string;
-  logo: string;
-  logoSmall: string;
   favicon: string;
   primaryColor: string;
 }
@@ -30,8 +28,6 @@ const brandConfig: BrandConfig = {
   displayName: 'Garuda Engine',
   productName: 'Garuda Engine',
   tagline: 'Algorithmic trading engine',
-  logo: '/logo.svg',
-  logoSmall: '/logo-small.svg',
   favicon: '/favicon.svg',
   primaryColor: '#2dce89',
 };

@@ -1,15 +1,17 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 44 44" role="img" aria-label="Garuda Engine">
-  <defs>
-    <linearGradient id="gs" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#38bdf8"/>
-      <stop offset="55%" stop-color="#6366f1"/>
-      <stop offset="100%" stop-color="#a855f7"/>
-    </linearGradient>
-  </defs>
-  <g fill="none" stroke="url(#gs)" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M6 30 C 14 30, 18 22, 22 16"/>
-    <path d="M14 32 C 22 32, 26 24, 30 18"/>
-    <path d="M38 30 C 30 30, 26 22, 22 16"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="6 0 108 60">
+  <defs><linearGradient id="garuda-glyph" x1="0" y1="0" x2="1" y2="1">
+    <stop offset="0%" stop-color="#38bdf8"/><stop offset="52%" stop-color="#6366f1"/>
+    <stop offset="100%" stop-color="#a855f7"/></linearGradient>
+  <linearGradient id="garuda-glyph-trunk" gradientUnits="userSpaceOnUse" x1="50" y1="2" x2="72" y2="57">
+    <stop offset="0%" stop-color="#38bdf8"/><stop offset="52%" stop-color="#6366f1"/>
+    <stop offset="100%" stop-color="#a855f7"/></linearGradient></defs>
+  <g fill="url(#garuda-glyph)">
+    <path d="M 56 22 Q 34 6, 9 6 Q 15 16, 21 23 Q 22 17, 24 15 Q 29 24, 35 30 Q 35 23, 37 21 Q 43 29, 50 34 Q 51 27, 53 25 Q 56 31, 58 36 Z"/>
+    <path d="M 64.0 22 Q 86.0 6 111.0 6 Q 105.0 16 99.0 23 Q 98.0 17 96.0 15 Q 91.0 24 85.0 30 Q 85.0 23 83.0 21 Q 77.0 29 70.0 34 Q 69.0 27 67.0 25 Q 64.0 31 62.0 36 Z"/>
   </g>
-  <circle cx="22" cy="13" r="3.4" fill="url(#gs)"/>
+  <g fill="url(#garuda-glyph-trunk)">
+    <path d="M 53.0 40 L 67.0 40 L 65.5 57 L 60.0 52 L 54.5 57 Z"/>
+    <path d="M 60.0 15 C 68.0 20, 69.0 27, 67.5 34 C 67.0 39, 66.0 42, 65.0 45 L 55.0 45 C 54.0 42, 53.0 39, 52.5 34 C 51.0 27, 52.0 20, 60.0 15 Z"/>
+    <path d="M 54.0 15 L 53.5 7 L 59.0 2.5 L 64.0 5 L 65.5 8.5 L 70.0 10.8 C 71.4 11.6, 71.4 13.8, 69.8 14.8 C 69.2 13.4, 68.4 12.8, 67.2 12.4 L 64.5 12 L 61.0 15 L 57.0 16 Z"/>
+  </g>
 </svg>

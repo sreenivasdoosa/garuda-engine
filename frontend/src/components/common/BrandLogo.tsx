@@ -1,50 +1,47 @@
-import { useTheme } from '@/context/ThemeContext';
+import { GarudaBird } from './GarudaMark';
 
 interface BrandLogoProps {
+  /** `full` is the bird beside the wordmark; `small` is the bird alone. */
   variant?: 'full' | 'small';
   className?: string;
   height?: number;
 }
 
+/**
+ * The lockup: bird, name, and the word ENGINE set small beside it.
+ *
+ * Both parts are inline SVG and DOM text rather than one image file, so the
+ * name takes `currentColor` from whatever it sits on — white on the sign-in
+ * page, the theme's ink in the console — and stays selectable and legible when
+ * a browser scales text up.
+ */
 const BrandLogo: React.FC<BrandLogoProps> = ({
   variant = 'full',
   className = '',
   height = 36,
 }) => {
-  const { brandConfig } = useTheme();
-
-  const logoSrc = variant === 'full' ? brandConfig.logo : brandConfig.logoSmall;
-
-  // Fallback to text if logo fails to load
-  const handleError = (e: React.SyntheticEvent<HTMLImageElement>) => {
-    e.currentTarget.style.display = 'none';
-    const textFallback = e.currentTarget.nextElementSibling;
-    if (textFallback) {
-      (textFallback as HTMLElement).style.display = 'block';
-    }
-  };
+  if (variant === 'small') {
+    return <GarudaBird height={height} className={className} title="Garuda Engine" />;
+  }
 
   return (
-    <div className={`brand-logo-container ${className}`}>
-      <img
-        src={logoSrc}
-        alt={brandConfig.displayName}
-        height={height}
-        className="brand-logo-image"
-        onError={handleError}
-        style={{ filter: 'var(--logo-filter, none)' }}
-      />
-      <span
-        className="brand-logo-text font-bold"
-        style={{
-          display: 'none',
-          fontSize: height * 0.5,
-          color: 'var(--brand-primary)',
-        }}
-      >
-        {variant === 'full' ? brandConfig.displayName : brandConfig.displayName.charAt(0)}
+    <span className={`inline-flex items-center gap-3 ${className}`}>
+      <GarudaBird height={height} title="Garuda Engine" />
+      <span className="flex items-baseline gap-2">
+        <span
+          className="font-display font-bold leading-none tracking-tight"
+          style={{ fontSize: height * 0.72 }}
+        >
+          Garuda
+        </span>
+        <span
+          className="font-semibold uppercase leading-none opacity-55"
+          style={{ fontSize: height * 0.3, letterSpacing: '0.22em' }}
+        >
+          Engine
+        </span>
       </span>
-    </div>
+    </span>
   );
 };
 

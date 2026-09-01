@@ -8,7 +8,7 @@ import {
   BsSliders,
 } from 'react-icons/bs';
 
-import { BrandLogo } from '@/components/common';
+import { BrandLogo, GarudaHero } from '@/components/common';
 
 /**
  * The way in.
@@ -107,6 +107,13 @@ const AuthLayout: React.FC = () => {
         <main className="flex flex-1 flex-col items-center justify-center gap-14 py-12 lg:flex-row lg:items-center lg:gap-20">
           {/* What it is. */}
           <section className="w-full max-w-xl">
+            {/* The bird gets the top of the column to itself — it is the only
+                ornament on the page, so it is allowed to be large. */}
+            <GarudaHero
+              title="Garuda Engine"
+              className="-ml-3 mb-6 h-auto w-full max-w-[540px]"
+              height={undefined}
+            />
             <p
               className="mb-4 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium tracking-wide"
               style={{ borderColor: authTheme.ring, color: '#c7d2fe', background: authTheme.accentSoft }}

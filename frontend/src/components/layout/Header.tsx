@@ -184,7 +184,7 @@ const Header: React.FC<HeaderProps> = ({ showSidebarToggle = true }) => {
         )}
 
         <Link to="/" className="header-brand flex flex-col no-underline">
-          <BrandLogo height={36} />
+          <BrandLogo height={28} className="text-white" />
           {versionLabel && (
             <span
               className="hidden md:block text-center text-white/50"

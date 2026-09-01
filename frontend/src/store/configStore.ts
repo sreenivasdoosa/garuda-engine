@@ -16,14 +16,12 @@ interface BrandConfig {
   name: string;
   productName: string;
   primaryColor: string;
-  logoUrl: string;
 }
 
 const BRAND_CONFIG: BrandConfig = {
   name: 'garuda-engine',
   productName: 'Garuda Engine',
   primaryColor: '#3b82f6',
-  logoUrl: '/logo.svg',
 };
 
 interface ServerConfig {
