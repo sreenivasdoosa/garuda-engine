@@ -21,10 +21,6 @@ interface BrandConfig {
   logoSmall: string;
   favicon: string;
   primaryColor: string;
-  supportEmail?: string;
-  website?: string;
-  termsUrl?: string;
-  privacyUrl?: string;
 }
 
 export const BRAND = 'garuda-engine';

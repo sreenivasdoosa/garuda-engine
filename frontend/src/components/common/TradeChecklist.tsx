@@ -133,9 +133,9 @@ const CHECKLIST_ITEMS: ChecklistItem[] = [
   },
   {
     category: 'Still Not Working?',
-    title: 'Contact the technical team',
-    description: 'If all the above checks pass and there are no relevant alerts, the issue may require deeper investigation. Reach out to the technical team with the user name, broker, strategy, exchange, and the date/time when the trade was expected.',
-    where: 'Share details: user, broker, strategy, exchange, and timestamp',
+    title: 'Read the journal',
+    description: 'If every check above passes and no alert explains it, the day\'s journal has the sequence: every intent, order and fill in the order they happened. Replaying it reproduces the decision exactly, which is what tells a configuration problem from an engine one.',
+    where: 'The event journal for the trading day, and the logs beside it',
   },
 ];
 

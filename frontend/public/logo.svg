@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 44" role="img" aria-label="Garuda Engine">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="55%" stop-color="#6366f1"/>
+      <stop offset="100%" stop-color="#a855f7"/>
+    </linearGradient>
+  </defs>
+  <!-- A pair of wings, rising. Garuda is an eagle. -->
+  <g fill="none" stroke="url(#g)" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M6 30 C 14 30, 18 22, 22 16"/>
+    <path d="M14 32 C 22 32, 26 24, 30 18"/>
+    <path d="M38 30 C 30 30, 26 22, 22 16"/>
+    <path d="M30 32 C 22 32, 18 24, 14 18" opacity="0"/>
+  </g>
+  <circle cx="22" cy="13" r="3.4" fill="url(#g)"/>
+  <text x="52" y="29" font-family="'Space Grotesk','Inter',system-ui,sans-serif" font-size="20" font-weight="700" fill="currentColor" letter-spacing="-0.5">Garuda</text>
+</svg>

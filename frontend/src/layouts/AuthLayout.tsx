@@ -1,194 +1,171 @@
 import { Outlet } from 'react-router-dom';
 import {
-  BsGraphUpArrow,
-  BsShieldCheck,
-  BsLightningCharge,
-  BsBarChartLine,
-  BsPeopleFill,
   BsBank2,
-  BsGearWideConnected,
-  BsSpeedometer2,
+  BsBoxes,
+  BsDiagram3,
+  BsHddNetwork,
+  BsShieldLock,
+  BsSliders,
 } from 'react-icons/bs';
-import { useTheme } from '@/context/ThemeContext';
+
 import { BrandLogo } from '@/components/common';
 
-interface BrandTheme {
-  background: string;
-  glow1: string;
-  glow2: string;
-  iconBg: string;
-  iconColor: string;
-  hoverBorder: string;
-  accentColor: string;
-  buttonGradient: string;
-  buttonShadow: string;
-}
+/**
+ * The way in.
+ *
+ * Deliberately plain: a dark field, the mark, one card, and a short account of
+ * what this engine is. The app this was copied from sold itself here, because
+ * it had to -- it was a platform many people signed up to. This one is
+ * installed by the person who signs in, so the page has nothing to sell and
+ * says what the thing does instead.
+ *
+ * **One operator, many accounts.** That is the distinction the copy has to get
+ * right: not multi-user, multi-*client*. One person runs the engine and it
+ * trades a set of broker accounts on their behalf.
+ */
 
-const brandTheme: BrandTheme = {
-  // Blue to purple with a teal accent. One brand, so one theme.
-  background: 'linear-gradient(135deg, #0a1628 0%, #0d1f33 30%, #131b3a 60%, #050d1a 100%)',
-  glow1: 'radial-gradient(circle, rgba(13, 110, 253, 0.15) 0%, transparent 70%)',
-  glow2: 'radial-gradient(circle, rgba(102, 16, 242, 0.12) 0%, transparent 70%)',
-  iconBg: 'linear-gradient(135deg, rgba(13, 110, 253, 0.2) 0%, rgba(102, 16, 242, 0.1) 100%)',
-  iconColor: '#6ea8fe',
-  hoverBorder: 'rgba(13, 110, 253, 0.3)',
-  accentColor: '#0d6efd',
-  buttonGradient: 'linear-gradient(135deg, #0d6efd 0%, #6610f2 100%)',
-  buttonShadow: '0 4px 14px 0 rgba(13, 110, 253, 0.4)',
+/** Shared by the page inside the card, so the two agree on their accents. */
+export const authTheme = {
+  accent: '#6366f1',
+  accentSoft: 'rgba(99, 102, 241, 0.14)',
+  ring: 'rgba(99, 102, 241, 0.35)',
 };
 
-const platformFeatures = [
+const capabilities = [
   {
     icon: BsBank2,
-    title: 'Multi-Broker Execution',
-    description: 'Connect and trade across multiple brokers simultaneously with unified portfolio tracking.',
+    title: 'Many brokers, one engine',
+    body: 'Zerodha today; the adapter contract is what makes the next one an afternoon rather than a rewrite.',
   },
   {
-    icon: BsGraphUpArrow,
-    title: 'Advanced Option Strategies',
-    description: 'Institutional-grade option selling strategies with automated entry, exit, and adjustments.',
+    icon: BsBoxes,
+    title: 'Many accounts, one operator',
+    body: 'Every trading client is yours — your own and your family’s. No sign-ups, no tenants, no roles.',
   },
   {
-    icon: BsShieldCheck,
-    title: 'Robust Risk Management',
-    description: 'Multi-level RMS with daily loss limits, position sizing, kill switches, and real-time breach alerts.',
+    icon: BsDiagram3,
+    title: 'Strategies as configuration',
+    body: 'Legs, strikes, rules and tranches are rows you edit, not classes someone deploys.',
   },
   {
-    icon: BsLightningCharge,
-    title: 'Real-Time Live Terminal',
-    description: 'Live trading desk with real-time P&L, positions, order book, and strategy performance tracking.',
+    icon: BsShieldLock,
+    title: 'Risk in front of every order',
+    body: 'Entries and exits both pass the gate, and an exit is only ever stopped by what the exchange would refuse anyway.',
   },
   {
-    icon: BsPeopleFill,
-    title: 'Multi-User Platform',
-    description: 'Manage multiple users with individual capital allocation, strategy subscriptions, and risk policies.',
+    icon: BsSliders,
+    title: 'Paper beside live',
+    body: 'Paper is a property of a subscription, so one strategy runs both ways at once off the same signals.',
   },
   {
-    icon: BsBarChartLine,
-    title: 'Comprehensive Analytics',
-    description: 'Equity curves, Sharpe ratio, strategy-wise performance, capital utilization, and detailed reports.',
-  },
-  {
-    icon: BsGearWideConnected,
-    title: 'Multi-Exchange Support',
-    description: 'Trade across NSE, BSE, and MCX with exchange-specific configurations and market hour controls.',
-  },
-  {
-    icon: BsSpeedometer2,
-    title: 'Automated Operations',
-    description: 'Auto broker login, scheduled strategy execution, instrument management, and smart order routing.',
+    icon: BsHddNetwork,
+    title: 'Yours, on your machine',
+    body: 'Self-hosted, PostgreSQL, no telemetry and nothing phoning home. AGPL-3.0.',
   },
 ];
 
 const AuthLayout: React.FC = () => {
-  const { brandConfig } = useTheme();
-  const theme = brandTheme;
-
   return (
-    <div className="auth-layout relative flex min-h-screen overflow-hidden" style={{ background: theme.background }}>
-      {/* Decorative glows */}
+    <div className="relative min-h-screen overflow-hidden bg-[#080b14] text-white">
+      {/* A quiet grid, and two soft lights behind it. */}
       <div
-        className="absolute"
-        style={{ top: '-20%', right: '-10%', width: '500px', height: '500px', background: theme.glow1, borderRadius: '50%', filter: 'blur(60px)' }}
+        aria-hidden
+        className="pointer-events-none absolute inset-0 opacity-[0.35]"
+        style={{
+          backgroundImage:
+            'linear-gradient(rgba(255,255,255,0.045) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.045) 1px, transparent 1px)',
+          backgroundSize: '56px 56px',
+          maskImage: 'radial-gradient(ellipse 90% 70% at 50% 0%, #000 40%, transparent 100%)',
+          WebkitMaskImage:
+            'radial-gradient(ellipse 90% 70% at 50% 0%, #000 40%, transparent 100%)',
+        }}
       />
       <div
-        className="absolute"
-        style={{ bottom: '-20%', left: '-10%', width: '400px', height: '400px', background: theme.glow2, borderRadius: '50%', filter: 'blur(60px)' }}
+        aria-hidden
+        className="pointer-events-none absolute -top-40 left-1/2 h-[520px] w-[820px] -translate-x-1/2 rounded-full blur-[110px]"
+        style={{ background: 'radial-gradient(circle, rgba(99,102,241,0.30) 0%, transparent 70%)' }}
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute -bottom-52 -right-24 h-[460px] w-[460px] rounded-full blur-[110px]"
+        style={{ background: 'radial-gradient(circle, rgba(56,189,248,0.18) 0%, transparent 70%)' }}
       />
 
-      <div className="relative z-[1] flex min-h-screen w-full flex-col lg:flex-row">
-        {/* Left Panel — Login (~1/3) */}
-        <div className="flex flex-col items-center justify-center px-4 py-10 lg:w-1/3">
-          <div className="w-full max-w-[400px]">
-            <div className="mb-4 text-center">
-              <div className="mb-3 flex justify-center">
-                <BrandLogo height={48} />
-              </div>
-              <p className="text-white/75" style={{ fontSize: '1.05rem' }}>
-                {brandConfig.tagline}
-              </p>
-            </div>
-            <div
-              className="rounded-2xl border border-hairline bg-card/95 p-6 text-ink backdrop-blur-xl"
-              style={{ boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.4)' }}
+      <div className="relative z-[1] mx-auto flex min-h-screen w-full max-w-6xl flex-col px-6 py-10">
+        <header className="flex items-center justify-between">
+          <BrandLogo height={34} className="text-white" />
+          <a
+            href="https://github.com/sreenivasdoosa/garuda-engine"
+            target="_blank"
+            rel="noreferrer"
+            className="text-sm text-white/45 transition-colors hover:text-white/80"
+          >
+            Source
+          </a>
+        </header>
+
+        <main className="flex flex-1 flex-col items-center justify-center gap-14 py-12 lg:flex-row lg:items-center lg:gap-20">
+          {/* What it is. */}
+          <section className="w-full max-w-xl">
+            <p
+              className="mb-4 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium tracking-wide"
+              style={{ borderColor: authTheme.ring, color: '#c7d2fe', background: authTheme.accentSoft }}
             >
-              <Outlet />
-            </div>
-            <p className="mt-4 text-center text-sm text-white/60">
-              Need help? Contact{' '}
-              <a href={`mailto:${brandConfig.supportEmail}`} className="text-white/85 hover:underline">
-                {brandConfig.supportEmail}
-              </a>
+              <span className="h-1.5 w-1.5 rounded-full" style={{ background: authTheme.accent }} />
+              Self-hosted algorithmic trading
             </p>
-          </div>
-        </div>
-
-        {/* Right Panel — Feature Showcase (~2/3, lg+ only) */}
-        <div className="hidden flex-col justify-center py-10 pl-3 pr-10 lg:flex lg:w-2/3">
-          <div className="max-w-[820px]">
-            <h2 className="mb-2 font-display font-bold text-white" style={{ fontSize: '1.85rem', letterSpacing: '-0.02em' }}>
-              Algorithmic Trading Platform
-            </h2>
-            <p className="mb-4 text-white/60" style={{ fontSize: '1.05rem', lineHeight: 1.6 }}>
-              Enterprise-grade infrastructure for automated trading — from strategy execution to risk management, everything you
-              need to run a professional trading desk.
+            <h1 className="font-display text-4xl font-bold leading-[1.1] tracking-tight text-white sm:text-5xl">
+              One desk.
+              <br />
+              <span
+                className="bg-clip-text text-transparent"
+                style={{ backgroundImage: 'linear-gradient(100deg, #38bdf8, #6366f1 45%, #a855f7)' }}
+              >
+                Every account you run.
+              </span>
+            </h1>
+            <p className="mt-5 max-w-lg text-[1.05rem] leading-relaxed text-white/55">
+              Garuda trades options, futures and equities across your broker accounts — on NSE, BSE
+              and MCX — from strategies you configure rather than code. You are the only person who
+              signs in; the accounts it trades are all yours.
             </p>
 
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-              {platformFeatures.map((feature, index) => (
-                <div
-                  key={index}
-                  className="flex h-full gap-3 rounded-xl border p-3 transition-all"
-                  style={{ background: 'rgba(255, 255, 255, 0.06)', borderColor: 'rgba(255, 255, 255, 0.08)' }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
-                    e.currentTarget.style.borderColor = theme.hoverBorder;
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)';
-                    e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.08)';
-                  }}
-                >
-                  <div
-                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[10px]"
-                    style={{ background: theme.iconBg }}
+            <div className="mt-9 grid grid-cols-1 gap-x-8 gap-y-6 sm:grid-cols-2">
+              {capabilities.map(({ icon: Icon, title, body }) => (
+                <div key={title} className="flex gap-3">
+                  <span
+                    className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+                    style={{ background: authTheme.accentSoft }}
                   >
-                    <feature.icon size={20} style={{ color: theme.iconColor }} />
-                  </div>
+                    <Icon size={15} style={{ color: '#a5b4fc' }} />
+                  </span>
                   <div>
-                    <div className="mb-1 font-semibold text-white" style={{ fontSize: '0.925rem' }}>
-                      {feature.title}
-                    </div>
-                    <div className="text-white/55" style={{ fontSize: '0.825rem', lineHeight: 1.5 }}>
-                      {feature.description}
-                    </div>
+                    <h3 className="text-sm font-semibold text-white/90">{title}</h3>
+                    <p className="mt-1 text-[0.82rem] leading-relaxed text-white/45">{body}</p>
                   </div>
                 </div>
               ))}
             </div>
+          </section>
 
-            <div className="mt-4 flex flex-wrap gap-4 pt-3" style={{ borderTop: '1px solid rgba(255, 255, 255, 0.08)' }}>
-              {['NSE', 'BSE', 'MCX'].map((exchange) => (
-                <span
-                  key={exchange}
-                  className="px-3 py-1 text-white/60"
-                  style={{ background: 'rgba(255, 255, 255, 0.06)', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 500, letterSpacing: '0.05em' }}
-                >
-                  {exchange}
-                </span>
-              ))}
-              <span className="self-center text-white/40" style={{ fontSize: '0.8rem' }}>
-                Equity &middot; Futures &middot; Options &middot; Commodity
-              </span>
+          {/* The way in. */}
+          <section className="w-full max-w-[380px] shrink-0">
+            <div
+              className="rounded-2xl border border-white/10 bg-white/[0.03] p-7 backdrop-blur-xl"
+              style={{ boxShadow: '0 30px 80px -30px rgba(0,0,0,0.9)' }}
+            >
+              <Outlet />
             </div>
-          </div>
-        </div>
+          </section>
+        </main>
+
+        <footer className="flex flex-col items-center justify-between gap-2 border-t border-white/[0.06] pt-6 text-xs text-white/30 sm:flex-row">
+          <span>Garuda Engine · AGPL-3.0</span>
+          <span>Runs where you put it. Nothing leaves the machine.</span>
+        </footer>
       </div>
     </div>
   );
 };
 
 export default AuthLayout;
-
-export { brandTheme };
-export type { BrandTheme };

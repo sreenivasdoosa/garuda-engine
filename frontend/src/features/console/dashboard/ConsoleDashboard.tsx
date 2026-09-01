@@ -4,7 +4,6 @@ import {
   BsPeople,
   BsLightning,
   BsBank,
-  BsCurrencyRupee,
   BsGraphUp,
   BsGraphDown,
   BsCheckCircle,
@@ -13,7 +12,7 @@ import {
   BsExclamationTriangle,
   BsPersonCheck,
 } from 'react-icons/bs';
-import { Line, Bar, Doughnut } from 'react-chartjs-2';
+import { Line, Doughnut } from 'react-chartjs-2';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -236,13 +235,6 @@ const ConsoleDashboard: React.FC = () => {
     enabled: true,
   });
 
-  const { data: revenueData, isLoading: loadingRevenue } = useQuery({
-    queryKey: ['dashboard', 'revenue', range],
-    queryFn: () => analyticsService.getRevenueData(range.fromDate, range.toDate),
-    staleTime: 5 * 60 * 1000,
-    enabled: true,
-  });
-
   const { data: capitalData, isLoading: loadingCapital } = useQuery({
     queryKey: ['dashboard', 'capital', range],
     queryFn: () => analyticsService.getDailyCapitalSummary(range.fromDate, range.toDate),
@@ -250,15 +242,9 @@ const ConsoleDashboard: React.FC = () => {
     enabled: true,
   });
 
-  // Total billing revenue (without GST) for the selected date range.
   // Same range as every other tile/chart on the dashboard. Mid-quarter
   // / mid-week views may legitimately read ₹0 because bills land at
   // quarter-end — that's accurate, not a bug.
-  const rangeRevenue = useMemo(() => {
-    if (!revenueData?.monthly?.length) return 0;
-    return revenueData.monthly.reduce((sum, pt) => sum + (pt.value || 0), 0);
-  }, [revenueData]);
-
   // Day-level win rate (% of trading days that were net-profitable across
   // all users/strategies in the selected range).
   const winRate = useMemo(() => {
@@ -310,20 +296,6 @@ const ConsoleDashboard: React.FC = () => {
     ],
   };
 
-  // Revenue Chart Data
-  const revenueChartData = {
-    labels: revenueData?.monthly?.map((d) => d.label) || [],
-    datasets: [
-      {
-        label: 'Revenue',
-        data: revenueData?.monthly?.map((d) => d.value) || [],
-        backgroundColor: 'rgba(45, 206, 137, 0.8)',
-        borderColor: 'rgb(45, 206, 137)',
-        borderWidth: 1,
-      },
-    ],
-  };
-
   // Broker Distribution Chart Data
   const brokerDistributionData = {
     labels: brokerStats?.brokerDistribution?.map((d) => d.name) || [],
@@ -363,7 +335,7 @@ const ConsoleDashboard: React.FC = () => {
     <div className="fade-in">
       <PageHeader
         title="Console Dashboard"
-        subtitle="System overview and management"
+        subtitle="Every account this engine trades, and how the day is going"
         actions={
           <div className="flex items-center gap-2 flex-wrap" style={{ fontSize: '0.7rem' }}>
             <ButtonGroup size="sm">
@@ -456,9 +428,9 @@ const ConsoleDashboard: React.FC = () => {
       <Row className="mb-4">
                   <Col sm={6} lg={3} className="mb-2 lg:mb-0">
             <StatCard
-              title="Users"
+              title="Trading Clients"
               value={`${userStats?.activeUsers || 0} / ${userStats?.totalUsers || 0}`}
-              subtitle="Active / Total"
+              subtitle="Trading / Total"
               icon={BsPeople}
               iconBg="primary"
               loading={loadingUsers}
@@ -478,24 +450,12 @@ const ConsoleDashboard: React.FC = () => {
         
                   <Col sm={6} lg={3} className="mb-2 lg:mb-0">
             <StatCard
-              title="User Brokers"
+              title="Broker Sessions"
               value={`${brokerStats?.enabledMappings || 0} / ${brokerStats?.totalMappings || 0}`}
-              subtitle="Enabled / Total"
+              subtitle="Logged in / Total"
               icon={BsBank}
               iconBg="info"
               loading={loadingBrokers}
-            />
-          </Col>
-        
-                  <Col sm={6} lg={3}>
-            <StatCard
-              title={`Revenue (${selectedRangeLabel})`}
-              subtitle="excl. GST"
-              value={rangeRevenue}
-              prefix="₹"
-              icon={BsCurrencyRupee}
-              iconBg="warning"
-              loading={loadingRevenue}
             />
           </Col>
         
@@ -608,29 +568,6 @@ const ConsoleDashboard: React.FC = () => {
           (CAPITAL_ANALYTICS). When only one is visible it fills the row. */}
       {(true || true) && (
         <Row className="mb-4">
-                      <Col lg={6} className="mb-4 lg:mb-0">
-              <Card className="h-full">
-                <Card.Header className="flex justify-between items-center py-2">
-                  <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>Billing Revenue ({selectedRangeLabel}) — excl. GST</span>
-                  <Link to="/console/analytics/billing" className="inline-flex items-center justify-center gap-1.5 rounded-control font-medium transition-colors cursor-pointer whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/50 bg-transparent text-primary-600 hover:underline dark:text-primary-400 px-2.5 py-1 text-xs" style={{ fontSize: '0.7rem', padding: 0 }}>
-                    View Details
-                  </Link>
-                </Card.Header>
-                <Card.Body className="p-2">
-                  {loadingRevenue ? (
-                    <div className="text-center py-6">
-                      <Spinner size="sm" />
-                    </div>
-                  ) : revenueData?.monthly && revenueData.monthly.length > 0 ? (
-                    <div style={{ height: '180px' }}>
-                      <Bar data={revenueChartData} options={currencyChartOptions} />
-                    </div>
-                  ) : (
-                    <Alert variant="info" className="mb-0" style={{ fontSize: '0.75rem' }}>No revenue data available</Alert>
-                  )}
-                </Card.Body>
-              </Card>
-            </Col>
           
 
                       <Col lg={6}>

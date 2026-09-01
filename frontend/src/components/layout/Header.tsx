@@ -306,7 +306,7 @@ const Header: React.FC<HeaderProps> = ({ showSidebarToggle = true }) => {
           </Tooltip>
         )}
 
-        {/* Console/Terminal Toggle - Only for users who can manage users */}
+        {/* Console and Terminal, one toggle. */}
         {(
           <Tooltip label={isTerminalPage ? 'Switch to Console' : 'Switch to Terminal'}>
             <button
