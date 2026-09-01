@@ -171,6 +171,10 @@ class EventDaysRepository(Repository[models.EventDaysRow]):
     model = models.EventDaysRow
 
 
+class StrategyEventDaysRepository(Repository[models.StrategyEventDaysRow]):
+    model = models.StrategyEventDaysRow
+
+
 class EventJournalRepository(Repository[models.EventJournalRow]):
     model = models.EventJournalRow
 
@@ -678,6 +682,10 @@ class Repositories:
     @property
     def hedge_schedules(self) -> HedgeSchedulesRepository:
         return self.of(HedgeSchedulesRepository)
+
+    @property
+    def strategy_event_days(self) -> StrategyEventDaysRepository:
+        return self.of(StrategyEventDaysRepository)
 
     @property
     def holidays(self) -> HolidaysRepository:

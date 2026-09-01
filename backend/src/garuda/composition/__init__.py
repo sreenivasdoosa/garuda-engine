@@ -8,6 +8,7 @@ the dependencies pointing downward.
 
 from garuda.composition.accounts import build_resolver, load_accounts, load_sessions
 from garuda.composition.engine import ClientParts, Engine, EngineParts, build_engine
+from garuda.composition.event_days import event_days_from, load_event_days
 from garuda.composition.instruments import build_loader, load_symbols
 from garuda.composition.persistence import TradePersistence
 from garuda.composition.routing import Delivery, deliver
@@ -26,7 +27,9 @@ __all__ = [
     "build_loader",
     "build_resolver",
     "deliver",
+    "event_days_from",
     "load_accounts",
+    "load_event_days",
     "load_sessions",
     "load_symbols",
     "load_venues",

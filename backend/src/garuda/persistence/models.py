@@ -330,6 +330,27 @@ class EventDaysRow(Base):
     capital_percentage: Mapped[Decimal | None] = mapped_column(Numeric(20, 6), nullable=True)
 
 
+class StrategyEventDaysRow(Base):
+    """One strategy's override of an event day's capital percentage.
+
+    An event day says "trade 50% of normal size on NSE that date". A row here
+    says one named strategy trades a different figure -- 60%, or 0 to sit the
+    day out -- and every other strategy keeps the 50%.
+
+    The reference engine had four of these maps: user, strategy, product and
+    the exchange-level day itself, resolved in that order. Garuda keeps two.
+    Product is not a scope a strategy is configured against here, and there is
+    one operator, so a per-user override is an override of yourself.
+    """
+
+    __tablename__ = "strategy_event_days"
+
+    strategy_name: Mapped[str] = mapped_column(String(100), primary_key=True)
+    event_date: Mapped[str] = mapped_column(String(10), primary_key=True)
+    exchange_code: Mapped[str] = mapped_column(String(10), primary_key=True)
+    capital_percentage: Mapped[Decimal] = mapped_column(Numeric(20, 6))
+
+
 class ProductsRow(Base):
     """PRODUCTS in the reference engine."""
 

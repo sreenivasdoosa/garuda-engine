@@ -26,8 +26,10 @@ from garuda.brokers.routing import trading_client_factory
 from garuda.brokers.sessions import Credentials, SessionResolver, SessionUnavailableError
 from garuda.brokers.websocket import websocket_connector
 from garuda.capital import CapitalLotAllocator, Sizer
+from garuda.capital.event_days import EventDays
 from garuda.composition.accounts import build_resolver
 from garuda.composition.engine import Engine, build_engine
+from garuda.composition.event_days import load_event_days
 from garuda.composition.instruments import build_loader, load_symbols
 from garuda.composition.risk import load_kill_switches, load_limits
 from garuda.composition.runtime import Runtime, start
@@ -139,6 +141,7 @@ async def _build(settings: Settings, clock: Clock) -> _Assembled:
         http=trading_client_factory(None),
     )
     limits = await load_limits(sessions)
+    event_days = await load_event_days(sessions)
     # The venue's day, not the server's: a switch set on Tuesday evening in
     # one timezone must not still be stopping Wednesday in another.
     stopped = await load_kill_switches(sessions, today=_trading_day(venues, clock.now()))
@@ -167,6 +170,7 @@ async def _build(settings: Settings, clock: Clock) -> _Assembled:
         symbols=symbols,
         strategies=strategies,
         market_data=market_data,
+        event_days=event_days,
     )
 
 
@@ -182,6 +186,9 @@ class _Assembled:
     strategies: Loaded
     #: Whose session fetches history, when one is nominated.
     market_data: Credentials | None
+    #: Dates the operator wants traded at reduced size, and any strategy that
+    #: differs. Empty means every date is full size.
+    event_days: EventDays
 
 
 def _report(strategies: Loaded) -> None:
@@ -296,7 +303,12 @@ def _strategy_loop(assembled: _Assembled, clock: Clock) -> StrategyLoop | None:
     async def deliver(batch: object) -> bool:
         return await deliver_for(engine, batch)  # type: ignore[arg-type]
 
-    factory = SignalFactory(Sizer(CapitalLotAllocator()), instrument, engine.parts.hub.latest)
+    factory = SignalFactory(
+        Sizer(CapitalLotAllocator()),
+        instrument,
+        engine.parts.hub.latest,
+        event_days=assembled.event_days,
+    )
     # One ledger, shared. Two would let the loop think a tranche was open
     # while the runner had already fired it, and it would enter every sweep.
     ledger = TrancheLedger(venue.trading_day_for(clock.now()))

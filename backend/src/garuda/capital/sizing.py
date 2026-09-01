@@ -95,7 +95,17 @@ class Sizer:
         capital: Money,
         *,
         stop_distance: Money | None = None,
+        lot_scale: Fraction = Fraction(1),
+        scale_reason: str | None = None,
     ) -> Sizing:
+        """Size one leg.
+
+        `lot_scale` reduces the allocator's answer -- an event day trading 50%
+        of normal size passes a half. The Sizer does not know what an event day
+        is; it applies a factor, and the engine decides what the factor means.
+        `scale_reason` is carried into the refusal when the factor takes the
+        leg to nothing, so "sized to zero" says why.
+        """
         if intent.instrument != instrument.id:
             raise DomainError(
                 f"{intent.strategy}: intent is for {intent.instrument}, "
@@ -113,20 +123,33 @@ class Sizer:
             raise DomainError(f"{intent.strategy}: allocator returned {lots} lots")
 
         lots = self._apply_leg_ratio(lots, intent)
+        # Before max_lots, not after: a cap is what the operator will allow at
+        # full size, and an event day reduces from what was allowed.
+        scaled = self._apply_scale(lots, lot_scale)
         if self._max_lots is not None:
-            lots = min(lots, self._max_lots)
+            scaled = min(scaled, self._max_lots)
 
-        if lots == 0:
+        if scaled == 0:
+            if lots > 0 and lot_scale < 1:
+                # The allocator did afford lots; the factor took them away.
+                # Saying "capital affords no whole lot" here would be false.
+                because = scale_reason or f"a scale of {lot_scale}"
+                refusal = (
+                    f"{lots} lot(s) of {instrument.trading_symbol} scaled to none by {because}"
+                )
+            else:
+                refusal = (
+                    f"capital {capital} affords no whole lot of "
+                    f"{instrument.trading_symbol} at {price}"
+                )
             return Sizing(
                 lots=0,
                 quantity=0,
                 slices=(),
                 notional=Money.zero(price.currency),
-                refusal=(
-                    f"capital {capital} affords no whole lot of "
-                    f"{instrument.trading_symbol} at {price}"
-                ),
+                refusal=refusal,
             )
+        lots = scaled
 
         quantity = instrument.lots_to_quantity(lots)
         return Sizing(
@@ -135,6 +158,22 @@ class Sizer:
             slices=slice_for_freeze_limit(quantity, instrument),
             notional=instrument.notional(price, quantity),
         )
+
+    @staticmethod
+    def _apply_scale(lots: int, scale: Fraction) -> int:
+        """Reduce a lot count by a factor, rounding down.
+
+        Down, not to nearest: rounding 1 lot at 60% up to 1 would trade full
+        size on a day the operator asked for less, and the direction of that
+        error is the one that costs money. It also means a small position can
+        scale to nothing, which is a refusal the caller reports rather than a
+        silent zero.
+        """
+        if scale < 0:
+            raise DomainError(f"lot scale {scale} is negative")
+        if scale == 1:
+            return lots
+        return int(Fraction(lots) * scale)
 
     @staticmethod
     def _apply_leg_ratio(lots: int, intent: Intent) -> int:

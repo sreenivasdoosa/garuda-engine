@@ -33,6 +33,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 
+from garuda.capital.event_days import NO_EVENT_DAYS, EventDays
 from garuda.capital.sizing import Sizer, Sizing
 from garuda.domain.enums import Direction
 from garuda.domain.errors import DomainError
@@ -97,12 +98,14 @@ class SignalFactory:
         *,
         protection: ProtectionPolicy | None = None,
         entry: EntryPolicy | None = None,
+        event_days: EventDays | None = None,
     ) -> None:
         self._sizer = sizer
         self._instruments = instruments
         self._quotes = quotes
         self._protection = protection or _no_protection
         self._entry = entry or _at_market
+        self._event_days = event_days or NO_EVENT_DAYS
 
     def build(
         self,
@@ -131,7 +134,7 @@ class SignalFactory:
 
         legs: list[_Leg] = []
         for sequence, intent in enumerate(intents):
-            leg = self._size(intent, capital, sequence)
+            leg = self._size(intent, capital, sequence, now)
             if isinstance(leg, str):
                 return SignalBatch(refusal=leg, sizings=tuple(sized.sizing for sized in legs))
             legs.append(leg)
@@ -156,7 +159,7 @@ class SignalFactory:
 
     # -- one leg ------------------------------------------------------------
 
-    def _size(self, intent: Intent, capital: Money, sequence: int) -> _Leg | str:
+    def _size(self, intent: Intent, capital: Money, sequence: int, now: datetime) -> _Leg | str:
         """Resolve, price and size one leg. A string is the reason it cannot be."""
         instrument = self._instruments(intent.instrument)
         if instrument is None:
@@ -169,7 +172,19 @@ class SignalFactory:
                 "so it cannot be sized"
             )
 
-        sizing = self._sizer.size(intent, instrument, quote.last_price, capital)
+        # Which trading day, in the venue's own calendar -- an event day is a
+        # date on an exchange, and 23:00 in Mumbai is not the same date
+        # everywhere.
+        day = instrument.exchange.trading_day_for(now)
+        exchange = instrument.exchange.code
+        sizing = self._sizer.size(
+            intent,
+            instrument,
+            quote.last_price,
+            capital,
+            lot_scale=self._event_days.scale_for(day, exchange, intent.strategy),
+            scale_reason=self._event_days.reason_for(day, exchange, intent.strategy),
+        )
         if not sizing.is_tradable:
             return (
                 f"{intent.strategy}: the {intent.role} leg "

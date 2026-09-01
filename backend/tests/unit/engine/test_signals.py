@@ -12,6 +12,7 @@ from decimal import Decimal
 import pytest
 
 from garuda.capital import CapitalLotAllocator, FixedLotAllocator, Sizer
+from garuda.capital.event_days import EventDay, EventDays, StrategyEventDay
 from garuda.domain import Currency, Direction, DomainError, Money, OrderType, ProductType
 from garuda.domain.client import TradingClientId
 from garuda.domain.enums import (
@@ -560,3 +561,178 @@ def test_every_slice_of_a_leg_carries_the_same_levels(
 
     assert len(batch.signals) == 2
     assert {s.protection.stop_loss for s in batch.signals} == {rupees("150")}
+
+
+# -- event days -------------------------------------------------------------
+
+
+Catalogue = dict[InstrumentId, Instrument]
+Prices = dict[InstrumentId, Tick]
+
+
+class TestEventDays:
+    """Does the engine actually trade smaller on an event day?
+
+    Every assertion here is on the quantity of the emitted signal, not on the
+    configuration being stored or looked up. The table existed for a while
+    with nothing reading it, and a test that checked the lookup would have
+    passed throughout.
+
+    The venue is NSE and the fixture's allocator gives 2 lots of 75 = 150.
+    """
+
+    TRADING_DAY = date(2026, 8, 31)
+
+    def event_days(
+        self, *, day: Decimal | None = None, strategy: Decimal | None = None
+    ) -> EventDays:
+        return EventDays.of(
+            days=(
+                (
+                    EventDay(
+                        date=self.TRADING_DAY,
+                        exchange="NSE",
+                        capital_percentage=day,
+                        name="Union Budget",
+                    ),
+                )
+                if day is not None
+                else ()
+            ),
+            overrides=(
+                (
+                    StrategyEventDay(
+                        strategy="short-strangle",
+                        date=self.TRADING_DAY,
+                        exchange="NSE",
+                        capital_percentage=strategy,
+                    ),
+                )
+                if strategy is not None
+                else ()
+            ),
+        )
+
+    def a_factory(
+        self,
+        catalogue: dict[InstrumentId, Instrument],
+        prices: dict[InstrumentId, Tick],
+        event_days: EventDays,
+    ) -> SignalFactory:
+        return SignalFactory(
+            Sizer(FixedLotAllocator(2)), catalogue.get, prices.get, event_days=event_days
+        )
+
+    def test_no_event_day_trades_full_size(self, catalogue: Catalogue, prices: Prices) -> None:
+        batch = build(self.a_factory(catalogue, prices, self.event_days()), intent())
+
+        assert batch.signals[0].quantity == 150
+
+    def test_an_event_day_at_fifty_percent_halves_the_quantity(
+        self, catalogue: Catalogue, prices: Prices
+    ) -> None:
+        factory = self.a_factory(catalogue, prices, self.event_days(day=Decimal(50)))
+
+        batch = build(factory, intent())
+
+        assert batch.signals[0].quantity == 75  # one lot, not two
+
+    def test_a_strategy_override_beats_the_event_day(
+        self, catalogue: Catalogue, prices: Prices
+    ) -> None:
+        """The owner's case: NSE is at 50%, this strategy is set to 100, so it
+        trades full size while everything else on NSE is halved."""
+        factory = self.a_factory(
+            catalogue, prices, self.event_days(day=Decimal(50), strategy=Decimal(100))
+        )
+
+        batch = build(factory, intent())
+
+        assert batch.signals[0].quantity == 150
+
+    def test_an_override_applies_only_to_the_strategy_named(
+        self, catalogue: Catalogue, prices: Prices
+    ) -> None:
+        days = EventDays.of(
+            days=(EventDay(date=self.TRADING_DAY, exchange="NSE", capital_percentage=Decimal(50)),),
+            overrides=(
+                StrategyEventDay(
+                    strategy="someone-else",
+                    date=self.TRADING_DAY,
+                    exchange="NSE",
+                    capital_percentage=Decimal(100),
+                ),
+            ),
+        )
+
+        batch = build(self.a_factory(catalogue, prices, days), intent())
+
+        assert batch.signals[0].quantity == 75  # still halved by the day
+
+    def test_zero_percent_refuses_the_entry_and_says_why(
+        self, catalogue: Catalogue, prices: Prices
+    ) -> None:
+        """Sitting the day out. The refusal has to name the event day rather
+        than claim the capital afforded nothing, which would be false."""
+        factory = self.a_factory(catalogue, prices, self.event_days(day=Decimal(0)))
+
+        batch = build(factory, intent())
+
+        assert batch.signals == ()
+        assert batch.refusal is not None
+        assert "event day" in batch.refusal
+        assert "Union Budget" in batch.refusal
+
+    def test_a_fraction_that_affords_no_whole_lot_refuses(
+        self, catalogue: Catalogue, prices: Prices
+    ) -> None:
+        """2 lots at 40% is 0.8, and a fifth of a lot cannot be traded."""
+        factory = self.a_factory(catalogue, prices, self.event_days(day=Decimal(40)))
+
+        batch = build(factory, intent())
+
+        assert batch.signals == ()
+        assert "event day" in (batch.refusal or "")
+
+    def test_an_event_day_on_another_exchange_does_not_apply(
+        self, catalogue: Catalogue, prices: Prices
+    ) -> None:
+        days = EventDays.of(
+            days=(EventDay(date=self.TRADING_DAY, exchange="MCX", capital_percentage=Decimal(50)),)
+        )
+
+        batch = build(self.a_factory(catalogue, prices, days), intent())
+
+        assert batch.signals[0].quantity == 150
+
+    def test_an_event_day_on_another_date_does_not_apply(
+        self, catalogue: Catalogue, prices: Prices
+    ) -> None:
+        days = EventDays.of(
+            days=(EventDay(date=date(2026, 9, 1), exchange="NSE", capital_percentage=Decimal(50)),)
+        )
+
+        batch = build(self.a_factory(catalogue, prices, days), intent())
+
+        assert batch.signals[0].quantity == 150
+
+    def test_the_reduction_reaches_every_leg_of_a_combo(
+        self, catalogue: Catalogue, prices: Prices
+    ) -> None:
+        """A hedge scaled while its main leg is not would change the shape of
+        the position, not its size."""
+        factory = self.a_factory(catalogue, prices, self.event_days(day=Decimal(50)))
+
+        batch = build(
+            factory,
+            intent(SOLD_CALL, role=LegRole.MAIN),
+            intent(HEDGE_CALL, role=LegRole.HEDGE, direction=Direction.LONG),
+        )
+
+        assert [signal.quantity for signal in batch.signals] == [75, 75]
+
+    @pytest.mark.parametrize("bad", [Decimal(-1), Decimal(101)])
+    def test_a_percentage_outside_nought_to_a_hundred_is_refused(self, bad: Decimal) -> None:
+        """Above 100 would size *up* on a day flagged as risky."""
+        with pytest.raises(DomainError):
+            EventDay(date=self.TRADING_DAY, exchange="NSE", capital_percentage=bad)
