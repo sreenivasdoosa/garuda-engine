@@ -28,6 +28,7 @@ from garuda.brokers.websocket import websocket_connector
 from garuda.capital import CapitalLotAllocator, Sizer
 from garuda.capital.event_days import EventDays
 from garuda.composition.accounts import build_resolver
+from garuda.composition.data_providers import load_active_providers
 from garuda.composition.engine import Engine, build_engine
 from garuda.composition.event_days import load_event_days
 from garuda.composition.instruments import build_loader, load_symbols
@@ -142,6 +143,7 @@ async def _build(settings: Settings, clock: Clock) -> _Assembled:
     )
     limits = await load_limits(sessions)
     event_days = await load_event_days(sessions)
+    active_ticker, active_history = await load_active_providers(sessions)
     # The venue's day, not the server's: a switch set on Tuesday evening in
     # one timezone must not still be stopping Wednesday in another.
     stopped = await load_kill_switches(sessions, today=_trading_day(venues, clock.now()))
@@ -154,6 +156,8 @@ async def _build(settings: Settings, clock: Clock) -> _Assembled:
         connector=websocket_connector(),
         limits=limits,
         kill_switch=stopped,
+        active_ticker=active_ticker,
+        active_history=active_history,
     )
     strategies = await load_strategies(sessions)
     _report(strategies)

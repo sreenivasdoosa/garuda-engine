@@ -37,10 +37,9 @@ from garuda.brokers.sessions import (
 from garuda.brokers.websocket import Connector
 from garuda.brokers.zerodha.account import ZerodhaAccountStream
 from garuda.brokers.zerodha.broker import ZerodhaBroker
-from garuda.brokers.zerodha.feed import ZerodhaFeed
-from garuda.brokers.zerodha.history import ZerodhaHistory
 from garuda.brokers.zerodha.rest import KiteClient
 from garuda.composition.candle_view import CachedCandles
+from garuda.composition.providers import register_providers
 from garuda.composition.risk import gated, realised_today
 from garuda.composition.venues import Venues
 from garuda.core.bus import InProcessEventBus
@@ -55,6 +54,11 @@ from garuda.domain.trade import Trade
 from garuda.marketdata.history import CandleCache
 from garuda.marketdata.hub import TickHub
 from garuda.marketdata.loader import InstrumentRegistryHolder
+from garuda.marketdata.providers.registry import (
+    ProviderUnsupportedError,
+    feed_factory,
+    history_factory,
+)
 from garuda.marketdata.registry import InstrumentRegistry
 from garuda.marketdata.service import MarketDataService
 from garuda.marketdata.supervisor import FeedSupervisor
@@ -176,6 +180,11 @@ def build_engine(
     connector: Connector,
     limits: LimitBook | None = None,
     kill_switch: KillSwitch = NOTHING_STOPPED,
+    #: Which provider streams ticks and which answers candles. Both unset
+    #: means the account nominated on the Trading Clients page, which is what
+    #: an install predating the Data Providers page has.
+    active_ticker: str | None = None,
+    active_history: str | None = None,
 ) -> Engine:
     """Build every part the current configuration allows.
 
@@ -183,6 +192,7 @@ def build_engine(
     tasks on :attr:`EngineParts.registry` and hands it to the runner, which
     decides when each thing happens.
     """
+    register_providers()
     bus = InProcessEventBus()
     alerts = _build_alerts(sessions, bus, clock, venues)
     instruments = InstrumentRegistryHolder()
@@ -197,8 +207,10 @@ def build_engine(
         registry=TaskRegistry(),
         clock=clock,
     )
-    parts.market_data = _build_market_data(resolver, instruments, hub, clock, now, connector)
-    parts.candles = _build_candles(resolver, instruments, clock, now)
+    parts.market_data = _build_market_data(
+        resolver, instruments, hub, clock, now, connector, active_ticker
+    )
+    parts.candles = _build_candles(resolver, instruments, clock, now, active_history)
 
     for account in resolver.accounts:
         parts.accounts[account.id] = account
@@ -279,6 +291,7 @@ def _build_market_data(
     clock: Clock,
     now: datetime,
     connector: Connector,
+    active_ticker: str | None,
 ) -> MarketDataService | None:
     """The feed, on whichever account the operator nominated for it.
 
@@ -292,11 +305,29 @@ def _build_market_data(
         logger.warning("no market data: %s", error)
         return None
 
+    # Which provider streams is the operator's choice, held in
+    # `marketdata.active.ticker`. Unset means the account nominated on the
+    # Trading Clients page, which is what installs before the Data Providers
+    # page existed have and is still a complete answer.
+    provider = active_ticker or credentials.broker.lower()
+    try:
+        build_feed = feed_factory(provider)
+    except ProviderUnsupportedError as error:
+        # Configured, possibly logged in, and unable to carry ticks. Saying so
+        # by name is the difference between a fixable setting and what would
+        # otherwise look like an outage.
+        logger.error("no market data: %s", error)
+        return None
+
     registry = _registry_for(instruments, credentials.broker)
 
     async def open_feed() -> MarketDataFeed:
-        return ZerodhaFeed(
-            credentials.api_key, credentials.access_token, registry, clock, connector
+        return build_feed(
+            api_key=credentials.api_key,
+            access_token=credentials.access_token,
+            registry=registry,
+            clock=clock,
+            connector=connector,
         )
 
     return MarketDataService(hub, FeedSupervisor(hub, open_feed, clock), clock)
@@ -307,6 +338,7 @@ def _build_candles(
     instruments: InstrumentRegistryHolder,
     clock: Clock,
     now: datetime,
+    active_history: str | None,
 ) -> CandleCache | None:
     """History from whichever account provides market data.
 
@@ -319,10 +351,18 @@ def _build_candles(
         logger.warning("no candle history and no indicators: %s", error)
         return None
 
-    http = trading_client_factory(credentials.static_ip)
-    source = ZerodhaHistory(
-        KiteClient(credentials.api_key, credentials.access_token, http),
-        _registry_for(instruments, credentials.broker),
+    provider = active_history or credentials.broker.lower()
+    try:
+        build_history = history_factory(provider)
+    except ProviderUnsupportedError as error:
+        logger.error("no candle history and no indicators: %s", error)
+        return None
+
+    source = build_history(
+        api_key=credentials.api_key,
+        access_token=credentials.access_token,
+        registry=_registry_for(instruments, credentials.broker),
+        static_ip=credentials.static_ip,
     )
     return CandleCache(source=source, clock=clock)
 

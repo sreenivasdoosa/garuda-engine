@@ -190,3 +190,26 @@ def _session_for(
         obtained_at=stored.obtained_at,
         client_id=stored.client_id,
     )
+
+
+#: Where the two choices live. The names match the API's, because they are the
+#: same two rows.
+ACTIVE_TICKER = "marketdata.active.ticker"
+ACTIVE_HISTORY = "marketdata.active.history"
+
+
+async def load_active_providers(
+    sessions: async_sessionmaker[AsyncSession],
+) -> tuple[str | None, str | None]:
+    """Which provider streams, and which answers candles.
+
+    Both unset is a complete answer, not a failure: an install predating the
+    Data Providers page nominates a trading client instead, and the engine
+    falls back to that.
+    """
+    async with UnitOfWork(sessions) as uow:
+        ticker = await uow.repositories.system_config.value_of(ACTIVE_TICKER)
+        history = await uow.repositories.system_config.value_of(ACTIVE_HISTORY)
+    if ticker or history:
+        logger.info("active providers: ticks=%s history=%s", ticker or "-", history or "-")
+    return (ticker or None), (history or None)
