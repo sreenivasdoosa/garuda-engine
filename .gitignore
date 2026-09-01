@@ -27,7 +27,10 @@ frontend/dist/
 config/.env
 *.log
 logs/
-data/
+# Root-anchored on purpose. A bare `data/` matches any directory of that name
+# at any depth, and it silently swallowed `frontend/src/data/` -- the Console's
+# entire help content, 21 files, which meant a fresh clone did not compile.
+/data/
 backup/
 
 # --- Editors / OS ------------------------------------------------------------
