@@ -30,6 +30,7 @@ from garuda.api.routers import (
     holidays,
     special_trading_days,
     symbols,
+    universes,
 )
 from garuda.api.tokens import issue, read
 from garuda.config.settings import Settings, load_settings
@@ -160,5 +161,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(special_trading_days.build(sessions))
     app.include_router(event_days.build(sessions))
     app.include_router(symbols.build(sessions))
+    app.include_router(universes.build(sessions, LiveClock()))
 
     return app

@@ -94,7 +94,9 @@ configuration is refused loudly rather than silently ignored.
 | **1 trailing mode** | `HEIKIN_ASHI` — needs a candle transform, a wick search and a distance cap that nothing else uses |
 | **Automatic kill switches** | Operator-set switches load and fire. The reference also raises them from a daily loss, a volatility circuit or a rejection rate, with a state machine for when one may re-fire. `DailyLossCheck` refuses at the limit instead. |
 | **The `*_policy` tables** | Not read, and that is correct: they are Console-side templates with no key from a strategy. See `TRADE_MANAGEMENT.md`. |
-| **Most of the API** | Serving now: config, login, profile, change-password, health, exchanges, holidays, special trading days, event days and symbols (full CRUD). Every other page still calls endpoints nothing serves. `GET /api/exchanges/market-status` is the one exchange route still missing: it needs the built trading calendars, which live in `composition` — above `api` — so it lands with the Terminal, its only caller. |
+| **Most of the API** | Serving now: config, login, profile, change-password, health, exchanges, holidays, special trading days, event days, symbols and stock universes (full CRUD). Every other page still calls endpoints nothing serves. `GET /api/exchanges/market-status` is the one exchange route still missing: it needs the built trading calendars, which live in `composition` — above `api` — so it lands with the Terminal, its only caller. |
+| **Stock universes** | Both tables and `strategy_definitions.universe_id` exist and the endpoints serve them; nothing resolves a universe into subscriptions. That is engine work belonging with the strategy pages. |
+| **`PREDEFINED_INDEX` universes** | Accepted, but garuda has no NSE CSV pipeline, so such a universe holds whatever was last written by hand and its `last_refreshed_at` never moves. `CUSTOM` is the usable type today. |
 | **Users, in the Console** | The pages that scope by *user* -- the user selector, event days, recompute, subscriptions, the config tree -- still speak of users. In garuda that concept is the trading client, and the rename waits on the API defining its shape. |
 
 ---
@@ -119,6 +121,7 @@ Newest first. One line per chunk of work, not per commit.
 
 | Date | What landed |
 |---|---|
+| 2026-09-01 | Stock universes served: CRUD plus members, where a member has to be a symbol curated on the Symbols page. Nothing in the engine resolves a universe yet — `strategy_definitions.universe_id` is the hook and it has no reader — so this is a list an operator can curate and nothing trades from. |
 | 2026-09-01 | Symbols served: list, fetch, create, partial update, delete, and the per-broker freeze-limit sub-resource. This is the first page whose table the engine already read, so the endpoints refuse exactly what `SymbolInfo` refuses — a skipped row is a strategy that never finds its instrument. |
 | 2026-09-01 | Event-day endpoints for both levels, and bracket/cover orders removed from the codebase — garuda places neither, so `ProductType.BO`/`CO`, the Kite variety routing, the `bo_co_blocked` columns on `event_days` and `brokers`, and the Console's `isBOCOBlocked` fields and help are all gone. |
 | 2026-09-01 | Seeded special trading days: the FY2026 Union Budget on Saturday 01-Feb-2025 (NSE, BSE, usual hours), Diwali muhurat 21-Oct-2025 (NSE, BSE, 13:45–14:45 over a holiday), and Holi 14-Mar-2025 where MCX trades 17:00–23:30 and the equity venues do not. One row of each shape the table exists for, pinned by tests that read the calendar rather than the rows. |
