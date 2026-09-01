@@ -1,0 +1,51 @@
+# Days a venue is open that its own schedule would have closed.
+#
+# Three real sessions, one of each shape the table has to express. Verify
+# against the exchange's own circular before trusting them for a live year --
+# these are seed rows, and an exchange can move a session.
+#
+# `market_open` / `market_close` null means the venue's usual hours apply.
+
+# --- A full session on a weekend ---------------------------------------------
+# The Union Budget for FY2026 was presented on Saturday 1 February 2025, and
+# NSE and BSE held a normal trading day for it. Null hours is the point: the
+# session was the venue's usual one, and the row exists only to say that a
+# Saturday was open.
+- exchange: NSE
+  trading_date: '2025-02-01'
+  trading_day_name: Union Budget
+  market_open: null
+  market_close: null
+- exchange: BSE
+  trading_date: '2025-02-01'
+  trading_day_name: Union Budget
+  market_open: null
+  market_close: null
+
+# --- A short session on a holiday --------------------------------------------
+# Diwali Laxmi Pujan, Tuesday 21 October 2025, is a holiday for all three
+# venues in `holidays.yaml`. NSE and BSE also held muhurat trading for Samvat
+# 2082 that evening -- one hour, nothing like the usual day -- so the hours
+# are set and the special day wins over the holiday.
+- exchange: NSE
+  trading_date: '2025-10-21'
+  trading_day_name: Diwali Muhurat Trading
+  market_open: '13:45'
+  market_close: '14:45'
+- exchange: BSE
+  trading_date: '2025-10-21'
+  trading_day_name: Diwali Muhurat Trading
+  market_open: '13:45'
+  market_close: '14:45'
+
+# --- One venue open while the others are shut --------------------------------
+# Holi, Friday 14 March 2025, is a holiday for all three venues. Commodities
+# follow a different rule: the morning is shut and the evening session trades.
+# The holiday row is what closes the morning MCX would otherwise run from
+# 09:00; this row reopens the evening only. NSE and BSE stay shut all day
+# because nothing here names them.
+- exchange: MCX
+  trading_date: '2025-03-14'
+  trading_day_name: Holi - evening session only
+  market_open: '17:00'
+  market_close: '23:30'

@@ -35,6 +35,9 @@ SEED_DIRECTORY = Path(__file__).parent / "seed_data"
 SEED_ORDER: tuple[tuple[str, str], ...] = (
     ("exchanges", "exchanges"),
     ("holidays", "holidays"),
+    # After holidays: a special day is only meaningful against the closure it
+    # overrides, and both are keyed by an exchange that has to exist first.
+    ("special_trading_days", "special_trading_days"),
     ("products", "products"),
     ("brokers", "brokers"),
     ("symbols", "symbols"),

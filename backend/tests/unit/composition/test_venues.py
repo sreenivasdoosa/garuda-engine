@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from garuda.composition.venues import DEFAULT_WEEKEND, Venues, venues_from
+from garuda.domain.calendar import TradingCalendar
 from garuda.domain.enums import ProductType, Segment
 from garuda.domain.money import Currency
 from garuda.persistence.models import (
@@ -397,3 +398,88 @@ class TestSpecialTradingDays:
         window = calendar.windows_on(MONDAY)[0]
         assert window.start == datetime(2026, 8, 31, 9, 15, tzinfo=IST)
         assert window.end == datetime(2026, 8, 31, 15, 30, tzinfo=IST)
+
+
+class TestTheSeededSpecialDays:
+    """The three shapes the seed file exists to demonstrate, checked through
+    the calendar rather than by reading the rows back.
+
+    The rows are real sessions: the FY2026 Union Budget on Saturday
+    01-Feb-2025, Diwali muhurat for Samvat 2082 on 21-Oct-2025, and Holi
+    14-Mar-2025 where commodities trade the evening and equities do not. If a
+    seed edit breaks one of these, it breaks here with the case named.
+    """
+
+    @staticmethod
+    def venues_from_seed() -> Venues:
+        """Through `coerce_row`, which is what the loader uses.
+
+        Building the rows straight from the YAML leaves `market_open` a string
+        and `Session` refuses it -- so a test that skipped the coercion would
+        be exercising a path production does not have.
+        """
+        from garuda.persistence.seed import coerce_row, read_seed
+
+        def rows_of[T](model: type[T], name: str) -> list[T]:
+            return [model(**coerce_row(model, row)) for row in read_seed(name)]
+
+        return venues_from(
+            rows_of(ExchangesRow, "exchanges"),
+            rows_of(HolidaysRow, "holidays"),
+            rows_of(SpecialTradingDaysRow, "special_trading_days"),
+        )
+
+    def calendars(self) -> dict[str, TradingCalendar]:
+        return {code: venue.calendar for code, venue in self.venues_from_seed().exchanges.items()}
+
+    def test_the_budget_saturday_trades_the_usual_session(self) -> None:
+        budget = date(2025, 2, 1)
+        assert budget.weekday() == 5, "the point of the row is that it is a Saturday"
+
+        calendars = self.calendars()
+
+        for code in ("NSE", "BSE"):
+            windows = calendars[code].windows_on(budget)
+            assert len(windows) == 1, code
+            assert windows[0].start.time() == time(9, 15)
+            assert windows[0].end.time() == time(15, 40)
+
+    def test_every_other_saturday_stays_shut(self) -> None:
+        calendars = self.calendars()
+
+        for code in ("NSE", "BSE", "MCX"):
+            assert calendars[code].is_trading_day(date(2025, 2, 8)) is False, code
+
+    def test_muhurat_is_one_evening_hour_on_a_day_that_is_a_holiday(self) -> None:
+        diwali = date(2025, 10, 21)
+        calendars = self.calendars()
+
+        for code in ("NSE", "BSE"):
+            calendar = calendars[code]
+            windows = calendar.windows_on(diwali)
+            assert [(w.start.time(), w.end.time()) for w in windows] == [
+                (time(13, 45), time(14, 45))
+            ], code
+            # The holiday is still there; the session is what wins.
+            assert calendar.is_open(datetime(2025, 10, 21, 10, 0, tzinfo=IST)) is False
+            assert calendar.is_open(datetime(2025, 10, 21, 14, 0, tzinfo=IST)) is True
+
+    def test_mcx_is_shut_for_muhurat_because_no_row_names_it(self) -> None:
+        calendars = self.calendars()
+
+        assert calendars["MCX"].is_trading_day(date(2025, 10, 21)) is False
+
+    def test_on_holi_commodities_trade_the_evening_and_equities_do_not(self) -> None:
+        holi = date(2025, 3, 14)
+        calendars = self.calendars()
+
+        for code in ("NSE", "BSE"):
+            assert calendars[code].is_trading_day(holi) is False, code
+
+        mcx = calendars["MCX"]
+        windows = mcx.windows_on(holi)
+        assert [(w.start.time(), w.end.time()) for w in windows] == [(time(17, 0), time(23, 30))]
+        # The morning MCX would otherwise have run from 09:00 is shut, which is
+        # the whole reason the holiday row on MCX has to be there too.
+        assert mcx.is_open(datetime(2025, 3, 14, 10, 0, tzinfo=IST)) is False
+        assert mcx.is_open(datetime(2025, 3, 14, 19, 0, tzinfo=IST)) is True
