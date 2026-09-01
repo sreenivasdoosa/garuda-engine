@@ -1,7 +1,7 @@
 import { api } from '@/api/client';
 import { API_ENDPOINTS } from '@/api/endpoints';
 import { setRuntimeWsHost } from '@/config/env';
-import { setClientSidePnl, setShowTerminalPnlChart, setAiClientConfig } from '@/config/featureFlags';
+import { setClientSidePnl, setShowTerminalPnlChart } from '@/config/featureFlags';
 
 export interface OAuthConfig {
   authServiceUrl: string;
@@ -41,8 +41,6 @@ export interface ServerConfig {
    * Applies to the terminal.
    */
   showTerminalPnlChart?: boolean;
-  /** AI assistant client hints (server-enforced limits mirrored to the UI). */
-  ai?: { maxQuestionChars?: number };
 }
 
 export interface SystemConfig {
@@ -97,7 +95,6 @@ export const configService = {
     setRuntimeWsHost(config.wsHost);
     setClientSidePnl(config.clientSidePnl);
     setShowTerminalPnlChart(config.showTerminalPnlChart);
-    setAiClientConfig(config.ai);
     return config;
   },
 

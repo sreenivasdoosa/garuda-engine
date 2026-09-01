@@ -4,24 +4,25 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="Algo Trading Platform - Automated trading solutions" />
-    <title>Algo Trade Platform</title>
+    <meta name="description" content="Self-hosted algorithmic trading engine" />
+    <title>Garuda Engine</title>
     <!-- Preconnect to fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <!-- Type system: Inter (body) + Space Grotesk (display) + Fira Code (data) -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=Fira+Code:wght@400;500;600&display=swap" rel="stylesheet">
-    <!-- Apply the persisted light/dark choice before paint to avoid a flash.
-         Default is light; only an explicit "dark" choice opts in.
-         See docs/TAILWIND_MIGRATION_TRACKING.md. -->
+    <!-- Apply the persisted light/dark choice before paint, so the page never
+         flashes the wrong one. Dark is the default -- it is what the sign-in
+         page is -- and only an explicit "light" choice opts out. -->
     <script>
       (function () {
         try {
-          if (localStorage.getItem('theme') === 'dark') {
+          if (localStorage.getItem('theme') !== 'light') {
             document.documentElement.classList.add('dark');
           }
-        } catch (e) { /* no-op */ }
+        } catch (e) {
+          document.documentElement.classList.add('dark');
+        }
       })();
     </script>
   </head>

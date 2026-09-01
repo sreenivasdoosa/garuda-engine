@@ -258,13 +258,6 @@ export const API_ENDPOINTS = {
       `/api/v2/statutory-charges/overrides/${broker}/${exchange}/${segment}/${product}`,
   },
 
-  // V2 AI analytics assistant
-  V2_AI: {
-    ANALYZE: '/api/v2/ai/analyze',
-    RESULT: (requestId: number) => `/api/v2/ai/result/${requestId}`,
-    USAGE: '/api/v2/ai/usage',
-  },
-
   // V2 Broker Exchange Configs
   V2_BROKER_EXCHANGE_CONFIGS: {
     BASE: '/api/v2/broker-exchange-configs',
@@ -476,7 +469,6 @@ export const API_ENDPOINTS = {
     CLEAR_ROLES: '/api/v2/cache/roles',
     CLEAR_CORE: '/api/v2/cache/core',
     CLEAR_CORE_BY_NAME: (name: string) => `/api/v2/cache/core/${name}`,
-    REFRESH_AI_SCHEMA: '/api/v2/cache/ai-schema',
     CLEAR_ALL: '/api/v2/cache/all',
   },
 

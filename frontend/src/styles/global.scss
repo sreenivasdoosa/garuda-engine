@@ -125,7 +125,7 @@ a {
     left: 0;
     right: 0;
     height: 3px;
-    background: linear-gradient(90deg, #2dce89 0%, #11cdef 50%, #5e72e4 100%);
+    background: var(--brand-gradient);
     opacity: 0;
     transition: opacity 0.3s ease;
   }
@@ -179,7 +179,7 @@ a {
   overflow: hidden;
 
   &:focus {
-    box-shadow: 0 0 0 3px rgba(45, 206, 137, 0.2) !important;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2) !important;
   }
 
   &:active {
@@ -200,14 +200,14 @@ a {
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, #2dce89 0%, #26c281 100%) !important;
+  background: var(--brand-gradient) !important;
   border: none !important;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1) !important;
   color: #fff !important;
 
   &:hover, &:focus {
-    background: linear-gradient(135deg, #26c281 0%, #1fa06a 100%) !important;
-    box-shadow: 0 6px 20px rgba(45, 206, 137, 0.4) !important;
+    background: var(--brand-gradient-dark) !important;
+    box-shadow: 0 6px 20px rgba(99, 102, 241, 0.4) !important;
     transform: translateY(-2px) !important;
     color: #fff !important;
   }
@@ -219,14 +219,14 @@ a {
 }
 
 .btn-outline-primary {
-  border: 1.5px solid #2dce89 !important;
-  color: #2dce89 !important;
+  border: 1.5px solid var(--brand-primary) !important;
+  color: var(--brand-primary-light) !important;
   background: transparent !important;
 
   &:hover, &:focus {
-    background: rgba(45, 206, 137, 0.1) !important;
-    border-color: #2dce89 !important;
-    color: #2dce89 !important;
+    background: rgba(99, 102, 241, 0.14) !important;
+    border-color: var(--brand-primary) !important;
+    color: #fff !important;
     transform: translateY(-2px) !important;
   }
 }
@@ -270,7 +270,7 @@ a {
 
   &:focus {
     border-color: var(--brand-primary, $brand-fallback);
-    box-shadow: 0 0 0 3px rgba(var(--brand-primary-rgb, 45, 206, 137), 0.12);
+    box-shadow: 0 0 0 3px rgba(var(--brand-primary-rgb, 99, 102, 241), 0.12);
     background: #fff;
   }
 
@@ -294,6 +294,19 @@ a {
   letter-spacing: 0.01em;
 }
 
+// A native <select> is drawn by the platform, and some engines paint that
+// chrome over whatever background we set -- which punches a light slab into
+// the dark field. Draw the control ourselves so it looks the same everywhere.
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%2394a3b8' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.5rem center;
+  background-size: 0.7rem;
+  padding-right: 1.75rem;
+}
+
 .form-select {
   font-size: $font-size-sm;
   padding: $input-padding-y $input-padding-x;
@@ -306,9 +319,19 @@ a {
     border-color: $gray-400;
   }
 
+  // A native <select> keeps the platform's own light chrome unless it is told
+  // otherwise, so on the dark field it read as a white slab. `color-scheme`
+  // is what makes the popup list dark too -- colours alone do not reach it.
+  html.dark & {
+    color-scheme: dark;
+    background-color: rgb(var(--c-raised));
+    border-color: rgb(var(--c-hairline));
+    color: rgb(var(--c-ink));
+  }
+
   &:focus {
     border-color: var(--brand-primary, $brand-fallback);
-    box-shadow: 0 0 0 3px rgba(var(--brand-primary-rgb, 45, 206, 137), 0.12);
+    box-shadow: 0 0 0 3px rgba(var(--brand-primary-rgb, 99, 102, 241), 0.12);
   }
 }
 
@@ -332,7 +355,7 @@ a {
   }
 
   &:focus {
-    box-shadow: 0 0 0 3px rgba(var(--brand-primary-rgb, 45, 206, 137), 0.15);
+    box-shadow: 0 0 0 3px rgba(var(--brand-primary-rgb, 99, 102, 241), 0.15);
   }
 }
 
@@ -413,7 +436,7 @@ a {
 }
 
 .table-hover tbody tr:hover {
-  background: linear-gradient(90deg, rgba(45, 206, 137, 0.06) 0%, rgba(45, 206, 137, 0.02) 100%) !important;
+  background: linear-gradient(90deg, rgba(99, 102, 241, 0.06) 0%, rgba(99, 102, 241, 0.02) 100%) !important;
   transform: scale(1.005);
 
   td {
@@ -452,7 +475,7 @@ a {
   }
 
   &.bg-primary-subtle {
-    background: linear-gradient(135deg, rgba(var(--brand-primary-rgb, 45, 206, 137), 0.15) 0%, rgba(var(--brand-primary-rgb, 45, 206, 137), 0.08) 100%) !important;
+    background: linear-gradient(135deg, rgba(var(--brand-primary-rgb, 99, 102, 241), 0.15) 0%, rgba(var(--brand-primary-rgb, 99, 102, 241), 0.08) 100%) !important;
   }
 }
 
@@ -482,12 +505,12 @@ a {
   margin: 0.125rem 0;
 
   &:hover {
-    background: linear-gradient(135deg, rgba(var(--brand-primary-rgb, 45, 206, 137), 0.08) 0%, rgba(var(--brand-primary-rgb, 45, 206, 137), 0.04) 100%);
+    background: linear-gradient(135deg, rgba(var(--brand-primary-rgb, 99, 102, 241), 0.08) 0%, rgba(var(--brand-primary-rgb, 99, 102, 241), 0.04) 100%);
     color: var(--brand-primary, $brand-fallback);
   }
 
   &:active {
-    background: linear-gradient(135deg, rgba(var(--brand-primary-rgb, 45, 206, 137), 0.15) 0%, rgba(var(--brand-primary-rgb, 45, 206, 137), 0.08) 100%);
+    background: linear-gradient(135deg, rgba(var(--brand-primary-rgb, 99, 102, 241), 0.15) 0%, rgba(var(--brand-primary-rgb, 99, 102, 241), 0.08) 100%);
     color: var(--brand-primary, $brand-fallback);
   }
 }
@@ -612,7 +635,7 @@ a {
     right: 0;
     width: 120px;
     height: 120px;
-    background: radial-gradient(circle at top right, rgba(45, 206, 137, 0.1) 0%, transparent 70%);
+    background: radial-gradient(circle at top right, rgba(99, 102, 241, 0.1) 0%, transparent 70%);
     pointer-events: none;
   }
 
@@ -623,14 +646,14 @@ a {
     left: 0;
     right: 0;
     height: 3px;
-    background: linear-gradient(90deg, #2dce89 0%, #11cdef 100%);
+    background: var(--brand-gradient);
     opacity: 0;
     transition: opacity 0.3s ease;
   }
 
   &:hover {
     transform: translateY(-6px) !important;
-    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.12), 0 6px 16px rgba(45, 206, 137, 0.1) !important;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.12), 0 6px 16px rgba(99, 102, 241, 0.1) !important;
 
     &::after {
       opacity: 1;
@@ -651,27 +674,27 @@ a {
     // Gradient backgrounds for icons
     &.bg-primary,
     &[class*="bg-primary"] {
-      background: linear-gradient(135deg, #2dce89 0%, #26c281 100%) !important;
+      background: var(--brand-gradient) !important;
       color: #fff !important;
     }
     &.bg-success,
     &[class*="bg-success"] {
-      background: linear-gradient(135deg, #2dce89 0%, #1fa06a 100%) !important;
+      background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%) !important;
       color: #fff !important;
     }
     &.bg-danger,
     &[class*="bg-danger"] {
-      background: linear-gradient(135deg, #f5365c 0%, #d32f4f 100%) !important;
+      background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%) !important;
       color: #fff !important;
     }
     &.bg-warning,
     &[class*="bg-warning"] {
-      background: linear-gradient(135deg, #fb6340 0%, #f5365c 100%) !important;
+      background: linear-gradient(135deg, #f59e0b 0%, #ef4444 100%) !important;
       color: #fff !important;
     }
     &.bg-info,
     &[class*="bg-info"] {
-      background: linear-gradient(135deg, #11cdef 0%, #0da5c0 100%) !important;
+      background: linear-gradient(135deg, #38bdf8 0%, #0ea5e9 100%) !important;
       color: #fff !important;
     }
   }
@@ -755,7 +778,7 @@ a {
     left: 0;
     right: 0;
     height: 4px;
-    background: linear-gradient(90deg, #2dce89 0%, #11cdef 50%, #5e72e4 100%);
+    background: var(--brand-gradient);
   }
 
   // Decorative corner gradient
@@ -766,241 +789,200 @@ a {
     right: 0;
     width: 200px;
     height: 200px;
-    background: radial-gradient(circle at top right, rgba(45, 206, 137, 0.08) 0%, transparent 60%);
+    background: radial-gradient(circle at top right, rgba(99, 102, 241, 0.08) 0%, transparent 60%);
     pointer-events: none;
   }
 }
 
-// Sidebar styles - Elegant with gradient
-.sidebar {
-  position: fixed;
-  top: $navbar-height;
-  left: 0;
-  bottom: 0;
-  width: $sidebar-width;
-  background: linear-gradient(180deg, #1a1f2e 0%, #252d3d 100%) !important;
-  border-right: none !important;
-  overflow-y: auto;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
-  z-index: $zindex-sidebar;
-  box-shadow: 4px 0 24px rgba(0, 0, 0, 0.15) !important;
+// ---------------------------------------------------------------------------
+// Console chrome.
+//
+// Two fixed bars and nothing else: the top bar carries the brand, the seven
+// sections and the account menu; the row under it carries the pages of
+// whichever section you are in. The engine this was copied from navigated
+// from a 240px left rail, so every table lost that much width on every page.
+// ---------------------------------------------------------------------------
 
-  &.collapsed {
-    width: $sidebar-collapsed-width;
+$section-nav-height: 42px;
+
+.console-shell {
+  position: relative;
+  min-height: 100vh;
+  background: rgb(var(--c-app));
+
+  // The sign-in page's atmosphere, carried through: a faint grid and two soft
+  // lights behind everything. Fixed rather than scrolled, so a long table does
+  // not drag the lights up the screen with it.
+  &::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background-image:
+      linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+    background-size: 56px 56px;
+    mask-image: radial-gradient(ellipse 90% 60% at 50% 0%, #000 35%, transparent 100%);
+    -webkit-mask-image: radial-gradient(ellipse 90% 60% at 50% 0%, #000 35%, transparent 100%);
   }
+
+  &::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background: var(--hero-mesh);
+  }
+
+  // Everything real sits above the atmosphere.
+  > * { position: relative; z-index: 1; }
 }
 
-.sidebar-nav {
-  padding: 1rem 0.75rem;
-
-  .nav-item {
-    margin-bottom: 0.25rem;
-  }
-
-  .nav-link {
-    display: flex;
-    align-items: center;
-    padding: 0.75rem 1rem;
-    color: rgba(255, 255, 255, 0.7) !important;
-    font-weight: $font-weight-medium;
-    font-size: $font-size-base;
-    border-radius: 0.625rem !important;
-    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
-    margin: 0 0.25rem;
-    position: relative;
-
-    .nav-icon {
-      margin-right: 0.75rem;
-      font-size: 1.125rem;
-      width: 1.375rem;
-      text-align: center;
-      transition: all 0.2s ease !important;
-      opacity: 0.8;
-    }
-
-    &:hover {
-      color: #fff !important;
-      background: linear-gradient(135deg, rgba(45, 206, 137, 0.2) 0%, rgba(45, 206, 137, 0.1) 100%) !important;
-
-      .nav-icon {
-        transform: scale(1.1);
-        opacity: 1;
-        color: #2dce89 !important;
-      }
-    }
-
-    &.active {
-      color: #fff !important;
-      background: linear-gradient(135deg, rgba(45, 206, 137, 0.25) 0%, rgba(45, 206, 137, 0.15) 100%) !important;
-      font-weight: $font-weight-semibold;
-      box-shadow: 0 4px 12px rgba(45, 206, 137, 0.2) !important;
-
-      .nav-icon {
-        color: #2dce89 !important;
-        opacity: 1;
-      }
-
-      // Active indicator bar
-      &::before {
-        content: '';
-        position: absolute;
-        left: 0;
-        top: 50%;
-        transform: translateY(-50%);
-        width: 4px;
-        height: 70%;
-        background: linear-gradient(180deg, #2dce89 0%, #26c281 100%);
-        border-radius: 0 4px 4px 0;
-        box-shadow: 0 0 8px rgba(45, 206, 137, 0.5);
-      }
-    }
-  }
+// Light mode keeps the surfaces it had; the grid and the lights are a dark-field
+// effect and read as dirt on white.
+html:not(.dark) .console-shell {
+  &::before, &::after { display: none; }
 }
 
-// Sidebar section titles
-.sidebar-section-title {
-  color: rgba(255, 255, 255, 0.4) !important;
-  font-size: 0.6875rem !important;
-  letter-spacing: 1px !important;
-  margin-top: 0.75rem;
-  margin-bottom: 0.5rem;
-  padding-left: 1rem !important;
-}
-
-// Header styles - Elegant with gradient
 .header {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   height: $navbar-height;
-  background: linear-gradient(135deg, #1a1f2e 0%, #252d3d 100%) !important;
-  border-bottom: none !important;
   display: flex;
   align-items: center;
+  gap: 0.75rem;
   padding: 0 1.25rem;
   z-index: $zindex-header;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15) !important;
+  color: #fff;
+  background: rgba(8, 11, 20, 0.88) !important;
+  backdrop-filter: blur(14px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07) !important;
 
   .header-brand {
     display: flex;
     align-items: center;
+    flex-shrink: 0;
     transition: opacity 0.2s ease;
 
-    &:hover {
-      opacity: 0.9;
-    }
-
-    .brand-logo {
-      height: 32px;
-      width: auto;
-      filter: brightness(0) invert(1);
-    }
-
-    .brand-name {
-      font-size: 1.125rem;
-      font-weight: $font-weight-bold;
-      color: #fff !important;
-      margin-left: 0.625rem;
-      letter-spacing: -0.01em;
-    }
-  }
-
-  // Make header icons and text white
-  .btn-link {
-    color: rgba(255, 255, 255, 0.8) !important;
-
-    &:hover {
-      color: #fff !important;
-    }
-  }
-
-  .text-dark {
-    color: rgba(255, 255, 255, 0.9) !important;
-  }
-
-  .text-muted {
-    color: rgba(255, 255, 255, 0.6) !important;
-  }
-
-  .badge.bg-secondary {
-    background: rgba(255, 255, 255, 0.15) !important;
-    color: #fff !important;
-  }
-
-  .rounded-circle.bg-secondary {
-    background: linear-gradient(135deg, #2dce89 0%, #26c281 100%) !important;
+    &:hover { opacity: 0.9; }
   }
 }
 
-// Main content - Elegant
-.main-content {
-  margin-left: $sidebar-width;
-  margin-top: $navbar-height;
-  padding: 1.5rem;
-  min-height: calc(100vh - #{$navbar-height});
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+// The sections, in the top bar beside the brand.
+.header-sections {
+  display: flex;
+  align-items: center;
+  gap: 0.125rem;
+  margin-left: 0.5rem;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+
+  &::-webkit-scrollbar { display: none; }
+}
+
+.header-section {
+  position: relative;
+  flex-shrink: 0;
+  padding: 0.4rem 0.7rem;
+  border-radius: $border-radius;
+  font-size: $font-size-xs;
+  font-weight: $font-weight-medium;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  color: rgba(255, 255, 255, 0.6);
+  text-decoration: none;
+  transition: color 0.15s ease, background-color 0.15s ease;
+
+  &:hover {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.07);
+  }
+
+  // The section reads as selected; the gradient pill on the row below says
+  // which of its pages you are on. Two weights, so the pair is legible.
+  &.is-active {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.12);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.10);
+  }
+}
+
+// The pages of the current section.
+.section-nav {
+  position: fixed;
+  top: $navbar-height;
+  left: 0;
+  right: 0;
+  height: $section-nav-height;
+  z-index: $zindex-header - 1;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0 1.25rem;
+  overflow-x: auto;
+  scrollbar-width: none;
+  background: rgba(12, 16, 28, 0.92);
+  backdrop-filter: blur(14px);
+  border-bottom: 1px solid rgb(var(--c-hairline));
+
+  &::-webkit-scrollbar { display: none; }
+}
+
+.section-page {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-shrink: 0;
+  padding: 0.3rem 0.65rem;
+  border-radius: $border-radius;
+  font-size: $font-size-xs;
+  font-weight: $font-weight-medium;
+  white-space: nowrap;
+  color: rgb(var(--c-ink-soft));
+  text-decoration: none;
+  transition: color 0.15s ease, background-color 0.15s ease;
+
+  svg { opacity: 0.75; }
+
+  &:hover {
+    color: rgb(var(--c-ink));
+    background: rgba(255, 255, 255, 0.05);
+  }
+
+  &.is-active {
+    color: #fff;
+    background: var(--brand-gradient);
+    box-shadow: 0 2px 10px rgba(99, 102, 241, 0.30);
+
+    svg { opacity: 1; }
+  }
+}
+
+.console-main {
+  margin-top: calc(#{$navbar-height} + #{$section-nav-height});
+  padding: 1rem 1.25rem 2rem;
+  min-height: calc(100vh - #{$navbar-height} - #{$section-nav-height});
   background: transparent;
 
-  &.sidebar-collapsed {
-    margin-left: $sidebar-collapsed-width;
-  }
-
-  &.no-sidebar {
-    margin-left: 0;
-  }
-}
-
-// Responsive
-@media (max-width: 991.98px) {
-  .sidebar {
-    transform: translateX(-100%);
-
-    &.open {
-      transform: translateX(0);
-    }
-  }
-
-  .main-content {
-    margin-left: 0;
+  // The Terminal runs full screen: top bar only, and no padding around the grid.
+  &.is-flush {
+    margin-top: $navbar-height;
+    min-height: calc(100vh - #{$navbar-height});
+    padding: 0;
   }
 }
 
-// User Portal Layout - Different color scheme
-.user-layout {
-  .sidebar {
-    background: linear-gradient(180deg, #0d1f22 0%, #134e4a 100%) !important;
-  }
-
-  .header {
-    background: linear-gradient(135deg, #0d1f22 0%, #134e4a 100%) !important;
-
-    // Make the brand (logo) block span the sidebar width so everything after it —
-    // the NIFTY/SENSEX index tickers — begins at the sidebar's right edge (aligned
-    // with the main-content area) instead of immediately after the logo.
-    // lg+ only: the tickers are hidden below the lg breakpoint anyway, and the
-    // sidebar is off-canvas on small screens. The logo stays left-aligned.
-    @media (min-width: 992px) {
-      .header-brand {
-        width: calc(#{$sidebar-width} - 1.25rem);
-        align-items: flex-start;
-      }
-    }
-  }
+@media (max-width: 767.98px) {
+  .header { padding: 0 0.75rem; }
+  .section-nav { padding: 0 0.75rem; }
+  .console-main { padding: 0.75rem 0.75rem 1.5rem; }
 }
 
-// In dark mode the user portal drops its teal bars and matches the
-// admin/console dark-slate sidebar/header (teal reads as "green background"
-// against the dark app surfaces). Light mode keeps the teal identity.
-html.dark .user-layout {
-  .sidebar {
-    background: linear-gradient(180deg, #1a1f2e 0%, #252d3d 100%) !important;
-  }
-
-  .header {
-    background: linear-gradient(135deg, #1a1f2e 0%, #252d3d 100%) !important;
-  }
-}
 
 // Toast customization
 .Toastify__toast {
@@ -1170,7 +1152,7 @@ html.dark {
     transform: translate(-50%, -50%);
     width: 200px;
     height: 200px;
-    background: radial-gradient(circle, rgba(var(--brand-primary-rgb, 45, 206, 137), 0.05) 0%, transparent 70%);
+    background: radial-gradient(circle, rgba(var(--brand-primary-rgb, 99, 102, 241), 0.05) 0%, transparent 70%);
     border-radius: 50%;
     pointer-events: none;
   }
@@ -1316,10 +1298,10 @@ html.dark {
 
 @keyframes glow {
   from {
-    box-shadow: 0 0 5px rgba(var(--brand-primary-rgb, 45, 206, 137), 0.2);
+    box-shadow: 0 0 5px rgba(var(--brand-primary-rgb, 99, 102, 241), 0.2);
   }
   to {
-    box-shadow: 0 0 20px rgba(var(--brand-primary-rgb, 45, 206, 137), 0.4);
+    box-shadow: 0 0 20px rgba(var(--brand-primary-rgb, 99, 102, 241), 0.4);
   }
 }
 
@@ -1394,7 +1376,7 @@ html.dark {
   }
 
   &.alert-primary {
-    background: linear-gradient(135deg, rgba(var(--brand-primary-rgb, 45, 206, 137), 0.12) 0%, rgba(var(--brand-primary-rgb, 45, 206, 137), 0.06) 100%);
+    background: linear-gradient(135deg, rgba(var(--brand-primary-rgb, 99, 102, 241), 0.12) 0%, rgba(var(--brand-primary-rgb, 99, 102, 241), 0.06) 100%);
   }
 }
 
@@ -1428,41 +1410,13 @@ html.dark {
 // Applied to Console and Terminal pages only
 // User portal retains the more spacious layout
 
-.admin-layout {
+.console-shell {
   // Compact main content padding
-  .main-content {
-    padding: 1rem !important;
+  .console-main {
+    padding: 1.25rem 1.5rem 2.5rem !important;
   }
 
-  // Compact sidebar navigation
-  .sidebar-nav {
-    padding: 0.5rem 0.5rem !important;
 
-    .nav-item {
-      margin-bottom: 0.125rem !important;
-    }
-
-    .nav-link {
-      padding: 0.5rem 0.75rem !important;
-      font-size: $font-size-xs !important;
-      border-radius: 0.5rem !important;
-      margin: 0 0.125rem !important;
-
-      .nav-icon {
-        margin-right: 0.5rem !important;
-        font-size: 0.9375rem !important;
-        width: 1.125rem !important;
-      }
-    }
-  }
-
-  // Compact sidebar section titles
-  .sidebar-section-title {
-    font-size: 0.5625rem !important;
-    margin-top: 0.5rem !important;
-    margin-bottom: 0.25rem !important;
-    padding-left: 0.75rem !important;
-  }
 
   // Compact cards
   .card {

@@ -37,24 +37,3 @@ export function setShowTerminalPnlChart(enabled: boolean | undefined): void {
 export function isShowTerminalPnlChart(): boolean {
   return showTerminalPnlChart;
 }
-
-// ---- AI assistant client hints (server config `ai` object) ----
-
-let aiMaxQuestionChars = 2000;
-
-/** Published by configService.getServerConfig() — do not call from components. */
-export function setAiClientConfig(ai: { maxQuestionChars?: number } | undefined): void {
-  if (ai?.maxQuestionChars && ai.maxQuestionChars > 0) {
-    aiMaxQuestionChars = ai.maxQuestionChars;
-  }
-}
-
-/**
- * Max characters for an AI chat question — mirrors the server's runtime
- * `ai.max.question.chars` (default 2000) so the input's maxLength tracks
- * System Config without a UI redeploy. The server independently enforces
- * the same limit on submit.
- */
-export function getAiMaxQuestionChars(): number {
-  return aiMaxQuestionChars;
-}

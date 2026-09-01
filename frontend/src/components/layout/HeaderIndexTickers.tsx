@@ -1,6 +1,6 @@
 /**
  * HeaderIndexTickers — the NIFTY / SENSEX strip rendered in the header
- * after the Trade Checklist button. Owns the bottom-slide chart panel
+ * after the section tabs. Owns the bottom-slide chart panel
  * state so each card click drops the TradingView-style candlestick chart
  * up from the bottom.
  *

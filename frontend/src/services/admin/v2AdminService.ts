@@ -2559,12 +2559,7 @@ export const cacheService = {
     return api.delete<CacheClearResult>(API_ENDPOINTS.V2_CACHE.CLEAR_CORE_BY_NAME(name));
   },
 
-  // Re-discover the AI assistant's DB schema context (after ai_reader grant changes)
-  async refreshAiSchema(): Promise<CacheClearResult> {
-    return api.delete<CacheClearResult>(API_ENDPOINTS.V2_CACHE.REFRESH_AI_SCHEMA);
-  },
-
-  // Clear all caches (roles + core + AI schema)
+  // Clear all caches (roles + core)
   async clearAll(): Promise<CacheClearResult> {
     return api.delete<CacheClearResult>(API_ENDPOINTS.V2_CACHE.CLEAR_ALL);
   },

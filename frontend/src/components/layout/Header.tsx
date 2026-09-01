@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import {
-  BsList,
   BsBell,
   BsPerson,
   BsBoxArrowRight,
@@ -19,15 +18,14 @@ import { toast } from 'react-toastify';
 import clsx from 'clsx';
 
 import { useAuthStore } from '@/store/authStore';
-import { useUIStore } from '@/store/uiStore';
 import { useAuth } from '@/hooks/useAuth';
 import { useRecentAlerts, useAlertsCount } from '@/hooks/useAlerts';
-import { BrandLogo, TradeChecklistButton } from '@/components/common';
+import { BrandLogo } from '@/components/common';
 import ThemeToggle from '@/components/ThemeToggle';
-import AiAssistantHeaderButton from '@/components/ai/AiAssistantHeaderButton';
 import MockSessionHeaderBadge from '@/components/layout/MockSessionHeaderBadge';
 import RMSStatusHeaderBadge from '@/components/layout/RMSStatusHeaderBadge';
 import HeaderIndexTickers from '@/components/layout/HeaderIndexTickers';
+import HeaderSections from '@/components/layout/HeaderSections';
 import {
   Badge,
   Dropdown,
@@ -55,7 +53,8 @@ const PREF_CATEGORY_FIELD_MAP: Record<string, keyof UserEmailPreferences> = {
 };
 
 interface HeaderProps {
-  showSidebarToggle?: boolean;
+  /** The Console shows its sections here; the Terminal shows none. */
+  showSections?: boolean;
 }
 
 // Helper to format timestamp for display
@@ -93,16 +92,15 @@ const toneDot: Record<Tone, string> = {
   blue: 'bg-blue-500',
 };
 
-const Header: React.FC<HeaderProps> = ({ showSidebarToggle = true }) => {
+const Header: React.FC<HeaderProps> = ({ showSections = true }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useAuthStore();
-  const { toggleSidebar } = useUIStore();
   const { logout } = useAuth();
   const { data: alerts, isLoading: isLoadingAlerts } = useRecentAlerts(50);
   const alertCounts = useAlertsCount();
 
-  const isTerminalPage = location.pathname === '/terminal-admin';
+  const isTerminalPage = location.pathname === '/terminal';
   const isLiveFeedPage = location.pathname === '/live-feed';
 
   const { data: buildInfo } = useQuery({
@@ -173,16 +171,6 @@ const Header: React.FC<HeaderProps> = ({ showSidebarToggle = true }) => {
     <header className="header">
       {/* Left section */}
       <div className="flex items-center">
-        {showSidebarToggle && (
-          <button
-            className="mr-2 p-1 text-white/80 hover:text-white lg:hidden"
-            onClick={toggleSidebar}
-            aria-label="Toggle sidebar"
-          >
-            <BsList size={22} />
-          </button>
-        )}
-
         <Link to="/" className="header-brand flex flex-col no-underline">
           <BrandLogo height={28} className="text-white" />
           {versionLabel && (
@@ -195,19 +183,15 @@ const Header: React.FC<HeaderProps> = ({ showSidebarToggle = true }) => {
           )}
         </Link>
 
+        {showSections && <HeaderSections />}
+
         {/* Live index tickers (NIFTY / SENSEX), always-on /socket "ticks" channel. */}
         <HeaderIndexTickers />
 
-        {/* Trade Checklist */}
-        {(
-          <div className="ml-3 flex items-center gap-2">
-            {getPortalLabel() && (
-              <span className="hidden md:inline-flex items-center rounded-full bg-white/15 px-2 py-0.5 text-xs font-medium text-white">
-                {getPortalLabel()}
-              </span>
-            )}
-            <TradeChecklistButton />
-          </div>
+        {!showSections && (
+          <span className="ml-3 hidden shrink-0 items-center rounded-full bg-white/10 px-2.5 py-0.5 text-xs font-medium text-white/80 md:inline-flex">
+            {getPortalLabel()}
+          </span>
         )}
       </div>
 
@@ -221,9 +205,6 @@ const Header: React.FC<HeaderProps> = ({ showSidebarToggle = true }) => {
 
         {/* Mock-trading session indicator. */}
         <MockSessionHeaderBadge canView />
-
-        {/* AI assistant (AI_ANALYTICS gated — renders nothing without the tool). */}
-        <AiAssistantHeaderButton />
 
         {/* Alerts */}
         <Dropdown
@@ -312,7 +293,7 @@ const Header: React.FC<HeaderProps> = ({ showSidebarToggle = true }) => {
             <button
               type="button"
               className={pillClass(isTerminalPage)}
-              onClick={() => navigate(isTerminalPage ? '/console' : '/terminal-admin')}
+              onClick={() => navigate(isTerminalPage ? '/console' : '/terminal')}
             >
               {isTerminalPage ? <BsGrid size={14} /> : <BsTerminal size={14} />}
               <span className="hidden md:inline">{isTerminalPage ? 'Console' : 'Terminal'}</span>

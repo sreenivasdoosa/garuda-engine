@@ -8,7 +8,6 @@ import {
   BsGraphDown,
   BsCheckCircle,
   BsXCircle,
-  BsReceipt,
   BsExclamationTriangle,
   BsPersonCheck,
 } from 'react-icons/bs';
@@ -223,14 +222,6 @@ const ConsoleDashboard: React.FC = () => {
   const { data: tradeSummary, isLoading: loadingTrades } = useQuery({
     queryKey: ['dashboard', 'tradesEod', range],
     queryFn: () => analyticsService.getEodTradeSummary(range.fromDate, range.toDate),
-    staleTime: 5 * 60 * 1000,
-    enabled: true,
-  });
-
-  // Billing/revenue/capital all share the selected range.
-  const { data: billingSummary, isLoading: loadingBilling } = useQuery({
-    queryKey: ['dashboard', 'billing', range],
-    queryFn: () => analyticsService.getBillingSummary(range.fromDate, range.toDate),
     staleTime: 5 * 60 * 1000,
     enabled: true,
   });
@@ -597,71 +588,8 @@ const ConsoleDashboard: React.FC = () => {
         </Row>
       )}
 
-      {/* Summary Cards Row — Billing (BILLING_ANALYTICS), Broker Distribution (TRADE_ANALYTICS),
-          Strategy Summary (STRATEGY_ENGINE). */}
-      {(true || true || true) && (
+      {/* Broker Distribution and Strategy Summary. */}
       <Row className="mb-4">
-        {/* Billing Summary */}
-                <Col lg={4} className="mb-4 lg:mb-0">
-          <Card className="h-full">
-            <Card.Header className="flex justify-between items-center py-2">
-              <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>
-                <BsReceipt className="me-1" size={12} />
-                Billing Summary ({selectedRangeLabel})
-              </span>
-            </Card.Header>
-            <Card.Body className="p-2">
-              {loadingBilling ? (
-                <div className="text-center py-4">
-                  <Spinner size="sm" />
-                </div>
-              ) : billingSummary ? (
-                <Table size="sm" className="mb-0" style={{ fontSize: '0.7rem' }}>
-                  <tbody>
-                    <tr>
-                      <td className="py-1">Total Bills</td>
-                      <td className="text-end font-bold py-1">{billingSummary.totalBills}</td>
-                    </tr>
-                    <tr>
-                      <td className="py-1">Paid Bills</td>
-                      <td className="text-end py-1">
-                        <Badge bg="success" style={{ fontSize: '0.6rem' }}>{billingSummary.paidBills}</Badge>
-                      </td>
-                    </tr>
-                    <tr>
-                      <td className="py-1">Pending Bills</td>
-                      <td className="text-end py-1">
-                        <Badge bg="warning" style={{ fontSize: '0.6rem' }}>{billingSummary.pendingBills}</Badge>
-                      </td>
-                    </tr>
-                    <tr>
-                      <td className="py-1">Overdue Bills</td>
-                      <td className="text-end py-1">
-                        <Badge bg="danger" style={{ fontSize: '0.6rem' }}>{billingSummary.overdueBills}</Badge>
-                      </td>
-                    </tr>
-                    <tr className="border-t">
-                      <td className="py-1">Total Billed</td>
-                      <td className="text-end font-bold py-1">₹{formatIndianNumber(billingSummary.totalBilled)}</td>
-                    </tr>
-                    <tr>
-                      <td className="py-1">Total Paid</td>
-                      <td className="text-end text-success-500 dark:text-success-400 py-1">₹{formatIndianNumber(billingSummary.totalPaid)}</td>
-                    </tr>
-                    <tr>
-                      <td className="py-1">Outstanding</td>
-                      <td className="text-end text-danger-600 dark:text-danger-400 py-1">₹{formatIndianNumber(billingSummary.outstanding)}</td>
-                    </tr>
-                  </tbody>
-                </Table>
-              ) : (
-                <Alert variant="info" className="mb-0" style={{ fontSize: '0.75rem' }}>No billing data available</Alert>
-              )}
-            </Card.Body>
-          </Card>
-        </Col>
-        
-
         {/* Broker Distribution */}
                 <Col lg={4} className="mb-4 lg:mb-0">
           <Card className="h-full">
@@ -774,9 +702,7 @@ const ConsoleDashboard: React.FC = () => {
             </Card.Body>
           </Card>
         </Col>
-        
       </Row>
-      )}
 
       {/* Failed-logins alert — gated by USER_BROKERS (the source endpoint
           requires that resource). */}

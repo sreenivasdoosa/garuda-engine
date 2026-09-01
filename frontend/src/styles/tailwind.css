@@ -46,8 +46,8 @@
 
   /* ---- Flavor-invariant tokens (fonts, radius, shadows) ---- */
   :root {
-    --font-display: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
-    --font-sans: 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+    --font-display: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+    --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
     --font-mono: ui-monospace, 'SFMono-Regular', 'Fira Code', Menlo, monospace;
 
     --radius-card: 0.625rem; /* 10px */
@@ -65,27 +65,27 @@
   :root,
   [data-theme='garuda-engine'] {
     /* Primary ramp (brand accent) */
-    --c-primary-50: 239 246 255;
-    --c-primary-100: 219 234 254;
-    --c-primary-200: 191 219 254;
-    --c-primary-300: 147 197 253;
-    --c-primary-400: 96 165 250;
-    --c-primary-500: 59 130 246;
-    --c-primary-600: 37 99 235;
-    --c-primary-700: 29 78 216;
-    --c-primary-800: 30 64 175;
-    --c-primary-900: 30 58 138;
-    --c-primary-950: 23 37 84;
+    --c-primary-50: 238 242 255;
+    --c-primary-100: 224 231 255;
+    --c-primary-200: 199 210 254;
+    --c-primary-300: 165 180 252;
+    --c-primary-400: 129 140 248;
+    --c-primary-500: 99 102 241;
+    --c-primary-600: 79 70 229;
+    --c-primary-700: 67 56 202;
+    --c-primary-800: 55 48 163;
+    --c-primary-900: 49 46 129;
+    --c-primary-950: 30 27 75;
 
     /* Secondary accent (info / gradient tail) */
     --c-accent-400: 56 189 248;
     --c-accent-500: 14 165 233;
     --c-accent-600: 2 132 199;
 
-    --gradient-accent: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+    --gradient-accent: linear-gradient(100deg, #38bdf8 0%, #6366f1 45%, #a855f7 100%);
     --hero-mesh:
-      radial-gradient(ellipse 80% 50% at 50% -10%, rgba(59, 130, 246, 0.10) 0%, transparent 60%),
-      radial-gradient(ellipse 60% 40% at 80% 50%, rgba(14, 165, 233, 0.06) 0%, transparent 50%);
+      radial-gradient(ellipse 80% 50% at 50% -10%, rgba(99, 102, 241, 0.14) 0%, transparent 60%),
+      radial-gradient(ellipse 60% 40% at 85% 60%, rgba(56, 189, 248, 0.07) 0%, transparent 50%);
 
     /* Light surfaces + text */
     --c-app: 245 247 250;
@@ -109,15 +109,20 @@
 
 
 
-  /* ---- Dark surfaces (deep slate). ---- */
+  /* ---- Dark surfaces: the sign-in page's near-black. ---- */
   .dark {
-    --c-app: 15 23 42;
-    --c-card: 30 41 59;
-    --c-raised: 51 65 85;
-    --c-hairline: 71 85 105;
-    --c-ink: 226 232 240;
-    --c-ink-soft: 148 163 184;
-    --c-ink-faint: 100 116 139;
+    /* Tells the browser to draw its own chrome dark too -- scrollbars, the
+     * popup list of a native <select>, date pickers. Without it those stay
+     * light and punch white holes in the page. */
+    color-scheme: dark;
+
+    --c-app: 8 11 20;
+    --c-card: 20 26 42;
+    --c-raised: 32 40 62;
+    --c-hairline: 57 67 94;
+    --c-ink: 237 240 248;
+    --c-ink-soft: 154 163 184;
+    --c-ink-faint: 106 116 138;
 
     /* Status-green back to the standard bright shades on dark surfaces. */
     --c-success-500: 34 197 94;

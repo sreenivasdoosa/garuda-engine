@@ -13,4 +13,3 @@ export { default as HelpDrawer } from './HelpDrawer';
 export { BrokerSetupRequired, UserPortalBrokerSetupRequired } from './BrokerSetupRequired';
 export { default as LicenseActivationBanner } from './LicenseActivationBanner';
 export { default as MissingBrokerExchangeConfigAlert } from './MissingBrokerExchangeConfigAlert';
-export { default as TradeChecklistButton } from './TradeChecklist';
