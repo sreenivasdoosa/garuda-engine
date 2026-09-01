@@ -41,6 +41,11 @@ class DatabaseSettings(BaseSettings):
     pool_size: int = Field(default=10, ge=1, le=100)
     pool_max_overflow: int = Field(default=5, ge=0, le=100)
     echo_sql: bool = False
+    #: Which PostgreSQL schema the tables live in. Unset means the server's
+    #: own `search_path`, which is `public` by default and what a normal
+    #: deployment wants. The integration tests set it so they can truncate
+    #: their own tables and not the ones you work in.
+    schema_name: str | None = Field(default=None, alias="GARUDA_DB_SCHEMA")
 
     @property
     def async_url(self) -> str:

@@ -66,9 +66,28 @@ class AdminCredentials:
             logger.info("the admin account has been created with the configured password")
 
     async def matches(self, offered: str) -> bool:
-        async with UnitOfWork(self._sessions) as uow:
-            stored = await uow.repositories.system_config.value_of(ADMIN_PASSWORD)
+        """Does this password sign in?
+
+        A missing row is re-seeded rather than treated as a wrong password.
+        `ensure()` runs at startup, so the only way to be here with no row is
+        for one to have gone afterwards -- the table truncated, a restore, a
+        hand-run DELETE. Refusing every password until someone thinks to
+        restart the process is a worse answer than putting the first-run
+        password back, which is what a fresh install would have.
+        """
+        stored = await self._stored()
+        if stored is None:
+            logger.warning(
+                "the admin password row was missing; restoring the first-run password. "
+                "Something removed it from system_config after startup."
+            )
+            await self.ensure()
+            stored = await self._stored()
         return stored is not None and password_matches(stored, offered)
+
+    async def _stored(self) -> str | None:
+        async with UnitOfWork(self._sessions) as uow:
+            return await uow.repositories.system_config.value_of(ADMIN_PASSWORD)
 
     async def change(self, current: str, replacement: str) -> str | None:
         """Change it. Returns why not, or None when it changed.

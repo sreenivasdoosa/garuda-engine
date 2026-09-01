@@ -3,6 +3,48 @@ import type { HelpArticle } from '@/types/help';
 const ed = (article: Omit<HelpArticle, 'fieldKey'> & { fieldKey: string }): HelpArticle => article;
 
 export const eventDaysHelpContent: Record<string, HelpArticle> = {
+  'eventDays.overview': ex({
+    fieldKey: 'eventDays.overview',
+    title: 'Event Days',
+    category: 'Overview',
+    description: [
+      'An event day is a date you want traded at **reduced size** — a budget, an election, a policy decision. The exchange is open and the strategy would trade; you simply want less on the table.',
+      'There are two levels, and the more specific one wins:',
+      '**Global** — one exchange, one date, one percentage. Every strategy trading that exchange is scaled by it.',
+      '**Strategy** — one named strategy on the same date and exchange. It replaces the global figure for that strategy alone; every other strategy keeps the global one.',
+      'A strategy override does not need a global day underneath it. On its own it scales just that strategy on that date.',
+    ],
+    example: {
+      title: 'Global 50%, one strategy at 60%',
+      content:
+        'Global → `NSE` `2026-02-02` "Union Budget" `50%`\nStrategy → `short-strangle` `NSE` `2026-02-02` `60%`\n\nOn that date, on NSE:\n\n`short-strangle` trades **60%** of its normal size\nevery other strategy trades **50%**\nother exchanges and other dates are unaffected',
+    },
+    warning:
+      'The percentage scales **lots, not capital**. Halving the capital given to an allocator does not halve its answer — a risk-aware allocator sizes off the stop distance, and a fixed allocator ignores capital entirely. Scaling the lots it returned is the only reading of "50%" that means half the size whichever allocator a strategy uses.',
+    relatedFields: [
+      'eventDays.global.capitalPercentage',
+      'eventDays.strategy.capitalPercentage',
+      'eventDays.rounding',
+    ],
+  }),
+
+  'eventDays.rounding': ex({
+    fieldKey: 'eventDays.rounding',
+    title: 'How the reduction rounds',
+    category: 'Overview',
+    description: [
+      'Lots are whole things, so a percentage has to round — and it rounds **down**.',
+      'Rounding up would trade full size on a day you asked for less, and that is the direction of error that costs money. So 1 lot at 60% becomes **none**, not one.',
+      'A consequence worth knowing: a small position can scale to nothing, and the entry is then refused with the event day named rather than silently skipped. **0% is the same mechanism** — it is how you sit a day out entirely.',
+    ],
+    example: {
+      title: 'What the engine does with 10 lots',
+      content:
+        '`100%` → 10 lots\n`60%`  → 6 lots\n`50%`  → 5 lots\n`25%`  → 2 lots (2.5 rounded down)\n`0%`   → no entry; the refusal names the event day',
+    },
+    relatedFields: ['eventDays.overview'],
+  }),
+
   // ==================== GLOBAL EVENT DAYS ====================
 
   'eventDays.global.exchanges': ed({
@@ -61,49 +103,9 @@ export const eventDaysHelpContent: Record<string, HelpArticle> = {
 
   // ==================== STRATEGY EVENT DAY OVERRIDES ====================
 
-  'eventDays.product.product': ed({
-    fieldKey: 'eventDays.product.product',
-    title: 'Product',
-    category: 'Product Event Day Override',
-    description: [
-      'The **product** to create a capital override for: INTRADAY, POSITIONAL, CASHBUY or MTF.',
-      'This override applies to all strategies using that product for the selected exchange and event day.',
-    ],
-  }),
 
-  'eventDays.product.exchangeCode': ed({
-    fieldKey: 'eventDays.product.exchangeCode',
-    title: 'Exchange',
-    category: 'Product Event Day Override',
-    description: [
-      'The **exchange** for this product-level override. Event days are exchange-specific, so product overrides are also scoped by exchange.',
-    ],
-  }),
 
-  'eventDays.product.eventDate': ed({
-    fieldKey: 'eventDays.product.eventDate',
-    title: 'Event Date',
-    category: 'Product Event Day Override',
-    description: [
-      'Select a **global event day** to override for this product. Only today or future event days for the selected exchange are shown.',
-      'Dates already configured for the same product and exchange are excluded.',
-    ],
-  }),
 
-  'eventDays.product.capitalPercentage': ed({
-    fieldKey: 'eventDays.product.capitalPercentage',
-    title: 'Capital %',
-    category: 'Product Event Day Override',
-    description: [
-      'The **overridden capital percentage** for this product on the event day. This replaces the global capital % for all strategies of that product, unless a strategy-level or user-level override exists.',
-      'Hierarchy is: Global → Product → Strategy → User.',
-    ],
-    example: {
-      title: 'Example',
-      content: 'Global event day is 50%. Product INTRADAY override is 30%. A specific strategy can still override again to 20%, and a user can override finally to 10%.',
-    },
-    relatedFields: ['eventDays.global.capitalPercentage', 'eventDays.strategy.capitalPercentage', 'eventDays.user.capitalPercentage'],
-  }),
 
   'eventDays.strategy.strategyName': ed({
     fieldKey: 'eventDays.strategy.strategyName',
@@ -141,45 +143,7 @@ export const eventDaysHelpContent: Record<string, HelpArticle> = {
 
   // ==================== USER EVENT DAY OVERRIDES ====================
 
-  'eventDays.user.username': ed({
-    fieldKey: 'eventDays.user.username',
-    title: 'User',
-    category: 'User Event Day Override',
-    description: [
-      'The **user** to create a capital override for. This allows per-user adjustments on event days.',
-    ],
-  }),
 
-  'eventDays.user.exchangeCode': ed({
-    fieldKey: 'eventDays.user.exchangeCode',
-    title: 'Exchange',
-    category: 'User Event Day Override',
-    description: [
-      'The **exchange** for this user override. Only exchanges that have global event days configured will have effect.',
-    ],
-  }),
 
-  'eventDays.user.eventDate': ed({
-    fieldKey: 'eventDays.user.eventDate',
-    title: 'Event Date',
-    category: 'User Event Day Override',
-    description: [
-      'Select a **global event day** to override for this user. Only future event days for the selected exchange are shown.',
-    ],
-  }),
 
-  'eventDays.user.capitalPercentage': ed({
-    fieldKey: 'eventDays.user.capitalPercentage',
-    title: 'Capital %',
-    category: 'User Event Day Override',
-    description: [
-      'The **overridden capital percentage** for this specific user on the event day. This replaces the global (or strategy-level) capital % for this user only.',
-      'User-level overrides take the highest priority in the hierarchy: Global → Product → Strategy → User.',
-    ],
-    example: {
-      title: 'Example',
-      content: 'Global: 50%, Strategy override: 75%, User override: 30% → This user trades with 30% capital.',
-    },
-    relatedFields: ['eventDays.global.capitalPercentage', 'eventDays.strategy.capitalPercentage'],
-  }),
 };

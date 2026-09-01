@@ -7,7 +7,7 @@
 
 import { useState, useMemo } from 'react';
 import { Button, Badge, Alert, Form, Row, Col, Modal } from '@/components/ui/rbShim';
-import { BsPlus, BsTrash, BsCalendarEvent, BsPencil, BsEye } from 'react-icons/bs';
+import { BsPlus, BsTrash, BsCalendarEvent, BsPencil } from 'react-icons/bs';
 import { DataTable, ConfirmModal } from '@/components/common';
 import type { Column } from '@/components/common';
 import HelpIcon from '@/components/common/HelpIcon';
@@ -18,12 +18,6 @@ import { toast } from 'react-toastify';
 import type { EventDay } from '@/types/exchange';
 
 export interface GlobalEventDaysProps {
-  /** Hide add button */
-  hideCreate?: boolean;
-  /** Hide delete button */
-  hideDelete?: boolean;
-  /** Read-only mode - shows View button instead of Edit */
-  readOnly?: boolean;
 }
 
 interface CreateEventDayForm {
@@ -36,9 +30,6 @@ interface CreateEventDayForm {
 const currentYear = new Date().getFullYear();
 
 const GlobalEventDays: React.FC<GlobalEventDaysProps> = ({
-  hideCreate = false,
-  hideDelete = false,
-  readOnly = false,
 }) => {
   const [selectedExchange, setSelectedExchange] = useState<string>('ALL');
   const [selectedYear, setSelectedYear] = useState<number>(currentYear);
@@ -264,12 +255,11 @@ const GlobalEventDays: React.FC<GlobalEventDaysProps> = ({
               ev.stopPropagation();
               handleEditClick(e);
             }}
-            title={readOnly ? 'View' : 'Edit'}
+            title="Edit"
           >
-            {readOnly ? <BsEye /> : <BsPencil />}
+            <BsPencil />
           </Button>
-          {!hideDelete && (
-            <Button
+          <Button
               variant="outline-danger"
               size="sm"
               onClick={(ev) => {
@@ -280,7 +270,6 @@ const GlobalEventDays: React.FC<GlobalEventDaysProps> = ({
             >
               <BsTrash />
             </Button>
-          )}
         </div>
       ),
     },
@@ -298,11 +287,9 @@ const GlobalEventDays: React.FC<GlobalEventDaysProps> = ({
         <div className="text-ink-soft text-[0.875em]">
           Event days are high-impact dates (elections, Fed rates, budget, etc.) where capital allocation is reduced to limit volatility risk.
         </div>
-        {!hideCreate && (
-          <Button variant="primary" size="sm" onClick={() => setShowAddModal(true)}>
+        <Button variant="primary" size="sm" onClick={() => setShowAddModal(true)}>
             <BsPlus className="me-1" /> Add Event Day
           </Button>
-        )}
       </div>
 
       <Row className="mb-4">
@@ -439,15 +426,15 @@ const GlobalEventDays: React.FC<GlobalEventDaysProps> = ({
       </Modal>
 
       {/* Edit/View Event Day Modal */}
-      <Modal show={showEditModal} onHide={() => setShowEditModal(false)} backdrop={readOnly ? true : 'static'}>
+      <Modal show={showEditModal} onHide={() => setShowEditModal(false)} backdrop={'static'}>
         <Modal.Header closeButton>
           <Modal.Title>
-            {readOnly ? <BsEye className="me-2" /> : <BsPencil className="me-2" />}
-            {readOnly ? 'View' : 'Edit'} Event Day
+            {<BsPencil className="me-2" />}
+            {'Edit'} Event Day
           </Modal.Title>
         </Modal.Header>
         <Modal.Body>
-          <fieldset disabled={readOnly}>
+          <fieldset>
             <Form.Group className="mb-4">
               <Form.Label>Exchange</Form.Label>
               <Form.Control type="text" value={eventDayToEdit?.exchange || ''} disabled />
@@ -481,17 +468,15 @@ const GlobalEventDays: React.FC<GlobalEventDaysProps> = ({
         </Modal.Body>
         <Modal.Footer>
           <Button variant="secondary" onClick={() => setShowEditModal(false)}>
-            {readOnly ? 'Close' : 'Cancel'}
+            {'Cancel'}
           </Button>
-          {!readOnly && (
-            <Button
+          <Button
               variant="primary"
               onClick={handleSaveEdit}
               disabled={updateMutation.isPending}
             >
               {updateMutation.isPending ? 'Saving...' : 'Save'}
             </Button>
-          )}
         </Modal.Footer>
       </Modal>
 

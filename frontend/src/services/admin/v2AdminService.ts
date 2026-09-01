@@ -48,7 +48,6 @@ import type {
   PaginatedTradesResponse,
 } from '@/types/reports';
 import type { BrokerLoginStatus } from '@/types/broker';
-import type { Product } from '@/types/product';
 
 // Broker login response types
 export interface BrokerLoginResponse {
@@ -1757,57 +1756,6 @@ export const v2BrokerService = {
   },
 };
 
-// ==================== USER EVENT DAY ACTIONS ====================
-
-export interface UserEventDayAction {
-  username: string;
-  exchangeCode: string;
-  eventDate: string;
-  capitalPercentage: number;
-}
-
-export const userEventDayActionService = {
-  // Get all user event day actions
-  async getAll(): Promise<UserEventDayAction[]> {
-    return api.get<UserEventDayAction[]>(API_ENDPOINTS.USER_EVENT_DAY_ACTIONS.ALL);
-  },
-
-  // Get user event day actions for a specific user
-  async getByUser(username: string): Promise<UserEventDayAction[]> {
-    return api.get<UserEventDayAction[]>(API_ENDPOINTS.USER_EVENT_DAY_ACTIONS.BASE(username));
-  },
-
-  // Get user event day actions by exchange
-  async getByUserAndExchange(username: string, exchange: string): Promise<UserEventDayAction[]> {
-    return api.get<UserEventDayAction[]>(`${API_ENDPOINTS.USER_EVENT_DAY_ACTIONS.BASE(username)}?exchange=${exchange}`);
-  },
-
-  // Get specific user event day action
-  async get(username: string, eventDate: string, exchange: string): Promise<UserEventDayAction> {
-    return api.get<UserEventDayAction>(`${API_ENDPOINTS.USER_EVENT_DAY_ACTIONS.BASE(username)}?eventDate=${eventDate}&exchange=${exchange}`);
-  },
-
-  // Create user event day action
-  async create(username: string, data: { eventDate: string; exchangeCode: string; capitalPercentage: number }): Promise<UserEventDayAction> {
-    return api.post<UserEventDayAction>(API_ENDPOINTS.USER_EVENT_DAY_ACTIONS.BASE(username), data);
-  },
-
-  // Update user event day action
-  async update(username: string, eventDate: string, exchange: string, data: { capitalPercentage: number }): Promise<UserEventDayAction> {
-    return api.put<UserEventDayAction>(`${API_ENDPOINTS.USER_EVENT_DAY_ACTIONS.BASE(username)}?eventDate=${eventDate}&exchange=${exchange}`, data);
-  },
-
-  // Delete user event day action
-  async delete(username: string, eventDate: string, exchange: string): Promise<{ success: boolean }> {
-    return api.delete(`${API_ENDPOINTS.USER_EVENT_DAY_ACTIONS.BASE(username)}?eventDate=${eventDate}&exchange=${exchange}`);
-  },
-
-  // Delete all user event day actions
-  async deleteAll(username: string): Promise<{ success: boolean }> {
-    return api.delete(API_ENDPOINTS.USER_EVENT_DAY_ACTIONS.BASE(username));
-  },
-};
-
 // ==================== STRATEGY EVENT DAY ACTIONS ====================
 
 export interface StrategyEventDayAction {
@@ -1856,50 +1804,6 @@ export const strategyEventDayActionService = {
   // Delete all strategy event day actions
   async deleteAll(strategyName: string): Promise<{ success: boolean }> {
     return api.delete(API_ENDPOINTS.STRATEGY_EVENT_DAY_ACTIONS.BASE(strategyName));
-  },
-};
-
-// ==================== PRODUCT EVENT DAY ACTIONS ====================
-
-export interface ProductEventDayAction {
-  // Any backend Product — the hand-written union here used to omit MTF.
-  product: Product;
-  exchangeCode: string;
-  eventDate: string;
-  capitalPercentage: number;
-}
-
-export const productEventDayActionService = {
-  async getAll(): Promise<ProductEventDayAction[]> {
-    return api.get<ProductEventDayAction[]>(API_ENDPOINTS.PRODUCT_EVENT_DAY_ACTIONS.ALL);
-  },
-
-  async getByProduct(product: string): Promise<ProductEventDayAction[]> {
-    return api.get<ProductEventDayAction[]>(API_ENDPOINTS.PRODUCT_EVENT_DAY_ACTIONS.BASE(product));
-  },
-
-  async getByProductAndExchange(product: string, exchange: string): Promise<ProductEventDayAction[]> {
-    return api.get<ProductEventDayAction[]>(`${API_ENDPOINTS.PRODUCT_EVENT_DAY_ACTIONS.BASE(product)}?exchange=${exchange}`);
-  },
-
-  async get(product: string, eventDate: string, exchange: string): Promise<ProductEventDayAction> {
-    return api.get<ProductEventDayAction>(`${API_ENDPOINTS.PRODUCT_EVENT_DAY_ACTIONS.BASE(product)}?eventDate=${eventDate}&exchange=${exchange}`);
-  },
-
-  async create(product: string, data: { eventDate: string; exchangeCode: string; capitalPercentage: number }): Promise<ProductEventDayAction> {
-    return api.post<ProductEventDayAction>(API_ENDPOINTS.PRODUCT_EVENT_DAY_ACTIONS.BASE(product), data);
-  },
-
-  async update(product: string, eventDate: string, exchange: string, data: { capitalPercentage: number }): Promise<ProductEventDayAction> {
-    return api.put<ProductEventDayAction>(`${API_ENDPOINTS.PRODUCT_EVENT_DAY_ACTIONS.BASE(product)}?eventDate=${eventDate}&exchange=${exchange}`, data);
-  },
-
-  async delete(product: string, eventDate: string, exchange: string): Promise<{ success: boolean }> {
-    return api.delete(`${API_ENDPOINTS.PRODUCT_EVENT_DAY_ACTIONS.BASE(product)}?eventDate=${eventDate}&exchange=${exchange}`);
-  },
-
-  async deleteAll(product: string): Promise<{ success: boolean }> {
-    return api.delete(API_ENDPOINTS.PRODUCT_EVENT_DAY_ACTIONS.BASE(product));
   },
 };
 
@@ -3159,8 +3063,6 @@ export const v2AdminService = {
   users: userManagementService,
   userBrokers: userBrokerService,
   userCapital: userCapitalService,
-  userEventDayActions: userEventDayActionService,
-  productEventDayActions: productEventDayActionService,
   strategyEventDayActions: strategyEventDayActionService,
   userBills: userBillsService,
   rmsConfig: rmsConfigService,

@@ -112,11 +112,6 @@ export const API_ENDPOINTS = {
     BASE: '/api/user-capital-maps',
   },
 
-  // V2 User Event Day Actions
-  USER_EVENT_DAY_ACTIONS: {
-    ALL: '/api/user-event-day-actions',
-    BASE: (username: string) => `/api/user-event-day-actions/${username}`,
-  },
 
   // V2 User Bills
   USER_BILLS: {
@@ -302,11 +297,6 @@ export const API_ENDPOINTS = {
     BASE: (strategyName: string) => `/api/strategy-event-day-actions/${strategyName}`,
   },
 
-  // V2 Product Event Day Actions
-  PRODUCT_EVENT_DAY_ACTIONS: {
-    ALL: '/api/product-event-day-actions',
-    BASE: (product: string) => `/api/product-event-day-actions/${product}`,
-  },
 
   // V2 Strategy Days Allocation Configs
   STRATEGY_DAYS_ALLOCATION: {

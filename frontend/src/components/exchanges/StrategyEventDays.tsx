@@ -6,7 +6,7 @@
 
 import { useState, useMemo, useEffect } from 'react';
 import { Button, Badge, Alert, Form, Row, Col, Modal } from '@/components/ui/rbShim';
-import { BsPlus, BsTrash, BsCalendarEvent, BsPencil, BsEye } from 'react-icons/bs';
+import { BsPlus, BsTrash, BsCalendarEvent, BsPencil } from 'react-icons/bs';
 import { DataTable, ConfirmModal } from '@/components/common';
 import type { Column } from '@/components/common';
 import HelpIcon from '@/components/common/HelpIcon';
@@ -21,12 +21,6 @@ import { toast } from 'react-toastify';
 import Select from 'react-select';
 
 export interface StrategyEventDaysProps {
-  /** Hide add button */
-  hideCreate?: boolean;
-  /** Hide delete button */
-  hideDelete?: boolean;
-  /** Read-only mode - shows View button instead of Edit */
-  readOnly?: boolean;
 }
 
 interface CreateStrategyEventDayForm {
@@ -39,9 +33,6 @@ interface CreateStrategyEventDayForm {
 const currentYear = new Date().getFullYear();
 
 const StrategyEventDays: React.FC<StrategyEventDaysProps> = ({
-  hideCreate = false,
-  hideDelete = false,
-  readOnly = false,
 }) => {
   const [selectedStrategy, setSelectedStrategy] = useState<string>('ALL');
   const [selectedYear, setSelectedYear] = useState<number>(currentYear);
@@ -304,17 +295,16 @@ const StrategyEventDays: React.FC<StrategyEventDaysProps> = ({
             <Button
               variant="outline-primary"
               size="sm"
-              disabled={isPastDate && !readOnly}
-              title={isPastDate && !readOnly ? 'Cannot edit past event days' : (readOnly ? 'View' : 'Edit')}
+              disabled={isPastDate}
+              title={isPastDate ? 'Cannot edit past event days' : 'Edit'}
               onClick={(ev) => {
                 ev.stopPropagation();
                 handleEditClick(a);
               }}
             >
-              {readOnly ? <BsEye /> : <BsPencil />}
+              <BsPencil />
             </Button>
-            {!hideDelete && (
-              <Button
+            <Button
                 variant="outline-danger"
                 size="sm"
                 disabled={isPastDate}
@@ -327,7 +317,6 @@ const StrategyEventDays: React.FC<StrategyEventDaysProps> = ({
               >
                 <BsTrash />
               </Button>
-            )}
           </div>
         );
       },
@@ -344,11 +333,9 @@ const StrategyEventDays: React.FC<StrategyEventDaysProps> = ({
         <div className="text-ink-soft text-[0.875em]">
           Strategy-specific capital percentage overrides for event days.
         </div>
-        {!hideCreate && (
-          <Button variant="primary" size="sm" onClick={() => setShowAddModal(true)}>
+        <Button variant="primary" size="sm" onClick={() => setShowAddModal(true)}>
             <BsPlus className="me-1" /> Add Override
           </Button>
-        )}
       </div>
 
       <Row className="mb-4">
@@ -471,15 +458,15 @@ const StrategyEventDays: React.FC<StrategyEventDaysProps> = ({
       </Modal>
 
       {/* Edit/View Override Modal */}
-      <Modal show={showEditModal} onHide={() => setShowEditModal(false)} backdrop={readOnly ? true : 'static'}>
+      <Modal show={showEditModal} onHide={() => setShowEditModal(false)} backdrop={'static'}>
         <Modal.Header closeButton>
           <Modal.Title>
-            {readOnly ? <BsEye className="me-2" /> : <BsPencil className="me-2" />}
-            {readOnly ? 'View' : 'Edit'} Strategy Event Day Override
+            {<BsPencil className="me-2" />}
+            {'Edit'} Strategy Event Day Override
           </Modal.Title>
         </Modal.Header>
         <Modal.Body>
-          <fieldset disabled={readOnly}>
+          <fieldset>
             <Form.Group className="mb-4">
               <Form.Label>Strategy</Form.Label>
               <Form.Control type="text" value={actionToEdit ? getStrategyDisplayName(actionToEdit.strategyName) : ''} disabled />
@@ -506,17 +493,15 @@ const StrategyEventDays: React.FC<StrategyEventDaysProps> = ({
         </Modal.Body>
         <Modal.Footer>
           <Button variant="secondary" onClick={() => setShowEditModal(false)}>
-            {readOnly ? 'Close' : 'Cancel'}
+            {'Cancel'}
           </Button>
-          {!readOnly && (
-            <Button
+          <Button
               variant="primary"
               onClick={handleSaveEdit}
               disabled={updateMutation.isPending}
             >
               {updateMutation.isPending ? 'Saving...' : 'Save'}
             </Button>
-          )}
         </Modal.Footer>
       </Modal>
 

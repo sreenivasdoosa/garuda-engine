@@ -156,7 +156,13 @@ scripts/dev-db.sh reset        # discard the data and start clean
 ```
 
 Copy `backend/.env.example` to `backend/.env` on first run. Migrations are
-`uv run alembic upgrade head`; there are none yet.
+`uv run alembic upgrade head`.
+
+**The integration tests work in their own schema and never touch yours.** They
+truncate every table between cases, so they migrate `garuda_test` (override
+with `GARUDA_TEST_SCHEMA`) on the same server and run there. `uv run pytest`
+leaves your seeded data alone. If you ever see it disappear, that is a bug in
+the fixtures, not something to work around by re-seeding.
 
 CI runs every check above, plus the tests on Python 3.12 and 3.13 against a
 real PostgreSQL, plus the unit tests on Windows.

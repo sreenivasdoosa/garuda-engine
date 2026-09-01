@@ -8,23 +8,15 @@ import { PageHeader } from '@/components/common';
 import { EventDays } from '@/components/exchanges';
 
 const EventDaysPage: React.FC = () => {
-
-  // Permission flags for Event Days tool
-
   return (
     <div className="fade-in">
       <PageHeader
         title="Event Days"
-        subtitle="Manage high-impact event days (elections, Fed rates, budget) with reduced capital allocation to limit volatility risk"
+        subtitle="Dates to trade at reduced size — a budget, an election, a policy decision"
         icon={<BsCalendarEvent size={24} />}
       />
 
-      <EventDays
-        title="Event Days"
-        hideCreate={!true}
-        hideDelete={!true}
-        readOnly={!true}
-      />
+      <EventDays title="Event Days" />
     </div>
   );
 };

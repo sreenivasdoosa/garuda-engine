@@ -14,7 +14,7 @@ import asyncio
 from logging.config import fileConfig
 
 from alembic import context
-from sqlalchemy import pool
+from sqlalchemy import pool, text
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
@@ -27,7 +27,14 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-config.set_main_option("sqlalchemy.url", load_settings().database.async_url)
+settings = load_settings()
+config.set_main_option("sqlalchemy.url", settings.database.async_url)
+
+#: Which schema to migrate. Unset means the server's own search_path, which is
+#: `public` and what a deployment wants. The integration tests set it so they
+#: get the real DDL -- partitions, hand-written indexes, everything -- in a
+#: schema of their own rather than a `create_all` approximation of it.
+SCHEMA = settings.database.schema_name
 
 target_metadata = Base.metadata
 
@@ -46,7 +53,15 @@ def run_migrations_offline() -> None:
 
 
 def do_run_migrations(connection: Connection) -> None:
-    context.configure(connection=connection, target_metadata=target_metadata, compare_type=True)
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        compare_type=True,
+        # The version table belongs beside the tables it describes, or two
+        # schemas on one database would share a revision and the second would
+        # believe it was already migrated.
+        version_table_schema=SCHEMA,
+    )
     with context.begin_transaction():
         context.run_migrations()
 
@@ -56,8 +71,14 @@ async def run_async_migrations() -> None:
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
+        # The migrations name tables without a schema, so the search_path is
+        # what decides where they land.
+        connect_args=({"server_settings": {"search_path": SCHEMA}} if SCHEMA else {}),
     )
     async with connectable.connect() as connection:
+        if SCHEMA:
+            await connection.execute(text(f'CREATE SCHEMA IF NOT EXISTS "{SCHEMA}"'))
+            await connection.commit()
         await connection.run_sync(do_run_migrations)
     await connectable.dispose()
 
