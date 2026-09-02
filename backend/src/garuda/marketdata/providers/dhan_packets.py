@@ -53,7 +53,13 @@ SEGMENTS: dict[int, str] = {
     2: "NSE_FNO",
     3: "NSE_CURRENCY",
     4: "BSE_EQ",
+    5: "MCX_COMM",
+    7: "BSE_CURRENCY",
+    8: "BSE_FNO",
 }
+#: The other way, for turning a master row's segment name into the number the
+#: subscribe path routes on. Six is absent from both: Dhan does not use it.
+SEGMENT_NUMBERS: dict[str, int] = {name: number for number, name in SEGMENTS.items()}
 INDEX_SEGMENT = 0
 
 #: Request codes. An index goes in as QUOTE; everything else as FULL.

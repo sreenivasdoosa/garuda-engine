@@ -32,6 +32,10 @@ import logging
 from dataclasses import dataclass
 from datetime import date
 
+import httpx
+
+from garuda.domain.errors import DomainError
+
 logger = logging.getLogger(__name__)
 
 MONTHS_3 = ("JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC")
@@ -43,6 +47,14 @@ MONTH_CODE = ("1", "2", "3", "4", "5", "6", "7", "8", "9", "O", "N", "D")
 #: the one that matters most: it decides both how a packet is decoded and which
 #: mode the instrument is subscribed in.
 INDEX_SEGMENT = "IDX_I"
+
+#: Dhan's detailed scrip master. Public, no authentication -- which is why a
+#: catalogue can be loaded before anyone has logged in. A vendor endpoint, so
+#: it lives here rather than in a settings row.
+MASTER_URL = "https://images.dhan.co/api-data/api-scrip-master-detailed.csv"
+
+#: The file is tens of megabytes; the default ten seconds is not enough.
+MASTER_TIMEOUT_SECONDS = 120.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,6 +70,25 @@ class DhanInstrument:
     expiry: date | None = None
     strike: int | None = None
     is_index: bool = False
+    #: "CE", "PE", or empty. Carried rather than read back out of the trading
+    #: symbol: a history request needs it, and recovering it from the symbol
+    #: means trusting that no underlying's name happens to end in CE or PE.
+    option_type: str = ""
+    is_future: bool = False
+
+
+async def download_master(client: httpx.AsyncClient, *, url: str = MASTER_URL) -> str:
+    """Fetch the day's master.
+
+    Returned as text and handed on unparsed, so a parse failure later can be
+    diagnosed against exactly the bytes Dhan sent.
+    """
+    response = await client.get(url, timeout=MASTER_TIMEOUT_SECONDS)
+    response.raise_for_status()
+    body = response.text
+    if not body.strip():
+        raise DomainError("the Dhan scrip master came back empty")
+    return body
 
 
 def _first(*values: str) -> str:
@@ -254,6 +285,8 @@ def parse_master(csv_text: str) -> list[DhanInstrument]:
                     expiry=expiry,
                     strike=strike,
                     is_index=is_index,
+                    option_type=option_type if option_type in ("CE", "PE") else "",
+                    is_future=kind.startswith("FUT"),
                 )
             )
         except Exception:
