@@ -78,3 +78,43 @@ export interface BorrowableClient {
   clientId: string;
   broker: string;
 }
+
+/** What the feed is doing, whoever last told it to. */
+export interface TickerStatus {
+  /** Who carries ticks; null when nothing is nominated. */
+  provider: string | null;
+  /** `stopped` is no feed; `disconnected` is a running feed whose socket is down. */
+  status: 'stopped' | 'connected' | 'disconnected';
+  isRunning: boolean;
+  /** False when no provider is nominated for ticks, so there is nothing to control. */
+  nominated: boolean;
+  connectedSince: string | null;
+  lastTickAt: string | null;
+  lastDisconnectReason: string | null;
+  subscriptions: number;
+  quoting: number;
+  ticksPublished: number;
+  reconnects: number;
+  consecutiveFailures: number;
+  lastAttemptAt: string | null;
+}
+
+/** One instrument file: the master, or a provider's catalogue. */
+export interface InstrumentFileStatus {
+  /** `master:zerodha`, `catalogue:dhan`. */
+  name: string;
+  kind: 'master' | 'catalogue';
+  provider: string;
+  loaded: boolean;
+  count: number;
+  cachedAt: string | null;
+  lastAttemptAt: string | null;
+  lastSuccessAt: string | null;
+  lastError: string | null;
+  /** Whether the last successful load fetched the file rather than re-reading today's. */
+  lastDownloaded: boolean;
+  inProgress: boolean;
+  isFromToday: boolean;
+  isStale: boolean;
+  skippedBecause: string | null;
+}

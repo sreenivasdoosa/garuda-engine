@@ -18,6 +18,7 @@ from garuda.domain.instrument import InstrumentId
 from garuda.domain.phases import DayPhase
 from garuda.domain.symbol import SymbolInfo
 from garuda.marketdata.cache import InstrumentCache
+from garuda.marketdata.downloads import InstrumentDownloads
 from garuda.marketdata.loader import InstrumentLoader, InstrumentRegistryHolder
 from garuda.marketdata.registry import InstrumentRegistry
 from garuda.marketdata.tasks import register_instrument_load
@@ -367,7 +368,9 @@ class TestDayInitWiring:
         )
         holder = InstrumentRegistryHolder()
         registry = TaskRegistry()
-        register_instrument_load(registry, loader, holder, broker="zerodha")
+        register_instrument_load(
+            registry, loader, holder, broker="zerodha", downloads=InstrumentDownloads(clock, IST)
+        )
         return registry, holder, clock
 
     async def test_day_init_leaves_the_engine_with_todays_instruments(
@@ -417,7 +420,9 @@ class TestDayInitWiring:
         )
         holder = InstrumentRegistryHolder()
         registry = TaskRegistry()
-        register_instrument_load(registry, loader, holder, broker="zerodha")
+        register_instrument_load(
+            registry, loader, holder, broker="zerodha", downloads=InstrumentDownloads(clock, IST)
+        )
         runner = EngineRunner(
             exchanges=[nse], clock=clock, registry=registry, recorder=InMemoryPhaseRecorder()
         )

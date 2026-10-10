@@ -33,6 +33,7 @@ from garuda.api.routers import (
     socket,
     special_trading_days,
     symbols,
+    ticker,
     universes,
 )
 from garuda.api.tokens import issue, read
@@ -199,6 +200,7 @@ def create_app(
     # an engine is attached: without one it accepts, says there are no prices
     # and closes, which is a far clearer answer than a route that is not there.
     app.include_router(market_data.build(sessions, LiveClock()))
+    app.include_router(ticker.build())
     app.include_router(socket.build(secret))
 
     return app

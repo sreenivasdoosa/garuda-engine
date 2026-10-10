@@ -16,7 +16,7 @@ Dhan should not be downloading Dhan's master every morning.
 from __future__ import annotations
 
 import logging
-from collections.abc import Awaitable, Callable, Iterable
+from collections.abc import Iterable
 from datetime import time
 from pathlib import Path
 from typing import Any, Final
@@ -26,18 +26,16 @@ import httpx
 
 from garuda.brokers.zerodha.instruments import is_stale
 from garuda.marketdata.cache import InstrumentCache
+from garuda.marketdata.providers.catalogues import CatalogueLoad, CatalogueResult
 from garuda.marketdata.providers.dhan_catalogue import EMPTY as EMPTY_DHAN
 from garuda.marketdata.providers.dhan_catalogue import DhanCatalogue
 from garuda.marketdata.providers.dhan_master import download_master as download_dhan
 from garuda.marketdata.providers.dhan_master import parse_master as parse_dhan
 from garuda.protocols.clock import Clock
 
-logger = logging.getLogger(__name__)
+__all__ = ["CatalogueLoad", "build_catalogue_loads", "empty_catalogue_for"]
 
-#: One provider's table, loaded fresh. Untyped in its result for the reason
-#: :mod:`garuda.marketdata.providers.catalogues` gives: only the provider's own
-#: adapter knows how to read its own.
-CatalogueLoad = Callable[[], Awaitable[Any]]
+logger = logging.getLogger(__name__)
 
 #: Dhan republishes its scrip master each morning, with that day's new weekly
 #: strikes. Same hour as the broker masters, and for the same reason: a file
@@ -93,12 +91,23 @@ def _dhan_load(
     wants when a strike does not tick is the file Dhan actually sent.
     """
 
-    async def load() -> DhanCatalogue:
+    async def load(*, force: bool = False) -> CatalogueResult:
         cached = cache.read("dhan")
-        if cached is None or cached.is_empty or _stale(cached.downloaded_at, clock, timezone):
+        downloaded = False
+        if (
+            force
+            or cached is None
+            or cached.is_empty
+            or _stale(cached.downloaded_at, clock, timezone)
+        ):
             cached = cache.write("dhan", await download_dhan(http))
+            downloaded = True
             logger.info("Dhan scrip master downloaded")
-        return DhanCatalogue(parse_dhan(cached.text))
+        return CatalogueResult(
+            catalogue=DhanCatalogue(parse_dhan(cached.text)),
+            downloaded=downloaded,
+            cached_at=cached.downloaded_at,
+        )
 
     return load
 

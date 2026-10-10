@@ -20,6 +20,7 @@ from garuda.composition.catalogues import (
 )
 from garuda.core.clock import ReplayClock
 from garuda.domain.instrument import InstrumentId
+from garuda.marketdata.providers.catalogues import CatalogueLoad
 
 IST = ZoneInfo("Asia/Kolkata")
 
@@ -55,7 +56,7 @@ def serving(master: str, calls: list[str]) -> httpx.AsyncClient:
 
 def loads_for(
     tmp_path: Path, clock: ReplayClock, calls: list[str], *, providers: tuple[str, ...] = ("dhan",)
-) -> dict[str, object]:
+) -> dict[str, CatalogueLoad]:
     return dict(
         build_catalogue_loads(
             providers=providers,
@@ -99,8 +100,10 @@ class TestTheDhanCatalogue:
         calls: list[str] = []
         load = loads_for(tmp_path, ReplayClock(AFTER_PUBLICATION), calls)["dhan"]
 
-        catalogue = await load()  # type: ignore[operator]
+        result = await load()
+        catalogue = result.catalogue
 
+        assert result.downloaded is True
         assert catalogue.details_for(RELIANCE) is not None
         assert catalogue.details_for(RELIANCE).security_id == "2885"
 
@@ -113,8 +116,8 @@ class TestTheDhanCatalogue:
         calls: list[str] = []
         load = loads_for(tmp_path, clock, calls)["dhan"]
 
-        await load()  # type: ignore[operator]
-        await load()  # type: ignore[operator]
+        await load()
+        await load()
 
         assert len(calls) == 1
 
@@ -124,10 +127,10 @@ class TestTheDhanCatalogue:
         clock = ReplayClock(AFTER_PUBLICATION)
         calls: list[str] = []
         load = loads_for(tmp_path, clock, calls)["dhan"]
-        await load()  # type: ignore[operator]
+        await load()
 
         await clock.advance_to(AFTER_PUBLICATION + timedelta(days=1))
-        await load()  # type: ignore[operator]
+        await load()
 
         assert len(calls) == 2
 
@@ -140,10 +143,10 @@ class TestTheDhanCatalogue:
         clock = ReplayClock(BEFORE_PUBLICATION)
         calls: list[str] = []
         load = loads_for(tmp_path, clock, calls)["dhan"]
-        await load()  # type: ignore[operator]
+        await load()
 
         await clock.advance_to(AFTER_PUBLICATION)
-        await load()  # type: ignore[operator]
+        await load()
 
         assert len(calls) == 2
 

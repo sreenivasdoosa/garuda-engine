@@ -12,11 +12,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Awaitable, Callable, Mapping, Sequence
+from collections.abc import Awaitable, Mapping, Sequence
 from contextlib import suppress
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
+from zoneinfo import ZoneInfo
 
 from garuda.brokers.sessions import Credentials, SessionResolver
 from garuda.brokers.streams import AccountStreamManager, UpdateHandler
@@ -28,7 +28,9 @@ from garuda.core.runner import EngineRunner, InMemoryPhaseRecorder
 from garuda.domain.alert import EntityType
 from garuda.domain.client import TradingClientId
 from garuda.domain.market import Tick
+from garuda.marketdata.downloads import InstrumentDownloads
 from garuda.marketdata.loader import InstrumentLoader
+from garuda.marketdata.providers.catalogues import CatalogueLoad
 from garuda.marketdata.tasks import (
     register_feed_lifecycle,
     register_instrument_load,
@@ -97,7 +99,7 @@ async def start(
     strategies: StrategyLoop | None = None,
     #: Each data provider's translation table, as a name and how to load it.
     #: Registered at DAY_INIT beside the instrument master.
-    catalogue_loads: Mapping[str, Callable[[], Awaitable[Any]]] | None = None,
+    catalogue_loads: Mapping[str, CatalogueLoad] | None = None,
 ) -> Runtime:
     """Restore the books, open the channels, and register the day's tasks."""
     parts = engine.parts
@@ -246,19 +248,38 @@ def _account_streams(
 def _register_tasks(
     engine: Engine,
     loader: InstrumentLoader | None,
-    catalogue_loads: Mapping[str, Callable[[], Awaitable[Any]]],
+    catalogue_loads: Mapping[str, CatalogueLoad],
 ) -> None:
     """Everything a venue's day is made of, in phase order."""
     parts = engine.parts
     exchanges: Sequence[str] = [e.code for e in parts.exchanges]
 
+    # One registry for every instrument file, so a login and the Console's
+    # button run the loads DAY_INIT registered and read the status it wrote.
+    # Staleness is judged in the reference venue's zone, as the loader does.
+    reference = parts.exchanges[0] if parts.exchanges else None
+    downloads = InstrumentDownloads(
+        parts.clock, reference.timezone if reference is not None else ZoneInfo("UTC")
+    )
+    parts.downloads = downloads
+
     if loader is not None:
         register_instrument_load(
-            parts.registry, loader, parts.instruments, broker=loader.broker, exchanges=exchanges
+            parts.registry,
+            loader,
+            parts.instruments,
+            broker=loader.broker,
+            exchanges=exchanges,
+            downloads=downloads,
         )
     for provider, load in catalogue_loads.items():
         register_provider_catalogue(
-            parts.registry, parts.catalogues, load, provider=provider, exchanges=exchanges
+            parts.registry,
+            parts.catalogues,
+            load,
+            provider=provider,
+            exchanges=exchanges,
+            downloads=downloads,
         )
     if parts.market_data is not None:
         register_feed_lifecycle(parts.registry, parts.market_data, parts.exchanges)

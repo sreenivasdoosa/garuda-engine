@@ -25,6 +25,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from garuda.api.envelope import ok
+from garuda.api.routers.ticker import renew_after_login
 from garuda.marketdata.providers.auth import (
     REDIRECT_PROVIDERS,
     ProviderLoginError,
@@ -505,18 +506,14 @@ def build(
         service does the same, stopping its ticker on a manual login or a
         provider switch rather than waiting for a throttle to expire.
 
-        Never raises. The session is already stored and that is the part that
-        matters; a feed that did not come back is retried by the monitor.
+        And before the feed, the instrument files: a login after the open is
+        the one case where DAY_INIT could not have loaded today's master, so
+        the session coming alive is the moment to fetch it. Both run in the
+        background -- the browser is on its way back to the Console -- and
+        never raise here. The session is already stored and that is the part
+        that matters; a feed that did not come back is retried by the monitor.
         """
-        engine = getattr(request.app.state, "engine", None)
-        market_data = getattr(getattr(engine, "parts", None), "market_data", None)
-        if market_data is None:
-            # No engine in this process, or nothing nominated for ticks.
-            return
-        try:
-            await market_data.reconnect(f"{provider} {why}")
-        except Exception:
-            logger.exception("%s: could not replace the feed after %s", provider, why)
+        renew_after_login(request.app, provider, why)
 
     # -- the callback -------------------------------------------------------
 

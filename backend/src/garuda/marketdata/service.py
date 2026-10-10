@@ -42,17 +42,28 @@ class MarketDataService:
         *,
         standing_subscriptions: Callable[[], Sequence[InstrumentId]] | None = None,
         monitor_interval: timedelta = DEFAULT_MONITOR_INTERVAL,
+        provider: str | None = None,
     ) -> None:
         self._hub = hub
         self._supervisor = supervisor
         self._clock = clock
         self._standing = standing_subscriptions
         self._monitor_interval = monitor_interval
+        self._provider = provider
         self._tasks: list[asyncio.Task[None]] = []
 
     @property
     def hub(self) -> TickHub:
         return self._hub
+
+    @property
+    def provider(self) -> str | None:
+        """Whose feed this is, for the Console to name. None when nobody said."""
+        return self._provider
+
+    @property
+    def supervisor(self) -> FeedSupervisor:
+        return self._supervisor
 
     @property
     def is_running(self) -> bool:

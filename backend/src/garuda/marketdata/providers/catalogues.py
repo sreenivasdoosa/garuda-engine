@@ -14,10 +14,33 @@ The adapter asks for its provider's and casts; nothing generic reads inside.
 from __future__ import annotations
 
 import logging
-from collections.abc import Mapping
-from typing import Any
+from collections.abc import Awaitable, Mapping
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Any, Protocol
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True, slots=True)
+class CatalogueResult:
+    """One provider's table, loaded, and where the file came from.
+
+    The two facts beside the table are what the Console's instrument status
+    shows: whether this load fetched the file or re-read today's, and when
+    the file in use was fetched. A load that cannot say leaves the operator
+    reading the log.
+    """
+
+    catalogue: Any
+    downloaded: bool
+    cached_at: datetime
+
+
+class CatalogueLoad(Protocol):
+    """Loads one provider's table. ``force`` fetches whatever the cache says."""
+
+    def __call__(self, *, force: bool = False) -> Awaitable[CatalogueResult]: ...
 
 
 class CatalogueHolder:

@@ -704,12 +704,14 @@ export const API_ENDPOINTS = {
     ADMIN_STATUS: '/api/market-data/admin/status',
     ADMIN_INSTRUMENTS: '/api/market-data/admin/instruments',
 
-    // Ticker control
-    START_TICKER: '/api/market-data/start/ticker',
-    STOP_TICKER: '/api/market-data/stop/ticker',
-    RESTART_TICKER: '/api/market-data/restart/ticker',
-    SWITCH_TICKER: '/api/market-data/switch/ticker',
-    SWITCH_HISTORY: '/api/market-data/switch/history',
+    // The ticker, and the instrument files. Served.
+    TICKER: '/api/market-data/ticker',
+    TICKER_START: '/api/market-data/ticker/start',
+    TICKER_STOP: '/api/market-data/ticker/stop',
+    TICKER_RESTART: '/api/market-data/ticker/restart',
+    INSTRUMENTS: '/api/market-data/instruments',
+    INSTRUMENT_DOWNLOAD: (name: string) =>
+      `/api/market-data/instruments/${encodeURIComponent(name)}/download`,
 
     // WebSocket
     SOCKET: '/api/market-data/socket',

@@ -42,6 +42,8 @@ import {
 import { PageHeader } from '@/components/common';
 import { dataProvidersService } from '@/services/admin/dataProviderService';
 import type { DataProvider, DataProviderEdit } from '@/types/data-provider';
+import InstrumentFilesCard from './InstrumentFilesCard';
+import TickerCard from './TickerCard';
 
 /** What each provider is, in one line, and what it needs. */
 const ABOUT: Record<string, string> = {
@@ -253,6 +255,9 @@ const DataProvidersPage: React.FC = () => {
           )}
         </Card.Body>
       </Card>
+
+      <TickerCard />
+      <InstrumentFilesCard />
 
       {isLoading ? (
         <div className="py-5 text-center">

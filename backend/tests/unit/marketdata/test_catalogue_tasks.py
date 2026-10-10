@@ -14,14 +14,24 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+from garuda.core.clock import ReplayClock
 from garuda.core.runner import PhaseContext, TaskRegistry
 from garuda.domain.exchange import Exchange
 from garuda.domain.phases import DayPhase
-from garuda.marketdata.providers.catalogues import CatalogueHolder
+from garuda.marketdata.downloads import InstrumentDownloads
+from garuda.marketdata.providers.catalogues import CatalogueHolder, CatalogueResult
 from garuda.marketdata.tasks import register_provider_catalogue
 
 IST = ZoneInfo("Asia/Kolkata")
 DAY_INIT_TIME = datetime(2026, 8, 31, 7, 0, tzinfo=IST)
+
+
+def downloads() -> InstrumentDownloads:
+    return InstrumentDownloads(ReplayClock(DAY_INIT_TIME), IST)
+
+
+def loaded(catalogue: Catalogue) -> CatalogueResult:
+    return CatalogueResult(catalogue=catalogue, downloaded=True, cached_at=DAY_INIT_TIME)
 
 
 class Catalogue:
@@ -53,26 +63,32 @@ class TestLoadingACatalogue:
     async def test_a_loaded_catalogue_is_published_under_its_provider(self, nse: Exchange) -> None:
         holder = CatalogueHolder()
         registry = TaskRegistry()
-        loaded = Catalogue()
+        registry_of_downloads = downloads()
+        table = Catalogue()
 
-        async def load() -> Catalogue:
-            return loaded
+        async def load(*, force: bool = False) -> CatalogueResult:
+            return loaded(table)
 
-        register_provider_catalogue(registry, holder, load, provider="dhan")
+        register_provider_catalogue(
+            registry, holder, load, provider="dhan", downloads=registry_of_downloads
+        )
         await run_day_init(registry, nse)
 
-        assert holder.for_provider("dhan", None) is loaded
+        assert holder.for_provider("dhan", None) is table
 
     @pytest.mark.asyncio
     async def test_it_is_registered_at_day_init(self, nse: Exchange) -> None:
         """Before anything subscribes, and beside the instrument master."""
         holder = CatalogueHolder()
         registry = TaskRegistry()
+        registry_of_downloads = downloads()
 
-        async def load() -> Catalogue:
-            return Catalogue()
+        async def load(*, force: bool = False) -> CatalogueResult:
+            return loaded(Catalogue())
 
-        register_provider_catalogue(registry, holder, load, provider="dhan")
+        register_provider_catalogue(
+            registry, holder, load, provider="dhan", downloads=registry_of_downloads
+        )
 
         assert DayPhase.DAY_INIT in registry.phases
 
@@ -82,11 +98,14 @@ class TestLoadingACatalogue:
         master and every trade loop as well."""
         holder = CatalogueHolder()
         registry = TaskRegistry()
+        registry_of_downloads = downloads()
 
-        async def load() -> Catalogue:
+        async def load(*, force: bool = False) -> CatalogueResult:
             raise RuntimeError("dhan did not answer")
 
-        register_provider_catalogue(registry, holder, load, provider="dhan")
+        register_provider_catalogue(
+            registry, holder, load, provider="dhan", downloads=registry_of_downloads
+        )
 
         await run_day_init(registry, nse)
 
@@ -100,11 +119,14 @@ class TestLoadingACatalogue:
         yesterday = Catalogue(size=1)
         holder = CatalogueHolder({"dhan": yesterday})
         registry = TaskRegistry()
+        registry_of_downloads = downloads()
 
-        async def load() -> Catalogue:
+        async def load(*, force: bool = False) -> CatalogueResult:
             raise RuntimeError("dhan did not answer")
 
-        register_provider_catalogue(registry, holder, load, provider="dhan")
+        register_provider_catalogue(
+            registry, holder, load, provider="dhan", downloads=registry_of_downloads
+        )
         await run_day_init(registry, nse)
 
         assert holder.for_provider("dhan", None) is yesterday
@@ -115,16 +137,21 @@ class TestLoadingACatalogue:
         separate downloads answering separate questions."""
         holder = CatalogueHolder()
         registry = TaskRegistry()
+        registry_of_downloads = downloads()
         good = Catalogue()
 
-        async def fails() -> Catalogue:
+        async def fails(*, force: bool = False) -> CatalogueResult:
             raise RuntimeError("no")
 
-        async def works() -> Catalogue:
-            return good
+        async def works(*, force: bool = False) -> CatalogueResult:
+            return loaded(good)
 
-        register_provider_catalogue(registry, holder, fails, provider="dhan")
-        register_provider_catalogue(registry, holder, works, provider="fyers")
+        register_provider_catalogue(
+            registry, holder, fails, provider="dhan", downloads=registry_of_downloads
+        )
+        register_provider_catalogue(
+            registry, holder, works, provider="fyers", downloads=registry_of_downloads
+        )
         await run_day_init(registry, nse)
 
         assert holder.has("dhan") is False

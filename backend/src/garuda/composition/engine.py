@@ -54,6 +54,7 @@ from garuda.domain.instrument import Instrument, InstrumentId
 from garuda.domain.market import PriceBand, Tick
 from garuda.domain.order import BrokerOrderId, ClientOrderId
 from garuda.domain.trade import Trade
+from garuda.marketdata.downloads import InstrumentDownloads
 from garuda.marketdata.history import CandleCache
 from garuda.marketdata.hub import TickHub
 from garuda.marketdata.loader import InstrumentRegistryHolder
@@ -131,6 +132,12 @@ class EngineParts:
     #: Each provider's own translation table. Loaded at DAY_INIT alongside the
     #: instrument master, and empty until then.
     catalogues: CatalogueHolder = field(default_factory=CatalogueHolder)
+    #: Every instrument file the engine fetches -- the master and each
+    #: provider's catalogue -- with when it was last fetched. The day's tasks,
+    #: a login and the Console's own button all load through it, so what it
+    #: reports is what actually happened. None until the runtime registers
+    #: the day's tasks, which is where the loads are named.
+    downloads: InstrumentDownloads | None = None
     market_data: MarketDataService | None = None
     #: Closed-bar history, on the same account that carries the feed: both are
     #: its session, and without one there is neither. None when no account is
@@ -383,6 +390,7 @@ def _build_market_data(
         hub,
         FeedSupervisor(hub, open_feed, clock, market_is_open=any_market_open),
         clock,
+        provider=provider,
     )
 
 
