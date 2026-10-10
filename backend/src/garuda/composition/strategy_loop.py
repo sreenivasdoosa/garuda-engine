@@ -135,6 +135,10 @@ class StrategyLoop:
     def stop(self) -> None:
         self._stopping = True
 
+    @property
+    def is_stopping(self) -> bool:
+        return self._stopping
+
     def replace(self, loaded: Loaded) -> None:
         """Take a fresh reading of the strategy tables, whole.
 

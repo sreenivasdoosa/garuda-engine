@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from typing import Protocol, runtime_checkable
 
+from garuda.core.timeline import InitTimeline, TimelinePhase, TimelineTask
 from garuda.domain.errors import DomainError
 from garuda.domain.exchange import Exchange
 from garuda.domain.phases import DayOffsets, DayPhase, PhaseInstant, due_phases, next_phase_after
@@ -143,6 +144,7 @@ class EngineRunner:
         recorder: PhaseRecorder,
         *,
         offsets: dict[str, DayOffsets] | None = None,
+        timeline: InitTimeline | None = None,
     ) -> None:
         if not exchanges:
             raise DomainError("the runner has no venues to run")
@@ -152,6 +154,11 @@ class EngineRunner:
         self._recorder = recorder
         self._offsets = offsets or {}
         self._stopping = asyncio.Event()
+        #: Where each task's start, finish and duration are written for the
+        #: System Status page. None records nothing, which is what a replay
+        #: wants.
+        self._timeline = timeline
+        self._timeline_day: date | None = None
 
     @property
     def exchanges(self) -> tuple[Exchange, ...]:
@@ -195,11 +202,15 @@ class EngineRunner:
             now=self._clock.now(),
         )
         started = self._clock.now()
+        self._begin_day_if_new(instant)
         for name, task in self._registry.tasks_for(instant.phase, exchange.code):
+            step = self._timeline_begin(f"{exchange.code} {instant.phase.value}: {name}")
             try:
                 await task(context)
             except Exception as error:
                 reason = f"{name}: {type(error).__name__}: {error}"
+                if self._timeline is not None and step is not None:
+                    self._timeline.failed(step, f"{type(error).__name__}: {error}")
                 # Logged as well as recorded. The recorder is what makes the
                 # phase retry; the log is the only place an operator finds out
                 # *why* -- and a DAY_INIT that cannot load the instrument
@@ -214,10 +225,36 @@ class EngineRunner:
                 )
                 await self._recorder.record_failure(instant, reason)
                 return reason
+            if self._timeline is not None and step is not None:
+                self._timeline.end(step)
 
         elapsed = int((self._clock.now() - started).total_seconds() * 1000)
         await self._recorder.record(instant, elapsed)
         return None
+
+    def _timeline_begin(self, name: str) -> TimelineTask | None:
+        if self._timeline is None:
+            return None
+        return self._timeline.begin(name, phase=TimelinePhase.DAY)
+
+    def _begin_day_if_new(self, instant: PhaseInstant) -> None:
+        """Start a fresh day timeline when a later trading day's DAY_INIT begins.
+
+        The reference clears its daily timeline at the start of each new
+        day's initialisation; the same rule here, keyed by the trading day so
+        a DAY_INIT retried after a failure does not wipe what the first
+        attempt wrote.
+        """
+        if self._timeline is None or instant.phase is not DayPhase.DAY_INIT:
+            return
+        if self._timeline_day is not None and instant.trading_day <= self._timeline_day:
+            return
+        self._timeline.clear_day()
+        self._timeline_day = instant.trading_day
+        self._timeline.record(
+            f"Day {instant.trading_day.isoformat()} begins for {instant.exchange}",
+            phase=TimelinePhase.DAY,
+        )
 
     def _days_in_flight(self, exchange: Exchange, now: datetime) -> tuple[date, ...]:
         """The trading days a venue could still owe work for.

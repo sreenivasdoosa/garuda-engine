@@ -38,6 +38,7 @@ from garuda.api.routers import (
     strategies,
     strategy_config,
     symbols,
+    system_status,
     terminal,
     ticker,
     trade_log,
@@ -78,6 +79,7 @@ def create_app(
     reload_kill_switches: Any = None,
     validate_strategy: Any = None,
     terminal_view: Any = None,
+    status_view: Any = None,
 ) -> FastAPI:
     """The application, and the one identity that signs in to it.
 
@@ -124,6 +126,9 @@ def create_app(
     # The Terminal reads the engine's book through this; built above the API
     # because it knows the engine's parts, which this layer may not.
     app.state.terminal = terminal_view
+    # The System Status page reads the running engine through this, the same
+    # way: what it believes, not what the tables say.
+    app.state.status = status_view
     # The strategy pages: a write re-reads the tables into the running loop,
     # and a definition is built the engine's way before it is saved, so what
     # the engine would refuse is refused at the form.
@@ -241,6 +246,7 @@ def create_app(
     app.include_router(strategy_config.build(sessions, LiveClock()))
     app.include_router(rms.build(sessions, LiveClock()))
     app.include_router(trade_log.build(sessions, LiveClock()))
+    app.include_router(system_status.build(sessions, LiveClock()))
     app.include_router(socket.build(secret))
 
     return app

@@ -26,6 +26,7 @@ from garuda.composition.engine import Engine, build_account_stream
 from garuda.composition.persistence import TradePersistence
 from garuda.composition.strategy_loop import StrategyLoop
 from garuda.core.runner import EngineRunner, InMemoryPhaseRecorder
+from garuda.core.timeline import InitTimeline
 from garuda.domain.alert import EntityType
 from garuda.domain.client import TradingClientId
 from garuda.domain.market import Tick
@@ -55,6 +56,8 @@ class Runtime:
     #: The strategies, once there are any subscribed. None means nothing is
     #: looking for an entry — which is a state, not a fault.
     strategies: StrategyLoop | None = None
+    #: What starting up and starting the day did, for the System Status page.
+    timeline: InitTimeline | None = None
     _tasks: list[asyncio.Task[None]] = field(default_factory=list)
 
     async def admit(
@@ -135,6 +138,9 @@ async def start(
     #: Each data provider's translation table, as a name and how to load it.
     #: Registered at DAY_INIT beside the instrument master.
     catalogue_loads: Mapping[str, CatalogueLoad] | None = None,
+    #: Where the start is written for the System Status page. None records
+    #: nothing.
+    timeline: InitTimeline | None = None,
 ) -> Runtime:
     """Restore the books, open the channels, and register the day's tasks."""
     parts = engine.parts
@@ -142,17 +148,33 @@ async def start(
         client_id: TradePersistence(client.book, client.store, parts.clock)
         for client_id, client in parts.clients.items()
     }
+    restoring = timeline.begin("trade book restore") if timeline is not None else None
+    restored_trades = restored_signals = 0
     for client_id, keeper in persistence.items():
         trades, signals = await keeper.restore()
+        restored_trades += trades
+        restored_signals += signals
         logger.info(
             "%s: restored %d trades and %d signals",
             parts.clients[client_id].account.label,
             trades,
             signals,
         )
+    if timeline is not None and restoring is not None:
+        timeline.end(
+            restoring,
+            f"for {len(persistence)} account(s): "
+            f"{restored_trades} trades, {restored_signals} signals",
+        )
 
+    opening = timeline.begin("order-update channels") if timeline is not None else None
     streams = _account_streams(engine, resolver, connector)
     report = await streams.start(now)
+    if timeline is not None and opening is not None:
+        timeline.end(
+            opening,
+            f"for {len(report.started)} account(s), {len(report.unavailable)} without one",
+        )
     if not report.any_started and parts.clients:
         await parts.alerts.warning(
             EntityType.SYSTEM,
@@ -170,6 +192,7 @@ async def start(
         parts.registry,
         InMemoryPhaseRecorder(),
         offsets=dict(parts.venues.offsets),
+        timeline=timeline,
     )
 
     runtime = Runtime(
@@ -178,6 +201,7 @@ async def start(
         streams=streams,
         persistence=persistence,
         strategies=strategies,
+        timeline=timeline,
     )
     runtime._tasks = [
         asyncio.create_task(_fan_out_ticks(engine), name="ticks"),

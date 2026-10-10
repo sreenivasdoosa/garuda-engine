@@ -44,6 +44,7 @@ from garuda.composition.instruments import SymbolBook, build_loader, load_symbol
 from garuda.composition.protection import ProtectionBook, load_protection
 from garuda.composition.risk import load_kill_switches, load_limits
 from garuda.composition.runtime import Runtime, start
+from garuda.composition.status import SystemStatusView
 from garuda.composition.strategies import Loaded, load_strategies, validate_strategy
 from garuda.composition.strategy_context import MarketView
 from garuda.composition.strategy_loop import StrategyLoop, deliver_for
@@ -52,6 +53,7 @@ from garuda.composition.venues import Venues, load_venues
 from garuda.composition.watchlist import Watchlist
 from garuda.config.settings import Settings, load_settings
 from garuda.core.clock import LiveClock
+from garuda.core.timeline import InitTimeline
 from garuda.domain.errors import DomainError
 from garuda.domain.instrument import Instrument, InstrumentId, canonical_symbol
 from garuda.domain.symbol import SymbolInfo
@@ -177,16 +179,23 @@ async def _serve_with_engine(settings: Settings, host: str | None, port: int | N
     from garuda.api import create_app
 
     clock = LiveClock()
-    assembled = await _build(settings, clock)
+    started_at = clock.now()
+    # The System Status page's startup timeline: what this took, step by step.
+    timeline = InitTimeline(clock)
+    booting = timeline.begin("application startup")
+    assembled = await _build(settings, clock, timeline=timeline)
 
     # Taken before anything opens a socket or places anything. A second engine
     # on one database would read the same subscriptions and place the same
     # orders, and both would look correct doing it.
+    locking = timeline.begin("single-engine lock")
     lock = SingleEngineLock(assembled.database)
     await lock.acquire()
+    timeline.end(locking)
 
     runtime: Runtime | None = None
     try:
+        starting = timeline.begin("engine start")
         runtime = await start(
             assembled.engine,
             resolver=assembled.resolver,
@@ -195,7 +204,9 @@ async def _serve_with_engine(settings: Settings, host: str | None, port: int | N
             now=clock.now(),
             strategies=_strategy_loop(assembled, clock),
             catalogue_loads=assembled.catalogue_loads,
+            timeline=timeline,
         )
+        timeline.end(starting, f"-- {assembled.engine.describe()}")
 
         async def reload_sessions() -> None:
             """Re-read the trading clients, their sessions and the providers.
@@ -282,12 +293,20 @@ async def _serve_with_engine(settings: Settings, host: str | None, port: int | N
                     reload_kill_switches=reload_kill_switches,
                     validate_strategy=validate_strategy,
                     terminal_view=TerminalView(assembled.engine, clock),
+                    status_view=SystemStatusView(
+                        assembled.engine,
+                        clock,
+                        runtime=runtime,
+                        timeline=timeline,
+                        started_at=started_at,
+                    ),
                 ),
                 host=host or settings.host,
                 port=port or settings.port,
                 log_level="info",
             )
         )
+        timeline.end(booting, f"-- serving the Console on port {port or settings.port}")
         # The runner drives the venue's day; the server answers the Console.
         # Whichever finishes first brings the other down: a stopped engine
         # must not leave a Console that looks alive.
@@ -308,17 +327,30 @@ async def _serve_with_engine(settings: Settings, host: str | None, port: int | N
     return 0
 
 
-async def _build(settings: Settings, clock: Clock) -> _Assembled:
-    """Everything both commands need, built once."""
+async def _build(
+    settings: Settings, clock: Clock, *, timeline: InitTimeline | None = None
+) -> _Assembled:
+    """Everything both commands need, built once.
+
+    ``timeline`` is where each step's duration is written for the System
+    Status page; `check` passes none, because it has no page.
+    """
+    record = timeline if timeline is not None else InitTimeline(clock)
     database = create_engine(settings.database)
     sessions = create_session_factory(database)
     secrets = SecretBox(settings.secret_key.get_secret_value())
 
+    step = record.begin("venues and calendars")
     venues = await load_venues(sessions)
+    record.end(step, f"-- {len(venues.exchanges)} venue(s)")
+    step = record.begin("accounts and broker sessions")
     resolver = await build_resolver(sessions, secrets, _timezone(venues))
+    record.end(step, f"-- {len(resolver.accounts)} account(s)")
     # A book rather than a snapshot: the Symbols page can swap its contents
     # while the engine runs, and everything holding it sees the change.
+    step = record.begin("symbols")
     symbols = SymbolBook(await load_symbols(sessions))
+    record.end(step)
     loader = build_loader(
         broker=DEFAULT_BROKER,
         directory=Path(settings.app_home) / "instruments",
@@ -328,6 +360,7 @@ async def _build(settings: Settings, clock: Clock) -> _Assembled:
         clock=clock,
         http=trading_client_factory(None),
     )
+    step = record.begin("risk limits, event days, data providers, brokers and order protection")
     limits = await load_limits(sessions)
     event_days = await load_event_days(sessions)
     active_ticker, active_history = await load_active_providers(sessions)
@@ -335,6 +368,7 @@ async def _build(settings: Settings, clock: Clock) -> _Assembled:
     brokers = await load_brokers(sessions)
     # Swapped whole when the Broker Config page writes; see reload_protection.
     protection = ProtectionBook(await load_protection(sessions))
+    record.end(step)
     # Loaded at DAY_INIT, empty until then. The holder is built here rather
     # than inside the engine so the same one is both read by the adapters and
     # written by the day's tasks.
@@ -349,6 +383,7 @@ async def _build(settings: Settings, clock: Clock) -> _Assembled:
     # The venue's day, not the server's: a switch set on Tuesday evening in
     # one timezone must not still be stopping Wednesday in another.
     stopped = await load_kill_switches(sessions, today=_trading_day(venues, clock.now()))
+    step = record.begin("engine build")
     engine = build_engine(
         sessions=sessions,
         resolver=resolver,
@@ -366,8 +401,15 @@ async def _build(settings: Settings, clock: Clock) -> _Assembled:
         brokers=brokers,
         protection=protection,
     )
+    record.end(step, f"-- {engine.describe()}")
+    step = record.begin("strategies load")
     strategies = await load_strategies(sessions)
     _report(strategies)
+    record.end(
+        step,
+        f"-- {len(strategies.strategies)} strategies, {len(strategies.subscriptions)} "
+        f"subscriptions, {len(strategies.refused)} left out",
+    )
     try:
         market_data = resolver.market_data_credentials(clock.now())
     except SessionUnavailableError:

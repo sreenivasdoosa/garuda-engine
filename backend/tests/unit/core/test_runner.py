@@ -262,3 +262,66 @@ class TestTheLoop:
     async def test_a_runner_with_no_venues_is_refused(self):
         with pytest.raises(DomainError, match="no venues"):
             EngineRunner([], ReplayClock(DAWN), TaskRegistry(), InMemoryPhaseRecorder())
+
+
+class TestTheDayTimeline:
+    """What the System Status page shows of the day: each task, begun, ended
+    or failed, under the day it belongs to."""
+
+    async def test_each_task_is_written_with_its_phase_and_venue(self, nse):
+        from garuda.core.timeline import InitTimeline
+
+        async def load(context: PhaseContext) -> None:
+            return None
+
+        registry = TaskRegistry()
+        registry.register(DayPhase.DAY_INIT, load, name="load-instruments")
+        clock = ReplayClock(MIDDAY)
+        timeline = InitTimeline(clock)
+        await EngineRunner([nse], clock, registry, Recorder(), timeline=timeline).run_once()
+
+        messages = [event.message for event in reversed(timeline.day_events())]
+        assert messages[0] == f"Day {MONDAY.isoformat()} begins for NSE"
+        assert messages[1] == "Started NSE DAY_INIT: load-instruments"
+        assert messages[2].startswith("Finished NSE DAY_INIT: load-instruments -- took")
+        assert timeline.startup_events() == []
+
+    async def test_a_failing_task_is_written_as_failed(self, nse):
+        from garuda.core.timeline import InitTimeline
+
+        async def load(context: PhaseContext) -> None:
+            raise RuntimeError("broker unreachable")
+
+        registry = TaskRegistry()
+        registry.register(DayPhase.DAY_INIT, load, name="load-instruments")
+        clock = ReplayClock(MIDDAY)
+        timeline = InitTimeline(clock)
+        await EngineRunner([nse], clock, registry, Recorder(), timeline=timeline).run_once()
+
+        [failed] = [e for e in timeline.day_events() if e.message.startswith("Failed")]
+        assert "load-instruments" in failed.message
+        assert failed.message.endswith("RuntimeError: broker unreachable")
+
+    async def test_a_retried_day_init_does_not_wipe_the_first_attempt(self, nse):
+        """The day is cleared when a *later* day begins, not on every DAY_INIT."""
+        from garuda.core.timeline import InitTimeline
+
+        attempts: list[int] = []
+
+        async def load(context: PhaseContext) -> None:
+            attempts.append(1)
+            if len(attempts) == 1:
+                raise RuntimeError("first attempt fails")
+
+        registry = TaskRegistry()
+        registry.register(DayPhase.DAY_INIT, load, name="load-instruments")
+        clock = ReplayClock(MIDDAY)
+        timeline = InitTimeline(clock)
+        engine = EngineRunner([nse], clock, registry, Recorder(), timeline=timeline)
+        await engine.run_once()
+        await engine.run_once()
+
+        messages = [event.message for event in timeline.day_events()]
+        assert sum(1 for m in messages if m.startswith("Failed")) == 1
+        assert sum(1 for m in messages if m.startswith("Finished")) == 1
+        assert sum(1 for m in messages if m.startswith("Day ")) == 1
