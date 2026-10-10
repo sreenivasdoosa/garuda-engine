@@ -44,7 +44,7 @@ from garuda.composition.instruments import SymbolBook, build_loader, load_symbol
 from garuda.composition.protection import ProtectionBook, load_protection
 from garuda.composition.risk import load_kill_switches, load_limits
 from garuda.composition.runtime import Runtime, start
-from garuda.composition.strategies import Loaded, load_strategies
+from garuda.composition.strategies import Loaded, load_strategies, validate_strategy
 from garuda.composition.strategy_context import MarketView
 from garuda.composition.strategy_loop import StrategyLoop, deliver_for
 from garuda.composition.terminal import TerminalView
@@ -217,6 +217,18 @@ async def _serve_with_engine(settings: Settings, host: str | None, port: int | N
                 if admitted:
                     logger.info("engine now: %s", assembled.engine.describe())
 
+        async def reload_strategies() -> None:
+            """Re-read the strategy tables into the running loop.
+
+            The loop reads its strategies on every sweep, so swapping them is
+            the whole of taking effect: a strategy defined, a subscription
+            made or paused in the Console is seen on the next pass.
+            """
+            loaded = await load_strategies(assembled.sessions)
+            _report(loaded)
+            if runtime is not None and runtime.strategies is not None:
+                runtime.strategies.replace(loaded)
+
         async def reload_protection() -> None:
             """Re-read the Broker Config page into the engine's book.
 
@@ -244,6 +256,8 @@ async def _serve_with_engine(settings: Settings, host: str | None, port: int | N
                     reload_symbols=reload_symbols,
                     reload_sessions=reload_sessions,
                     reload_protection=reload_protection,
+                    reload_strategies=reload_strategies,
+                    validate_strategy=validate_strategy,
                     terminal_view=TerminalView(assembled.engine, clock),
                 ),
                 host=host or settings.host,
@@ -491,8 +505,9 @@ def _strategy_loop(assembled: _Assembled, clock: Clock) -> StrategyLoop | None:
         and not watchlist.configured_indices()
         and derived is None
     ):
-        logger.info("nothing subscribed, no index curated and no series configured; not sweeping")
-        return None
+        # Built anyway: a subscription made in the Console while the engine
+        # runs needs a loop to land in, and an idle sweep costs nothing.
+        logger.info("nothing subscribed, no index curated and no series configured yet")
     venues = assembled.venues.all
     if not venues:
         logger.warning("no venue is configured, so no strategy can be evaluated")

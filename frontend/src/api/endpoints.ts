@@ -602,6 +602,19 @@ export const API_ENDPOINTS = {
   },
 
   // Data providers: who supplies ticks, quotes and candles.
+  // Strategies as garuda serves them: definitions, rules, subscriptions. Served.
+  STRATEGIES: {
+    CATALOG: '/api/engine/catalog',
+    DEFINITIONS: '/api/engine/definitions',
+    DEFINITION: (id: number) => `/api/engine/definitions/${id}`,
+    STATUS: (id: number, status: string) => `/api/engine/definitions/${id}/status/${status}`,
+    RULES: (name: string) => `/api/engine/indicator-rules/${encodeURIComponent(name)}`,
+    SUBSCRIPTIONS: '/api/engine/subscriptions',
+    SUBSCRIPTION: (id: number) => `/api/engine/subscriptions/${id}`,
+    ACTIVATE: (id: number) => `/api/engine/subscriptions/${id}/activate`,
+    DEACTIVATE: (id: number) => `/api/engine/subscriptions/${id}/deactivate`,
+  },
+
   // The Terminal as garuda serves it: per trading client. Served.
   LIVE_TERMINAL: {
     SUMMARIES: '/api/terminal/summaries',

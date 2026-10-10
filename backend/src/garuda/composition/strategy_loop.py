@@ -135,6 +135,24 @@ class StrategyLoop:
     def stop(self) -> None:
         self._stopping = True
 
+    def replace(self, loaded: Loaded) -> None:
+        """Take a fresh reading of the strategy tables, whole.
+
+        Read on every sweep rather than captured, so a subscription made at
+        ten is swept at ten. The tranche ledger is keyed by strategy, account,
+        tranche and day, not by this object, so a tranche that fired this
+        morning stays fired across the swap.
+        """
+        before = len(self.loaded.subscriptions)
+        self.loaded = loaded
+        logger.info(
+            "strategies reloaded: %d strategies, %d subscriptions (was %d), %d left out",
+            len(loaded.strategies),
+            len(loaded.subscriptions),
+            before,
+            len(loaded.refused),
+        )
+
     async def _watch(self) -> None:
         """Keep the feed quoting what the strategies need. Never raises.
 
@@ -248,6 +266,18 @@ class StrategyLoop:
 
         results: list[Result] = []
         await self._consider_exits(subscription, client, conditions)
+        if subscription.winding_down:
+            # The reference's WIND_DOWN: exits above still run, entries do
+            # not. Reported once, not on every sweep.
+            key = f"winding-down:{subscription.spec.name}:{subscription.trading_client}"
+            if key not in self._reported:
+                self._reported.add(key)
+                logger.info(
+                    "%s on %s is winding down: no new entries",
+                    subscription.spec.name,
+                    subscription.trading_client,
+                )
+            return results
         for tranche in subscription.tranches:
             state = self.ledger.get(subscription.identity(tranche, now))
             if state is not None and not state.is_open:

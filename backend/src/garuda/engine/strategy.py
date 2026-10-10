@@ -119,6 +119,11 @@ class StrategySubscription:
     tranches: tuple[int, ...] = (0,)
     is_paper: bool = False
     group: str = "DEFAULT"
+    #: The strategy is being wound down: nothing new is entered, and what is
+    #: open is managed to its end -- exits, hedges and square-off as usual.
+    #: The reference's WIND_DOWN status, which blocks entries and nothing
+    #: else.
+    winding_down: bool = False
 
     def identity(self, tranche: int, on: datetime) -> TrancheId:
         return TrancheId(

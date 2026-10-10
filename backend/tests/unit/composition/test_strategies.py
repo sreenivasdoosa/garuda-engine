@@ -10,7 +10,7 @@ import json
 from decimal import Decimal
 from typing import Any
 
-from garuda.composition.strategies import assemble
+from garuda.composition.strategies import assemble, validate_strategy
 from garuda.domain import Currency, ProductType
 from garuda.domain.enums import OptionType
 from garuda.domain.intent import LegRole
@@ -426,3 +426,43 @@ def test_two_accounts_run_the_same_strategy_separately() -> None:
 
     assert {s.trading_client.value for s in loaded.subscriptions} == {"appa", "amma"}
     assert loaded.subscriptions[0].spec is loaded.subscriptions[1].spec
+
+
+class TestValidatingForTheConsole:
+    """The same build the morning does, answered at the form."""
+
+    def test_a_sound_strategy_has_nothing_to_refuse(self) -> None:
+        assert validate_strategy(definition(), [], None) is None
+
+    def test_a_refusal_comes_back_as_the_reason(self) -> None:
+        legs = {"legs": [{"instrument": {"type": "no_such_selector"}}]}
+        why = validate_strategy(definition(combo_spec_json=json.dumps(legs)), [], None)
+        assert why is not None
+        assert "no_such_selector" in why
+
+    def test_an_inactive_strategy_is_not_built_and_so_not_refused(self) -> None:
+        legs = {"legs": [{"instrument": {"type": "no_such_selector"}}]}
+        row = definition(status="INACTIVE", combo_spec_json=json.dumps(legs))
+        assert validate_strategy(row, [], None) is None
+
+
+class TestWindingDown:
+    """The reference's WIND_DOWN: built, flagged, and entering nothing."""
+
+    def test_a_winding_down_strategy_is_still_built(self) -> None:
+        loaded = assemble([definition(status="WIND_DOWN")], [], [], [])
+        assert loaded.strategies["straddle"].winding_down is True
+
+    def test_its_subscriptions_carry_the_flag(self) -> None:
+        loaded = assemble([definition(status="WIND_DOWN")], [], [], [subscription(capital=100000)])
+        [subscribed] = loaded.subscriptions
+        assert subscribed.winding_down is True
+
+    def test_an_active_strategy_is_not(self) -> None:
+        loaded = assemble([definition()], [], [], [subscription(capital=100000)])
+        assert loaded.strategies["straddle"].winding_down is False
+        assert loaded.subscriptions[0].winding_down is False
+
+    def test_an_inactive_strategy_is_still_dropped(self) -> None:
+        loaded = assemble([definition(status="INACTIVE")], [], [], [])
+        assert "straddle" not in loaded.strategies

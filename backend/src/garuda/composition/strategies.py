@@ -97,6 +97,10 @@ class Strategy:
     direction_rules: tuple[DirectionRule, ...]
     layers: tuple[ConfigLayer, ...]
     tranches: tuple[int, ...]
+    #: WIND_DOWN: open positions are managed to their end and nothing new is
+    #: entered. Built rather than dropped, because dropping it would also drop
+    #: the exit rules its open positions still need.
+    winding_down: bool = False
 
     @property
     def name(self) -> str:
@@ -147,13 +151,15 @@ def assemble(
     built: dict[str, Strategy] = {}
     refused: dict[str, str] = {}
     for definition in definitions:
-        if (definition.status or "").upper() != "ACTIVE":
+        status = (definition.status or "").upper()
+        if status not in ("ACTIVE", "WIND_DOWN"):
             continue
         try:
             built[definition.strategy_name] = _strategy(
                 definition,
                 by_strategy_config.get(definition.strategy_name, []),
                 by_strategy_rules.get(definition.strategy_name),
+                winding_down=status == "WIND_DOWN",
             )
         except DomainError as error:
             refused[definition.strategy_name] = str(error)
@@ -203,6 +209,7 @@ def _subscriptions(
                 exit_rules=strategy.exit_rules,
                 tranches=strategy.tranches,
                 is_paper=bool(row.is_paper_trading),
+                winding_down=strategy.winding_down,
             )
         )
     return tuple(out)
@@ -212,6 +219,8 @@ def _strategy(
     definition: StrategyDefinitionsRow,
     configs: Sequence[StrategyConfigRow],
     rules: StrategyIndicatorRulesRow | None,
+    *,
+    winding_down: bool = False,
 ) -> Strategy:
     underlying = InstrumentId(f"{definition.exchange}:{definition.underlying_symbol}")
     layers = tuple(_layer(row) for row in configs)
@@ -229,6 +238,7 @@ def _strategy(
         direction_rules=_direction_rules(definition, rules),
         layers=layers,
         tranches=_tranches(configs),
+        winding_down=winding_down,
     )
 
 
@@ -392,3 +402,19 @@ def _optional_rules(
         ) from None
     except DomainError as error:
         raise DomainError(f"{strategy}: its {which} rules are not usable — {error}") from None
+
+
+def validate_strategy(
+    definition: StrategyDefinitionsRow,
+    configs: Sequence[StrategyConfigRow],
+    rules: StrategyIndicatorRulesRow | None,
+) -> str | None:
+    """Why the engine would refuse this strategy at startup, or None.
+
+    Built exactly the way :func:`load_strategies` builds it, so the Console
+    can refuse a save for the reason the morning's log would otherwise give.
+    A definition that is neither ACTIVE nor WIND_DOWN is not built at all,
+    and so has nothing to be refused for.
+    """
+    loaded = assemble([definition], configs, [rules] if rules is not None else [], [])
+    return loaded.refused.get(definition.strategy_name)

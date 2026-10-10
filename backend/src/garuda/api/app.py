@@ -34,6 +34,7 @@ from garuda.api.routers import (
     market_data,
     socket,
     special_trading_days,
+    strategies,
     symbols,
     terminal,
     ticker,
@@ -69,6 +70,8 @@ def create_app(
     reload_symbols: Any = None,
     reload_sessions: Any = None,
     reload_protection: Any = None,
+    reload_strategies: Any = None,
+    validate_strategy: Any = None,
     terminal_view: Any = None,
 ) -> FastAPI:
     """The application, and the one identity that signs in to it.
@@ -116,6 +119,11 @@ def create_app(
     # The Terminal reads the engine's book through this; built above the API
     # because it knows the engine's parts, which this layer may not.
     app.state.terminal = terminal_view
+    # The strategy pages: a write re-reads the tables into the running loop,
+    # and a definition is built the engine's way before it is saved, so what
+    # the engine would refuse is refused at the form.
+    app.state.reload_strategies = reload_strategies
+    app.state.validate_strategy = validate_strategy
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(DEV_ORIGINS),
@@ -220,6 +228,7 @@ def create_app(
     app.include_router(market_data.build(sessions, LiveClock()))
     app.include_router(ticker.build())
     app.include_router(terminal.build())
+    app.include_router(strategies.build(sessions, LiveClock()))
     app.include_router(socket.build(secret))
 
     return app

@@ -187,6 +187,7 @@ def loop_over(
     entry: object = None,
     exit_rules: object = None,
     tranches: tuple[int, ...] = (0,),
+    winding_down: bool = False,
 ) -> StrategyLoop:
     strategy = Strategy(
         spec=a_straddle(),
@@ -195,6 +196,7 @@ def loop_over(
         direction_rules=(),
         layers=(),
         tranches=tranches,
+        winding_down=winding_down,
     )
     subscription = StrategySubscription(
         trading_client=APPA,
@@ -203,6 +205,7 @@ def loop_over(
         entry_rules=strategy.entry_rules,
         exit_rules=strategy.exit_rules,
         tranches=tranches,
+        winding_down=winding_down,
     )
     market = MarketView(
         hub=engine.parts.hub,
@@ -741,3 +744,35 @@ async def test_no_synthetics_declared_is_quiet(
         await loop.run_once()
 
     assert "synthetic" not in caplog.text
+
+
+async def test_a_strategy_winding_down_exits_but_enters_nothing(
+    engine: Engine, registry: InstrumentRegistry, nse_calendar: TradingCalendar
+) -> None:
+    """The reference's WIND_DOWN: what is open is managed to its end, and
+    nothing new goes on -- however loudly the entry rules hold."""
+    doorman = Doorman()
+    await prices(engine.parts.hub)
+    loop = loop_over(
+        engine,
+        registry,
+        doorman,
+        nse_calendar,
+        exit_rules=AllOf((Says(True),)),
+        winding_down=True,
+    )
+    client = engine.parts.clients[APPA]
+    client.book.add_trade(_a_position())
+    asked: list[str] = []
+
+    async def square_off(trade: Trade, reason: TradeExitReason) -> bool:
+        asked.append(reason.value)
+        return True
+
+    client.square_off.request = square_off  # type: ignore[method-assign, assignment]
+
+    results = await loop.run_once()
+
+    assert asked == [TradeExitReason.EXIT_SIGNAL.value], "the exit still runs"
+    assert results == []
+    assert doorman.batches == [], "and nothing is entered"
