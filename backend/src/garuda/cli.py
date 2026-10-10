@@ -30,6 +30,7 @@ from garuda.brokers.websocket import websocket_connector
 from garuda.capital import CapitalLotAllocator, Sizer
 from garuda.capital.event_days import EventDays
 from garuda.composition.accounts import build_resolver, load_accounts, load_sessions
+from garuda.composition.brokers import load_brokers
 from garuda.composition.catalogues import CatalogueLoad, build_catalogue_loads
 from garuda.composition.data_providers import (
     DataProviders,
@@ -275,6 +276,7 @@ async def _build(settings: Settings, clock: Clock) -> _Assembled:
     event_days = await load_event_days(sessions)
     active_ticker, active_history = await load_active_providers(sessions)
     providers = await load_data_providers(sessions, secrets, resolver)
+    brokers = await load_brokers(sessions)
     # Loaded at DAY_INIT, empty until then. The holder is built here rather
     # than inside the engine so the same one is both read by the adapters and
     # written by the day's tasks.
@@ -303,6 +305,7 @@ async def _build(settings: Settings, clock: Clock) -> _Assembled:
         data_providers=providers,
         catalogues=catalogues,
         master_broker=DEFAULT_BROKER,
+        brokers=brokers,
     )
     strategies = await load_strategies(sessions)
     _report(strategies)

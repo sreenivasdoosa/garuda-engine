@@ -7,7 +7,15 @@ in the morning, which is exactly when it is started.
 
 from __future__ import annotations
 
-from .conftest import AMMA, APPA, EngineBuilder, account, session
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+from garuda.brokers.websocket import Connector
+from garuda.composition.brokers import BrokerState
+from garuda.composition.engine import build_engine
+from garuda.composition.venues import Venues
+from garuda.core.clock import ReplayClock
+
+from .conftest import AMMA, APPA, NOW, EngineBuilder, account, resolver_for, session
 
 
 def test_an_account_with_a_session_is_ready_to_trade(build_with: EngineBuilder) -> None:
@@ -143,3 +151,67 @@ def test_a_dealer_session_authorises_the_accounts_that_borrow_it(build_with: Eng
     )
 
     assert set(engine.parts.clients) == {APPA, AMMA}
+
+
+class TestTheBrokersPageSwitches:
+    """Two switches on the Brokers page decide whether a broker's accounts trade."""
+
+    def test_a_stopped_broker_has_no_account_built(
+        self,
+        sessions: async_sessionmaker[AsyncSession],
+        venues: Venues,
+        clock: ReplayClock,
+        connector: Connector,
+    ) -> None:
+        engine = build_engine(
+            sessions=sessions,
+            resolver=resolver_for([account(APPA, "AB1234")], {APPA: session("AB1234")}),
+            venues=venues,
+            clock=clock,
+            now=NOW,
+            connector=connector,
+            brokers={"zerodha": BrokerState(name="zerodha", stopped=True)},
+        )
+
+        assert APPA not in engine.parts.clients
+        assert "stopped on the Brokers page" in engine.parts.unavailable[APPA]
+
+    def test_a_disabled_broker_has_no_account_built(
+        self,
+        sessions: async_sessionmaker[AsyncSession],
+        venues: Venues,
+        clock: ReplayClock,
+        connector: Connector,
+    ) -> None:
+        engine = build_engine(
+            sessions=sessions,
+            resolver=resolver_for([account(APPA, "AB1234")], {APPA: session("AB1234")}),
+            venues=venues,
+            clock=clock,
+            now=NOW,
+            connector=connector,
+            brokers={"zerodha": BrokerState(name="zerodha", enabled=False)},
+        )
+
+        assert APPA not in engine.parts.clients
+        assert "disabled on the Brokers page" in engine.parts.unavailable[APPA]
+
+    def test_a_broker_with_no_row_is_not_switched_off(
+        self,
+        sessions: async_sessionmaker[AsyncSession],
+        venues: Venues,
+        clock: ReplayClock,
+        connector: Connector,
+    ) -> None:
+        """An install predating the page has no reason to stop trading."""
+        engine = build_engine(
+            sessions=sessions,
+            resolver=resolver_for([account(APPA, "AB1234")], {APPA: session("AB1234")}),
+            venues=venues,
+            clock=clock,
+            now=NOW,
+            connector=connector,
+            brokers={"dhan": BrokerState(name="dhan", stopped=True)},
+        )
+
+        assert APPA in engine.parts.clients

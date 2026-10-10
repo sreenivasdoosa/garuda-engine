@@ -25,6 +25,7 @@ from garuda.api import envelope
 from garuda.api.credentials import AdminCredentials
 from garuda.api.envelope import ok
 from garuda.api.routers import (
+    brokers,
     data_providers,
     event_days,
     exchanges,
@@ -192,6 +193,7 @@ def create_app(
         return ok({"status": "ok"})
 
     # One router per Console page, added as each page is made to work.
+    app.include_router(brokers.build(sessions))
     app.include_router(exchanges.build(sessions))
     app.include_router(holidays.build(sessions))
     app.include_router(special_trading_days.build(sessions))

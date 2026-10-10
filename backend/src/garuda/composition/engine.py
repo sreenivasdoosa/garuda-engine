@@ -18,7 +18,7 @@ recorded by name in :attr:`EngineParts.unavailable` and the rest are assembled.
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
@@ -38,6 +38,7 @@ from garuda.brokers.websocket import Connector
 from garuda.brokers.zerodha.account import ZerodhaAccountStream
 from garuda.brokers.zerodha.broker import ZerodhaBroker
 from garuda.brokers.zerodha.rest import KiteClient
+from garuda.composition.brokers import BrokerState
 from garuda.composition.candle_view import CachedCandles
 from garuda.composition.catalogues import empty_catalogue_for
 from garuda.composition.data_providers import DataProviders
@@ -208,6 +209,9 @@ def build_engine(
     #: Whose instrument master is the engine's canonical set of instruments.
     #: A data provider's catalogue translates onto this, never replaces it.
     master_broker: str = "zerodha",
+    #: The Brokers page's rows: whether each broker is enabled, and whether
+    #: the operator has stopped it. Empty means no broker is switched off.
+    brokers: Mapping[str, BrokerState] | None = None,
 ) -> Engine:
     """Build every part the current configuration allows.
 
@@ -259,7 +263,7 @@ def build_engine(
 
     for account in resolver.accounts:
         parts.accounts[account.id] = account
-        refusal = _why_not(account, resolver, now)
+        refusal = _why_not(account, resolver, now, brokers or {})
         if refusal is not None:
             parts.unavailable[account.id] = refusal
             logger.info("%s cannot trade yet: %s", account.label, refusal)
@@ -289,10 +293,25 @@ def build_engine(
     return engine
 
 
-def _why_not(account: Account, resolver: SessionResolver, now: datetime) -> str | None:
-    """Why this account cannot trade today, or None when it can."""
+def _why_not(
+    account: Account,
+    resolver: SessionResolver,
+    now: datetime,
+    brokers: Mapping[str, BrokerState],
+) -> str | None:
+    """Why this account cannot trade today, or None when it can.
+
+    The broker's own switches come first: a stopped broker is the operator's
+    brake on every account there, and saying "stopped" is more useful than
+    going on to say the session is fine.
+    """
     if not account.enabled:
         return "the account is disabled"
+    broker = brokers.get(account.broker.lower())
+    if broker is not None and not broker.enabled:
+        return f"broker {account.broker.lower()} is disabled on the Brokers page"
+    if broker is not None and broker.stopped:
+        return f"broker {account.broker.lower()} is stopped on the Brokers page"
     try:
         resolver.credentials_for(account.id, now)
     except SessionUnavailableError as error:

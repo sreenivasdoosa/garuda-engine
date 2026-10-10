@@ -1,6 +1,11 @@
 /**
- * Brokers Page (Shared)
- * Uses the reusable Brokers component
+ * Brokers: the venues' gatekeepers garuda has an adapter for.
+ *
+ * The set is fixed -- a broker is an adapter garuda ships, and the rows are
+ * seeded -- so there is nothing to add here; the page edits what is editable
+ * about each one. Two switches matter to the engine: Enabled decides whether
+ * accounts at the broker are built at all, and Stop is the brake on every
+ * account there at once. Both take effect when the engine next starts.
  */
 
 import { BsBank } from 'react-icons/bs';
@@ -14,19 +19,19 @@ const BrokersPage: React.FC = () => {
   return (
     <div className="fade-in">
       <PageHeader
-        title="Broker Management"
-        subtitle="Configure supported brokers"
+        title="Brokers"
+        subtitle="The brokers garuda can trade through, and whether each is switched on"
         icon={<BsBank size={24} />}
       />
 
       <MissingBrokerExchangeConfigAlert />
 
       <Brokers
-        title="All Brokers"
-        hideCreate={!true}
-        hideDelete={!true}
-        hideEnableDisable={!true}
-        readOnly={!true}
+        title="Brokers"
+        hideCreate
+        hideDelete={false}
+        hideEnableDisable={false}
+        readOnly={false}
       />
     </div>
   );
