@@ -41,6 +41,7 @@ from garuda.composition.derived_series import DerivedSeriesRecorder
 from garuda.composition.engine import Engine, build_engine
 from garuda.composition.event_days import load_event_days
 from garuda.composition.instruments import SymbolBook, build_loader, load_symbols
+from garuda.composition.protection import ProtectionBook, load_protection
 from garuda.composition.risk import load_kill_switches, load_limits
 from garuda.composition.runtime import Runtime, start
 from garuda.composition.strategies import Loaded, load_strategies
@@ -208,6 +209,14 @@ async def _serve_with_engine(settings: Settings, host: str | None, port: int | N
                 await load_data_providers(assembled.sessions, assembled.secrets, assembled.resolver)
             )
 
+        async def reload_protection() -> None:
+            """Re-read the Broker Config page into the engine's book.
+
+            Every account's placement reads the book on each order, so
+            swapping its contents is the whole of taking effect.
+            """
+            assembled.protection.replace(await load_protection(assembled.sessions))
+
         async def reload_symbols() -> None:
             """Re-read the Symbols page into the engine's book.
 
@@ -226,6 +235,7 @@ async def _serve_with_engine(settings: Settings, host: str | None, port: int | N
                     engine=assembled.engine,
                     reload_symbols=reload_symbols,
                     reload_sessions=reload_sessions,
+                    reload_protection=reload_protection,
                 ),
                 host=host or settings.host,
                 port=port or settings.port,
@@ -277,6 +287,8 @@ async def _build(settings: Settings, clock: Clock) -> _Assembled:
     active_ticker, active_history = await load_active_providers(sessions)
     providers = await load_data_providers(sessions, secrets, resolver)
     brokers = await load_brokers(sessions)
+    # Swapped whole when the Broker Config page writes; see reload_protection.
+    protection = ProtectionBook(await load_protection(sessions))
     # Loaded at DAY_INIT, empty until then. The holder is built here rather
     # than inside the engine so the same one is both read by the adapters and
     # written by the day's tasks.
@@ -306,6 +318,7 @@ async def _build(settings: Settings, clock: Clock) -> _Assembled:
         catalogues=catalogues,
         master_broker=DEFAULT_BROKER,
         brokers=brokers,
+        protection=protection,
     )
     strategies = await load_strategies(sessions)
     _report(strategies)
@@ -320,6 +333,7 @@ async def _build(settings: Settings, clock: Clock) -> _Assembled:
         loader=loader,
         resolver=resolver,
         secrets=secrets,
+        protection=protection,
         symbols=symbols,
         strategies=strategies,
         market_data=market_data,
@@ -342,6 +356,8 @@ class _Assembled:
     #: What opens every stored credential, kept so a login made while the
     #: engine runs can be read the same way the ones at startup were.
     secrets: SecretBox
+    #: Order protection per broker and venue, the book every account reads.
+    protection: ProtectionBook
     symbols: SymbolBook
     strategies: Loaded
     #: Whose session fetches history, when one is nominated.

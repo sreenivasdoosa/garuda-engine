@@ -25,6 +25,7 @@ from garuda.api import envelope
 from garuda.api.credentials import AdminCredentials
 from garuda.api.envelope import ok
 from garuda.api.routers import (
+    broker_exchange_configs,
     brokers,
     data_providers,
     event_days,
@@ -66,6 +67,7 @@ def create_app(
     engine: Any = None,
     reload_symbols: Any = None,
     reload_sessions: Any = None,
+    reload_protection: Any = None,
 ) -> FastAPI:
     """The application, and the one identity that signs in to it.
 
@@ -106,6 +108,9 @@ def create_app(
     # Same idea as ``reload_symbols``: a login writes a session row, and the
     # engine's resolver re-reads it rather than learning of it at restart.
     app.state.reload_sessions = reload_sessions
+    # And the Broker Config page: a row written there is read by the next
+    # order, not the next restart.
+    app.state.reload_protection = reload_protection
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(DEV_ORIGINS),
@@ -194,6 +199,7 @@ def create_app(
 
     # One router per Console page, added as each page is made to work.
     app.include_router(brokers.build(sessions))
+    app.include_router(broker_exchange_configs.build(sessions))
     app.include_router(exchanges.build(sessions))
     app.include_router(holidays.build(sessions))
     app.include_router(special_trading_days.build(sessions))

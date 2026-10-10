@@ -29,6 +29,7 @@ from garuda.domain.protection import (
     marketable_limit_price,
     sl_limit_from_trigger,
 )
+from garuda.protocols.broker import OrderChanges
 
 logger = logging.getLogger(__name__)
 
@@ -106,6 +107,42 @@ class MarketProtection:
         if request.order_type is OrderType.SL_LIMIT:
             return self._clamped(request, instrument, segment, buffers)
         return Protected(request)
+
+    def clamp_changes(
+        self, instrument: Instrument, changes: OrderChanges
+    ) -> tuple[OrderChanges, str | None]:
+        """The modify-path twin of :meth:`apply`, for a stop being moved.
+
+        Only a change that carries both a limit and a trigger can be judged:
+        with one of them missing the resting order holds the other, and this
+        does not read resting orders. The reference's modify path reads the
+        resting trigger in that case; here the trailing service always sends
+        both, so the gap is never unknowable on the path that matters.
+
+        Returns the changes to send and a sentence saying what moved, or the
+        changes untouched and None.
+        """
+        if changes.price is None or changes.trigger_price is None:
+            return changes, None
+        configured = self._config(self._broker, instrument.exchange.code)
+        if configured is not None and configured.market_orders_allowed:
+            return changes, None
+        protection = configured or ExchangeProtection()
+        segment = ProtectionSegment.of(instrument)
+        clamped = clamp_sl_limit(
+            changes.price,
+            changes.trigger_price,
+            instrument,
+            segment,
+            protection.for_segment(segment),
+        )
+        if clamped == changes.price:
+            return changes, None
+        return (
+            replace(changes, price=clamped),
+            f"SL limit pulled from {changes.price} to {clamped}, inside the band around "
+            f"{changes.trigger_price}",
+        )
 
     def _as_marketable_limit(
         self,

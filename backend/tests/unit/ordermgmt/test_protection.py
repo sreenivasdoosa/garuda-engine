@@ -31,6 +31,7 @@ from garuda.domain.protection import (
     sl_limit_from_trigger,
 )
 from garuda.ordermgmt.protection import ExchangeProtection, MarketProtection
+from garuda.protocols.broker import OrderChanges
 
 T0 = datetime(2026, 8, 31, 9, 20, tzinfo=UTC)
 CLIENT = TradingClientId("appa-zerodha")
@@ -314,3 +315,42 @@ class TestALimitOrderIsLeftAlone:
         result = protection(nifty_call, rupees("125")).apply(original)
         assert result.request == original
         assert not result.was_changed
+
+
+class TestClampingAModification:
+    """The modify-path twin: a moved stop stays inside the permitted band."""
+
+    def changes(self, price: str, trigger: str) -> OrderChanges:
+        return OrderChanges(price=rupees(price), trigger_price=rupees(trigger))
+
+    def test_a_limit_inside_the_band_is_sent_as_it_is(self, reliance: Instrument) -> None:
+        guard = protection(reliance, rupees("2500"))
+        sent, why = guard.clamp_changes(reliance, self.changes("2495.50", "2500"))
+        assert why is None
+        assert sent.price == rupees("2495.50")
+
+    def test_a_limit_far_from_the_trigger_is_pulled_back(self, reliance: Instrument) -> None:
+        """Equity's default gap is one per cent: a limit 4% below the trigger
+        would be refused by the exchange on the modify."""
+        guard = protection(reliance, rupees("2500"))
+        sent, why = guard.clamp_changes(reliance, self.changes("2400", "2500"))
+        assert why is not None
+        assert sent.price == rupees("2475")
+        assert sent.trigger_price == rupees("2500"), "the trigger is never moved"
+
+    def test_a_change_with_only_a_trigger_cannot_be_judged(self, reliance: Instrument) -> None:
+        guard = protection(reliance, rupees("2500"))
+        only_trigger = OrderChanges(trigger_price=rupees("2500"))
+        sent, why = guard.clamp_changes(reliance, only_trigger)
+        assert why is None
+        assert sent is only_trigger
+
+    def test_a_venue_allowing_market_orders_leaves_the_modify_alone(
+        self, reliance: Instrument
+    ) -> None:
+        guard = protection(
+            reliance, rupees("2500"), configured=ExchangeProtection(market_orders_allowed=True)
+        )
+        sent, why = guard.clamp_changes(reliance, self.changes("2400", "2500"))
+        assert why is None
+        assert sent.price == rupees("2400")

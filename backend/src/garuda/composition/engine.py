@@ -42,6 +42,11 @@ from garuda.composition.brokers import BrokerState
 from garuda.composition.candle_view import CachedCandles
 from garuda.composition.catalogues import empty_catalogue_for
 from garuda.composition.data_providers import DataProviders
+from garuda.composition.protection import (
+    ProtectionBook,
+    protected_modification,
+    protected_placement,
+)
 from garuda.composition.provider_context import ProviderContext, gates
 from garuda.composition.providers import register_providers
 from garuda.composition.risk import gated, realised_today
@@ -53,6 +58,7 @@ from garuda.domain.client import TradingClientId
 from garuda.domain.exchange import Exchange
 from garuda.domain.instrument import Instrument, InstrumentId
 from garuda.domain.market import Bar, BarInterval, PriceBand, Tick
+from garuda.domain.money import Money
 from garuda.domain.order import BrokerOrderId, ClientOrderId
 from garuda.domain.trade import Trade
 from garuda.marketdata.downloads import InstrumentDownloads
@@ -68,6 +74,7 @@ from garuda.marketdata.providers.registry import (
 from garuda.marketdata.registry import InstrumentRegistry
 from garuda.marketdata.service import MarketDataService
 from garuda.marketdata.supervisor import FeedSupervisor
+from garuda.ordermgmt.protection import MarketProtection
 from garuda.persistence.breach_store import BreachStore
 from garuda.persistence.trade_store import TradeStore
 from garuda.persistence.uow import UnitOfWork
@@ -92,11 +99,6 @@ from garuda.trademgmt.tracking import TradeTracker
 from garuda.trademgmt.trailing import TrailingService
 
 logger = logging.getLogger(__name__)
-
-#: The widest gap a strategy's stop may sit from the entry, where nothing
-#: configures the venue's own. Belongs beside the other per-segment limits;
-#: a number here is better than no cap at all, which is what None would mean.
-DEFAULT_SEGMENT_GAP = Decimal(18)
 
 
 @dataclass
@@ -139,6 +141,9 @@ class EngineParts:
     #: reports is what actually happened. None until the runtime registers
     #: the day's tasks, which is where the loads are named.
     downloads: InstrumentDownloads | None = None
+    #: Order protection per broker and venue, swapped whole when the Broker
+    #: Config page writes. Every account's placement reads it.
+    protection: ProtectionBook = field(default_factory=ProtectionBook)
     market_data: MarketDataService | None = None
     #: Closed-bar history, on the same account that carries the feed: both are
     #: its session, and without one there is neither. None when no account is
@@ -212,6 +217,9 @@ def build_engine(
     #: The Brokers page's rows: whether each broker is enabled, and whether
     #: the operator has stopped it. Empty means no broker is switched off.
     brokers: Mapping[str, BrokerState] | None = None,
+    #: The Broker Config page's rows, as the order path reads them. Empty
+    #: means every venue protects, which is the safe default.
+    protection: ProtectionBook | None = None,
 ) -> Engine:
     """Build every part the current configuration allows.
 
@@ -236,6 +244,10 @@ def build_engine(
         clock=clock,
     )
     parts.catalogues = catalogues
+    # ``is not None``, not ``or``: an empty book is falsy, and replacing the
+    # one the composition root holds would cut the Console's reload off from
+    # every account built here.
+    parts.protection = protection if protection is not None else ProtectionBook()
     parts.market_data = _build_market_data(
         resolver,
         instruments,
@@ -281,6 +293,7 @@ def build_engine(
             limits or NO_LIMITS,
             parts.candles,
             kill_switch,
+            parts.protection,
         )
 
     loops = TradeLoops(clock, alerts)
@@ -651,12 +664,14 @@ def _build_client(
     limits: LimitBook,
     candles: CandleCache | None,
     kill_switch: KillSwitch,
+    protection_book: ProtectionBook,
 ) -> ClientParts:
     """One account's broker, its book, and everything that acts on them."""
     http = trading_client_factory(credentials.static_ip)
     kite = KiteClient(credentials.api_key, credentials.access_token, http)
     registry = _registry_for(instruments, account.broker)
     broker = ZerodhaBroker(account.id, kite, registry)
+    broker_name = account.broker.lower()
 
     def instrument(instrument_id: InstrumentId) -> Instrument | None:
         return registry().get(instrument_id)
@@ -664,6 +679,24 @@ def _build_client(
     def last_tick(instrument_id: InstrumentId) -> Tick | None:
         """The latest price the feed carried. Shared across every account."""
         return hub.latest(instrument_id)
+
+    def last_price(instrument_id: InstrumentId) -> Money | None:
+        tick = hub.latest(instrument_id)
+        return tick.last_price if tick is not None else None
+
+    # Every order the account sends passes through protection on its way to
+    # the broker: a MARKET becomes a marketable LIMIT, an SL-M an SL, and a
+    # stop's limit is kept inside the band -- unless the (broker, venue) row
+    # says raw market orders are allowed. Inside the risk gate, which judges
+    # the order the strategy asked for.
+    market_protection = MarketProtection(
+        broker_name, protection_book.lookup, last_price, instrument
+    )
+    place = protected_placement(broker.place, market_protection)
+
+    def segment_gap(trade: Trade) -> Decimal:
+        """The venue's permitted stop gap, from the same row protection reads."""
+        return protection_book.sl_gap_percent(broker_name, registry().get(trade.instrument))
 
     def price_band(instrument_id: InstrumentId) -> PriceBand | None:  # noqa: ARG001
         """The day's circuit limits, once something supplies them.
@@ -724,7 +757,7 @@ def _build_client(
     # them. A stop-loss must go out on the day a loss limit was reached, and a
     # square-off must go out whatever the spread has done.
     entry_placement = watching(
-        broker.place,
+        place,
         # What is already held or resting on the side this order would add to.
         # Resting counts: the failure a position cap catches is a signal
         # firing twice while the first entry is still unfilled.
@@ -733,7 +766,7 @@ def _build_client(
         ),
     )
     exit_placement = watching(
-        broker.place,
+        place,
         is_exit=True,
         # Bounded by the engine's own book, not by what the order asks for --
         # an order claiming a size is what this guards against.
@@ -748,7 +781,7 @@ def _build_client(
         instrument,
         last_tick,
         price_band,
-        _segment_gap,
+        segment_gap,
         clock,
         alerts,
     )
@@ -769,9 +802,13 @@ def _build_client(
         result = await protection.place_stop(trade)
         return result.order_id
 
+    def instrument_of_order(order_id: BrokerOrderId) -> Instrument | None:
+        trade = book.trade_for_order(order_id)
+        return registry().get(trade.instrument) if trade is not None else None
+
     trailing = TrailingService(
         book,
-        broker.modify,
+        protected_modification(broker.modify, market_protection, instrument_of_order),
         broker.cancel,
         place_replacement_stop,
         instrument,
@@ -810,11 +847,6 @@ def _build_client(
         ),
         store=TradeStore(sessions, alerts, label=account.label),
     )
-
-
-def _segment_gap(trade: Trade) -> Decimal:  # noqa: ARG001
-    """The venue's widest permitted stop gap. One number until there are rows."""
-    return DEFAULT_SEGMENT_GAP
 
 
 def _registry_for(
