@@ -75,6 +75,8 @@ from garuda.persistence.seed import load_seed
 from garuda.persistence.single_engine import SingleEngineLock
 from garuda.persistence.uow import UnitOfWork
 from garuda.protocols.clock import Clock
+from garuda.rms.killswitch import KillSwitch
+from garuda.rms.scope import LimitBook
 
 logger = logging.getLogger(__name__)
 
@@ -237,6 +239,25 @@ async def _serve_with_engine(settings: Settings, host: str | None, port: int | N
             """
             assembled.protection.replace(await load_protection(assembled.sessions))
 
+        async def reload_limits() -> None:
+            """Re-read the RMS Config page into the engine's book.
+
+            Every account's gate resolves its limits from the book on each
+            order, so swapping its rows is the whole of taking effect.
+            """
+            assembled.limits.replace((await load_limits(assembled.sessions)).rows)
+
+        async def reload_kill_switches() -> None:
+            """Re-read today's kill switches into the engine's book.
+
+            The Kill Switches page is the operator's hand on the brake, and
+            a brake that works after the next restart is not one.
+            """
+            loaded = await load_kill_switches(
+                assembled.sessions, today=_trading_day(assembled.venues, clock.now())
+            )
+            assembled.kill_switch.replace(loaded.switches)
+
         async def reload_symbols() -> None:
             """Re-read the Symbols page into the engine's book.
 
@@ -257,6 +278,8 @@ async def _serve_with_engine(settings: Settings, host: str | None, port: int | N
                     reload_sessions=reload_sessions,
                     reload_protection=reload_protection,
                     reload_strategies=reload_strategies,
+                    reload_limits=reload_limits,
+                    reload_kill_switches=reload_kill_switches,
                     validate_strategy=validate_strategy,
                     terminal_view=TerminalView(assembled.engine, clock),
                 ),
@@ -357,6 +380,8 @@ async def _build(settings: Settings, clock: Clock) -> _Assembled:
         resolver=resolver,
         secrets=secrets,
         protection=protection,
+        limits=limits,
+        kill_switch=stopped,
         symbols=symbols,
         strategies=strategies,
         market_data=market_data,
@@ -381,6 +406,10 @@ class _Assembled:
     secrets: SecretBox
     #: Order protection per broker and venue, the book every account reads.
     protection: ProtectionBook
+    #: The risk limits and the kill switches, the books every account's gate
+    #: reads. Swapped whole when their Console pages write.
+    limits: LimitBook
+    kill_switch: KillSwitch
     symbols: SymbolBook
     strategies: Loaded
     #: Whose session fetches history, when one is nominated.

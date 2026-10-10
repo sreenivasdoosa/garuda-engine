@@ -32,6 +32,7 @@ from garuda.api.routers import (
     exchanges,
     holidays,
     market_data,
+    rms,
     socket,
     special_trading_days,
     strategies,
@@ -72,6 +73,8 @@ def create_app(
     reload_sessions: Any = None,
     reload_protection: Any = None,
     reload_strategies: Any = None,
+    reload_limits: Any = None,
+    reload_kill_switches: Any = None,
     validate_strategy: Any = None,
     terminal_view: Any = None,
 ) -> FastAPI:
@@ -125,6 +128,10 @@ def create_app(
     # the engine would refuse is refused at the form.
     app.state.reload_strategies = reload_strategies
     app.state.validate_strategy = validate_strategy
+    # The risk pages: a limit written is read by the next order, and a kill
+    # switch set stops the next one. Both swap a book the gate reads.
+    app.state.reload_limits = reload_limits
+    app.state.reload_kill_switches = reload_kill_switches
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(DEV_ORIGINS),
@@ -231,6 +238,7 @@ def create_app(
     app.include_router(terminal.build())
     app.include_router(strategies.build(sessions, LiveClock()))
     app.include_router(strategy_config.build(sessions, LiveClock()))
+    app.include_router(rms.build(sessions, LiveClock()))
     app.include_router(socket.build(secret))
 
     return app

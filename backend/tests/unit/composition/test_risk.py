@@ -1051,3 +1051,56 @@ def test_a_spread_is_read_as_a_fraction_not_a_percentage() -> None:
     limits = _limits_from(a_config_row(max_bid_ask_spread_pct=Decimal("0.25")), Currency.INR)
 
     assert limits.max_spread_fraction == Decimal("0.0025")
+
+
+# -- the books swap under a placement already wired ---------------------------
+
+
+async def test_a_kill_switch_set_after_wiring_stops_the_next_order(stock: Instrument) -> None:
+    """The Kill Switches page swaps the book every account's gate holds. A
+    brake that works after the next restart is not one."""
+    placed: list[OrderRequest] = []
+    book = KillSwitch()
+    place = gated(
+        _accepting(placed),
+        gate=RiskGate(default_checks()),
+        limits=everywhere(RiskLimits()),
+        instruments=lambda instrument: stock,
+        quotes=lambda instrument: a_quote(),
+        clock=ReplayClock(NOW),
+        label="Appa",
+        kill_switch=book,
+    )
+    await place(an_order())
+    assert len(placed) == 1
+
+    book.replace((ActiveKillSwitch(KillSwitchScope(), reason="operator halted"),))
+    with pytest.raises(OrderRejectedError, match="operator halted"):
+        await place(an_order())
+
+    book.replace(())
+    await place(an_order())
+    assert len(placed) == 2
+
+
+async def test_a_limit_written_after_wiring_applies_to_the_next_order(stock: Instrument) -> None:
+    """The RMS Config page swaps the rows, and the gate resolves from the book
+    on every order rather than from a value read at start."""
+    placed: list[OrderRequest] = []
+    book = LimitBook()
+    place = gated(
+        _accepting(placed),
+        gate=RiskGate(default_checks()),
+        limits=book,
+        instruments=lambda instrument: stock,
+        quotes=lambda instrument: a_quote(),
+        clock=ReplayClock(NOW),
+        label="Appa",
+    )
+    await place(an_order(quantity=100))
+
+    book.replace((ScopedLimits(LimitScope(), RiskLimits(max_order_quantity=50)),))
+    with pytest.raises(OrderRejectedError, match="ORDER_QTY_EXCEEDED"):
+        await place(an_order(quantity=100))
+    await place(an_order(quantity=50))
+    assert [request.quantity for request in placed] == [100, 50]

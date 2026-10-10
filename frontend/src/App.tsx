@@ -29,10 +29,10 @@ import CorporateActionsPage from '@/features/admin/corporate-actions/CorporateAc
 import EventDaysPage from '@/features/shared/exchanges/EventDaysPage';
 import ExchangesPage from '@/features/shared/exchanges/ExchangesPage';
 import HolidaysPage from '@/features/shared/exchanges/HolidaysPage';
-import KillSwitchPage from '@/features/shared/rms/KillSwitchPage';
-import RMSBreachesPage from '@/features/shared/rms/RMSBreachesPage';
+import BreachesPage from '@/features/shared/rms/BreachesPage';
+import KillSwitchesPage from '@/features/shared/rms/KillSwitchesPage';
 import RMSDailyStatsPage from '@/features/shared/rms/RMSDailyStatsPage';
-import RMSPage from '@/features/shared/rms/RMSPage';
+import RiskConfigPage from '@/features/shared/rms/RiskConfigPage';
 import RecomputeChargesPage from '@/features/admin/recompute-charges/RecomputeChargesPage';
 import RecomputePositionalMtmPage from '@/features/admin/recompute-positional-mtm/RecomputePositionalMtmPage';
 import RunEodJobPage from '@/features/admin/run-eod-job/RunEodJobPage';
@@ -113,9 +113,9 @@ function App() {
         <Route path="/console/allocation-models" element={<AllocationModelsPage />} />
 
         {/* Risk */}
-        <Route path="/console/rms" element={<RMSPage />} />
-        <Route path="/console/rms-breaches" element={<RMSBreachesPage />} />
-        <Route path="/console/kill-switch" element={<KillSwitchPage />} />
+        <Route path="/console/rms" element={<RiskConfigPage />} />
+        <Route path="/console/rms-breaches" element={<BreachesPage />} />
+        <Route path="/console/kill-switch" element={<KillSwitchesPage />} />
         <Route path="/console/rms-daily-stats" element={<RMSDailyStatsPage />} />
 
         {/* Market */}

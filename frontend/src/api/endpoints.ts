@@ -452,6 +452,23 @@ export const API_ENDPOINTS = {
     DETAILS: (key: string) => `/api/system-config/${key}`,
   },
 
+  // Risk, as garuda serves it: limits by scope, the breach log, kill switches.
+  RMS: {
+    LIST: '/api/rms-config',
+    DETAILS: (id: number) => `/api/rms-config/${id}`,
+    CATALOG: '/api/rms-config/catalog',
+    STATUS: '/api/rms-config/status',
+    EFFECTIVE: '/api/rms-config/effective',
+    BREACHES: '/api/rms-config/breaches',
+    BREACHES_TODAY: '/api/rms-config/breaches/today',
+    BREACH_FILTERS: '/api/rms-config/breach-filters',
+    KILL_SWITCH: '/api/rms-config/kill-switch',
+    KILL_SWITCH_DEACTIVATE: '/api/rms-config/kill-switch/deactivate',
+    KILL_SWITCH_REMOVE: '/api/rms-config/kill-switch/remove',
+    KILL_SWITCH_REMOVE_ALL: '/api/rms-config/kill-switch/remove-all',
+    KILL_SWITCH_TYPE: '/api/rms-config/kill-switch-type',
+  },
+
   // V2 Strategy Config Tree (hierarchical configuration)
   STRATEGY_CONFIG_TREE: {
     BASE: '/api/strategy-config-tree',

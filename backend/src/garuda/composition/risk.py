@@ -56,7 +56,15 @@ from garuda.rms.killswitch import (
 )
 from garuda.rms.limits import RiskLimits
 from garuda.rms.rates import OrderRates
-from garuda.rms.scope import NO_LIMITS, SEGMENT_KINDS, LimitBook, LimitScope, ScopedLimits
+from garuda.rms.scope import (
+    NO_LIMITS,
+    SEGMENT_KINDS,
+    LimitBook,
+    LimitScope,
+    ScopedLimits,
+    inapplicable,
+    level_of,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -185,10 +193,10 @@ async def load_limits(
 ) -> LimitBook:
     """Every active row of risk configuration, at whatever scope it was set.
 
-    Read once and resolved per order. Configuration changes while the engine
-    is running are not picked up, which is the same bargain the rest of the
-    engine's configuration makes: a limit must not change under an order
-    halfway through being checked.
+    Resolved per order from the book this returns. The RMS Config page
+    re-reads the table through this and swaps the rows into the engine's
+    book, so a limit changed in the Console applies to the next order rather
+    than the next restart.
     """
     async with UnitOfWork(sessions) as uow:
         rows = await uow.repositories.rms_config.all()
@@ -199,7 +207,9 @@ async def load_limits(
         return NO_LIMITS
 
     book = LimitBook(
-        tuple(ScopedLimits(_scope_of(row), _limits_from(row, currency)) for row in active)
+        tuple(
+            ScopedLimits(_scope_of(row), _limits_from(_applicable(row), currency)) for row in active
+        )
     )
     logger.info("risk configuration: %d active rows", len(book))
     return book
@@ -274,13 +284,36 @@ def _scope_of(row: RmsConfigRow) -> LimitScope:
     )
 
 
+def _applicable(row: RmsConfigRow) -> RmsConfigRow:
+    """The row less the columns that mean nothing at its scope.
+
+    The reference nulls these at merge time, so a rate limit written on a
+    symbol row never applied there. Dropped here for the same reason, and
+    said once at load rather than silently. A detached copy, so the row the
+    session holds is left as the operator wrote it.
+    """
+    level = level_of(exchange=row.exchange, trading_client=row.trading_client_id, symbol=row.symbol)
+    values = {column.name: getattr(row, column.name) for column in RmsConfigRow.__table__.columns}
+    dropped = inapplicable(level, [name for name, value in values.items() if value is not None])
+    for name in dropped:
+        logger.warning(
+            "risk configuration row %s sets %s, which does not apply at %s scope; ignored",
+            row.id,
+            name,
+            level,
+        )
+        values[name] = None
+    return RmsConfigRow(**values)
+
+
 def _limits_from(row: RmsConfigRow, currency: Currency) -> RiskLimits:
     """Map the columns onto the limits the gate knows how to enforce.
 
-    Deliberately partial. A column with no check behind it is not mapped,
-    because a limit that reads as configured and is never enforced is worse
-    than one that is plainly absent — which is exactly how the daily loss
-    limit came to be silently unenforced.
+    Deliberately partial, and the set is named in `rms.scope.ENFORCED_COLUMNS`
+    so the Console can say which. A column with no check behind it is not
+    mapped, because a limit that reads as configured and is never enforced
+    is worse than one that is plainly absent — which is exactly how the daily
+    loss limit came to be silently unenforced.
     """
     return RiskLimits(
         max_order_quantity=row.max_order_qty,

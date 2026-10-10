@@ -29,7 +29,7 @@ may re-fire.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from garuda.rms.scope import names_of
@@ -101,27 +101,54 @@ class ActiveKillSwitch:
         return f"kill switch on {self.scope}{because}"
 
 
-@dataclass(frozen=True)
 class KillSwitch:
-    """Every switch in force, resolved per order."""
+    """Every switch in force, resolved per order.
 
-    switches: Sequence[ActiveKillSwitch] = field(default_factory=tuple)
+    A book rather than a value: every account's placement holds the same
+    one, and the Kill Switches page swaps its contents while the engine
+    runs. A stop set at 10:31 has to stop the order at 10:31:02, not the
+    one after the next restart.
+    """
+
+    def __init__(self, switches: Sequence[ActiveKillSwitch] = ()) -> None:
+        self._switches: tuple[ActiveKillSwitch, ...] = tuple(switches)
+        self.version = 0
+
+    @property
+    def switches(self) -> tuple[ActiveKillSwitch, ...]:
+        return self._switches
 
     def reason_for(self, instrument: Instrument, trading_client: TradingClientId) -> str | None:
         """Why this order may not go, or None."""
         covering = sorted(
-            (switch for switch in self.switches if switch.scope.covers(instrument, trading_client)),
+            (
+                switch
+                for switch in self._switches
+                if switch.scope.covers(instrument, trading_client)
+            ),
             key=lambda switch: switch.scope.breadth,
         )
         return str(covering[0]) if covering else None
 
+    def replace(self, switches: Sequence[ActiveKillSwitch]) -> None:
+        """Take the table whole: a switch turned off has to stop applying."""
+        self._switches = tuple(switches)
+        self.version += 1
+
     @property
     def is_active(self) -> bool:
-        return bool(self.switches)
+        return bool(self._switches)
 
     def __len__(self) -> int:
-        return len(self.switches)
+        return len(self._switches)
+
+    def __eq__(self, other: object) -> bool:
+        return isinstance(other, KillSwitch) and other._switches == self._switches
+
+    __hash__ = None  # type: ignore[assignment]
 
 
-#: What the engine holds when nothing is set, which is the ordinary state.
+#: What a placement holds when it was wired without a book. Shared, so it
+#: is never replaced into: an engine that can be stopped from the Console
+#: builds its own book and hands that to every account.
 NOTHING_STOPPED = KillSwitch()

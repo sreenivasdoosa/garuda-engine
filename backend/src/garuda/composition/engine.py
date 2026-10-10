@@ -83,9 +83,9 @@ from garuda.protocols.clock import Clock
 from garuda.protocols.feed import MarketDataFeed
 from garuda.rms.checks import default_checks
 from garuda.rms.gate import RiskGate
-from garuda.rms.killswitch import NOTHING_STOPPED, KillSwitch
+from garuda.rms.killswitch import KillSwitch
 from garuda.rms.rates import OrderRates
-from garuda.rms.scope import NO_LIMITS, LimitBook
+from garuda.rms.scope import LimitBook
 from garuda.trademgmt.client import TradingClientManager
 from garuda.trademgmt.coordination import LegCoordinator
 from garuda.trademgmt.entry import EntryService
@@ -144,6 +144,11 @@ class EngineParts:
     #: Order protection per broker and venue, swapped whole when the Broker
     #: Config page writes. Every account's placement reads it.
     protection: ProtectionBook = field(default_factory=ProtectionBook)
+    #: The RMS Config page's rows and the Kill Switches page's switches, as
+    #: every account's risk gate reads them. Books, swapped whole when the
+    #: pages write, so a limit or a stop applies to the next order.
+    limits: LimitBook = field(default_factory=LimitBook)
+    kill_switch: KillSwitch = field(default_factory=KillSwitch)
     market_data: MarketDataService | None = None
     #: Closed-bar history, on the same account that carries the feed: both are
     #: its session, and without one there is neither. None when no account is
@@ -246,7 +251,7 @@ def build_engine(
     now: datetime,
     connector: Connector,
     limits: LimitBook | None = None,
-    kill_switch: KillSwitch = NOTHING_STOPPED,
+    kill_switch: KillSwitch | None = None,
     #: Which provider streams ticks and which answers candles. Both unset
     #: means the account nominated on the Trading Clients page, which is what
     #: an install predating the Data Providers page has.
@@ -295,6 +300,8 @@ def build_engine(
     # one the composition root holds would cut the Console's reload off from
     # every account built here.
     parts.protection = protection if protection is not None else ProtectionBook()
+    parts.limits = limits if limits is not None else LimitBook()
+    parts.kill_switch = kill_switch if kill_switch is not None else KillSwitch()
     parts.market_data = _build_market_data(
         resolver,
         instruments,
@@ -337,9 +344,9 @@ def build_engine(
             venues,
             alerts,
             clock,
-            limits or NO_LIMITS,
+            parts.limits,
             parts.candles,
-            kill_switch,
+            parts.kill_switch,
             parts.protection,
         )
 
@@ -358,9 +365,9 @@ def build_engine(
             venues,
             alerts,
             clock,
-            limits or NO_LIMITS,
+            parts.limits,
             parts.candles,
-            kill_switch,
+            parts.kill_switch,
             parts.protection,
         )
 
