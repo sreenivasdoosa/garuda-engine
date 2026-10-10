@@ -21,6 +21,7 @@ from zoneinfo import ZoneInfo
 from garuda.brokers.sessions import Credentials, SessionResolver
 from garuda.brokers.streams import AccountStreamManager, UpdateHandler
 from garuda.brokers.websocket import Connector
+from garuda.composition.brokers import BrokerState
 from garuda.composition.engine import Engine, build_account_stream
 from garuda.composition.persistence import TradePersistence
 from garuda.composition.strategy_loop import StrategyLoop
@@ -55,6 +56,40 @@ class Runtime:
     #: looking for an entry — which is a state, not a fault.
     strategies: StrategyLoop | None = None
     _tasks: list[asyncio.Task[None]] = field(default_factory=list)
+
+    async def admit(
+        self, now: datetime, brokers: Mapping[str, BrokerState]
+    ) -> list[TradingClientId]:
+        """Take on every account that can trade now and was not built at start.
+
+        What :func:`start` does for one account, after the fact: its book is
+        restored from the store, its order-update channel opened, and its
+        trade loop admitted to the day -- settled against its broker first if
+        the others are already cycling. The strategy loop and the tick fan-out
+        read the engine's clients on every pass, so they see it at once.
+        """
+        parts = self.engine.parts
+        admitted = self.engine.admit(now, brokers)
+        for client_id in admitted:
+            client = parts.clients[client_id]
+            keeper = TradePersistence(client.book, client.store, parts.clock)
+            trades, signals = await keeper.restore()
+            logger.info(
+                "%s: restored %d trades and %d signals", client.account.label, trades, signals
+            )
+            self.persistence[client_id] = keeper
+            self._tasks.append(
+                asyncio.create_task(keeper.run_forever(), name=f"persist:{client_id.value}")
+            )
+            if self.engine.loops.is_running:
+                await self.engine.loops.admit(client.loop)
+        if admitted:
+            # Opens a channel for whoever is eligible and not yet streaming.
+            report = await self.streams.start(now)
+            for client_id, reason in report.unavailable.items():
+                if client_id in admitted:
+                    logger.warning("%s: no order-update channel: %s", client_id, reason)
+        return admitted
 
     async def stop(self) -> None:
         """Stop everything, in the reverse of the order it started.

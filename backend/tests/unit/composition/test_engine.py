@@ -215,3 +215,78 @@ class TestTheBrokersPageSwitches:
         )
 
         assert APPA in engine.parts.clients
+
+
+class TestAdmittingAnAccountLater:
+    """An account that logs in after the engine started trades from then on."""
+
+    def test_a_login_after_start_builds_the_accounts_parts(
+        self,
+        sessions: async_sessionmaker[AsyncSession],
+        venues: Venues,
+        clock: ReplayClock,
+        connector: Connector,
+    ) -> None:
+        resolver = resolver_for([account(APPA, "AB1234")], {})
+        engine = build_engine(
+            sessions=sessions,
+            resolver=resolver,
+            venues=venues,
+            clock=clock,
+            now=NOW,
+            connector=connector,
+        )
+        assert APPA not in engine.parts.clients
+        assert "no broker session" in engine.parts.unavailable[APPA]
+
+        resolver.replace({APPA: account(APPA, "AB1234")}, {APPA: session("AB1234")})
+        admitted = engine.admit(NOW, {})
+
+        assert admitted == [APPA]
+        assert APPA in engine.parts.clients
+        assert APPA not in engine.parts.unavailable
+
+    def test_an_account_already_trading_is_left_exactly_as_it_is(
+        self, build_with: EngineBuilder
+    ) -> None:
+        """Its book holds positions; rebuilding it would lose them."""
+        engine = build_with([account(APPA, "AB1234")], {APPA: session("AB1234")})
+        before = engine.parts.clients[APPA]
+
+        assert engine.admit(NOW, {}) == []
+        assert engine.parts.clients[APPA] is before
+
+    def test_a_stopped_broker_still_refuses(
+        self,
+        sessions: async_sessionmaker[AsyncSession],
+        venues: Venues,
+        clock: ReplayClock,
+        connector: Connector,
+    ) -> None:
+        resolver = resolver_for([account(APPA, "AB1234")], {})
+        engine = build_engine(
+            sessions=sessions,
+            resolver=resolver,
+            venues=venues,
+            clock=clock,
+            now=NOW,
+            connector=connector,
+        )
+        resolver.replace({APPA: account(APPA, "AB1234")}, {APPA: session("AB1234")})
+
+        assert engine.admit(NOW, {"zerodha": BrokerState(name="zerodha", stopped=True)}) == []
+        assert "stopped" in engine.parts.unavailable[APPA]
+
+    def test_a_new_account_appears_without_a_session_as_unavailable_by_name(
+        self, build_with: EngineBuilder
+    ) -> None:
+        """Added on the Trading Clients page while running: known, not yet able."""
+        engine = build_with([account(APPA, "AB1234")], {APPA: session("AB1234")})
+        engine._resolver.replace(  # type: ignore[union-attr]
+            {APPA: account(APPA, "AB1234"), AMMA: account(AMMA, "CD5678")},
+            {APPA: session("AB1234")},
+        )
+
+        assert engine.admit(NOW, {}) == []
+        assert AMMA in engine.parts.accounts
+        assert "no broker session" in engine.parts.unavailable[AMMA]

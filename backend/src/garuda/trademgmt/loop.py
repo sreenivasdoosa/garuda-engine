@@ -251,6 +251,43 @@ class TradeLoops:
     def running(self) -> frozenset[str]:
         return frozenset(self._tasks)
 
+    @property
+    def is_running(self) -> bool:
+        """Whether the day's trade management has begun."""
+        return bool(self._tasks)
+
+    async def admit(self, loop: TradeLoop) -> bool:
+        """Take on an account after the day has started.
+
+        An account that logged in at ten joins the accounts that were cycling
+        since the open: its own pre-open pass settles it against its broker,
+        then its cycle starts. Only its own -- :meth:`start` settles every
+        account, which would run the reconciliation pass again over accounts
+        already trading. Before the day has started it is merely added, and
+        starts with the rest.
+
+        Returns whether the cycle was started now.
+        """
+        name = str(loop.book.trading_client)
+        self.add(loop)
+        if not self.is_running or name in self._tasks:
+            return False
+        try:
+            await loop.pre_open()
+        except Exception as error:
+            logger.exception("%s: the pre-open pass failed", name)
+            await self._alerts.critical(
+                EntityType.SYSTEM,
+                loop.book.label,
+                "trade-loop",
+                f"the pre-open reconciliation failed ({error}). Positions carried "
+                f"overnight may not match the broker; the cycle is starting anyway.",
+                key=f"pre-open-failed:{name}",
+            )
+        self._tasks[name] = asyncio.create_task(loop.run_forever(), name=f"trade-loop:{name}")
+        logger.info("%s: trade management started after the open", loop.book.label)
+        return True
+
     async def start(self) -> None:
         """Settle every account against its broker, then begin cycling.
 

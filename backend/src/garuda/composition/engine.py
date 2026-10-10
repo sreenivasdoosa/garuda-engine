@@ -165,11 +165,58 @@ class EngineParts:
         return self.venues.all
 
 
+#: Builds one account's parts from its credentials, with everything else the
+#: build captured. Kept on the engine so an account can be admitted later
+#: with the same pieces the ones built at startup got.
+type ClientBuilder = Callable[[Account, Credentials], ClientParts]
+
+
 class Engine:
     """A built engine: every part constructed, nothing started."""
 
-    def __init__(self, parts: EngineParts) -> None:
+    def __init__(
+        self,
+        parts: EngineParts,
+        *,
+        build_client: ClientBuilder | None = None,
+        resolver: SessionResolver | None = None,
+    ) -> None:
         self.parts = parts
+        self._build_client = build_client
+        self._resolver = resolver
+
+    def admit(self, now: datetime, brokers: Mapping[str, BrokerState]) -> list[TradingClientId]:
+        """Build the parts for every account that can trade now and could not before.
+
+        The resolver is read afresh -- the composition root has re-read the
+        tables into it -- so an account that logged in, or was enabled, or
+        whose broker was unstopped since the engine started gets the same
+        parts it would have been built with at startup. Accounts already
+        built are left exactly as they are: their books hold positions.
+
+        Nothing is started here; the runtime does that, because starting
+        means tasks. Returns who was admitted.
+        """
+        if self._build_client is None or self._resolver is None:
+            return []
+        admitted: list[TradingClientId] = []
+        for account in self._resolver.accounts:
+            self.parts.accounts[account.id] = account
+            if account.id in self.parts.clients:
+                continue
+            refusal = _why_not(account, self._resolver, now, brokers)
+            if refusal is not None:
+                self.parts.unavailable[account.id] = refusal
+                continue
+            credentials = self._resolver.credentials_for(account.id, now)
+            built = self._build_client(account, credentials)
+            self.parts.clients[account.id] = built
+            self.parts.unavailable.pop(account.id, None)
+            if self.parts.loops is not None:
+                self.parts.loops.add(built.loop)
+            admitted.append(account.id)
+            logger.info("%s admitted: it can trade from now", account.label)
+        return admitted
 
     @property
     def loops(self) -> TradeLoops:
@@ -301,7 +348,23 @@ def build_engine(
         loops.add(built.loop)
     parts.loops = loops
 
-    engine = Engine(parts)
+    def build_client_for(account: Account, credentials: Credentials) -> ClientParts:
+        return _build_client(
+            account,
+            credentials,
+            sessions,
+            instruments,
+            hub,
+            venues,
+            alerts,
+            clock,
+            limits or NO_LIMITS,
+            parts.candles,
+            kill_switch,
+            parts.protection,
+        )
+
+    engine = Engine(parts, build_client=build_client_for, resolver=resolver)
     logger.info("engine built: %s", engine.describe())
     return engine
 

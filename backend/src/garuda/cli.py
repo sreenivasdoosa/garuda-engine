@@ -208,6 +208,13 @@ async def _serve_with_engine(settings: Settings, host: str | None, port: int | N
             assembled.providers.replace(
                 await load_data_providers(assembled.sessions, assembled.secrets, assembled.resolver)
             )
+            # And then whoever can trade now and could not at startup: an
+            # account that just logged in, or was enabled, or whose broker was
+            # unstopped on the Brokers page.
+            if runtime is not None:
+                admitted = await runtime.admit(clock.now(), await load_brokers(assembled.sessions))
+                if admitted:
+                    logger.info("engine now: %s", assembled.engine.describe())
 
         async def reload_protection() -> None:
             """Re-read the Broker Config page into the engine's book.

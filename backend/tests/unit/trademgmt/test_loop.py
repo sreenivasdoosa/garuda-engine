@@ -11,6 +11,7 @@ from garuda.core.clock import ReplayClock
 from garuda.core.runner import PhaseContext, TaskRegistry
 from garuda.domain import OrderStatus, ProductType
 from garuda.domain.alert import AlertLevel
+from garuda.domain.client import TradingClientId
 from garuda.domain.exchange import Exchange
 from garuda.domain.market import PriceBand, Tick
 from garuda.domain.order import BrokerOrderId, ClientOrderId, OrderRequest, Side
@@ -417,5 +418,65 @@ class TestTheTradingDay:
             for _, task in registry.tasks_for(DayPhase.SESSION_CLOSE, nse.code):
                 await task(_context(nse, DayPhase.SESSION_CLOSE, after_equities))
             assert loops.running, "commodities are still trading"
+        finally:
+            await loops.stop()
+
+
+class TestAdmittingAnAccountAfterTheOpen:
+    async def test_before_the_day_starts_an_admitted_loop_merely_waits(
+        self, instruments: InstrumentLookup, alerts: AlertManager
+    ) -> None:
+        loop, _, _ = build(instruments, alerts, FakeBroker())
+        loops = TradeLoops(ReplayClock(TODAY), alerts)
+
+        assert await loops.admit(loop) is False
+        assert loops.running == frozenset()
+
+        await loops.start()
+        try:
+            assert loops.running == frozenset({str(CLIENT)})
+        finally:
+            await loops.stop()
+
+    async def test_after_the_day_started_an_admitted_loop_settles_and_cycles(
+        self, instruments: InstrumentLookup, alerts: AlertManager
+    ) -> None:
+        """The account that logged in at ten joins the ones cycling since the open."""
+        first, _, _ = build(instruments, alerts, FakeBroker())
+        loops = TradeLoops(ReplayClock(TODAY), alerts)
+        loops.add(first)
+        await loops.start()
+        try:
+            later_broker = FakeBroker()
+            later, _, _ = build(instruments, alerts, later_broker)
+            later.book = TradingClientManager(
+                TradingClientId("amma-zerodha"), "Amma", instruments, alerts
+            )
+            settled: list[str] = []
+            original = later.pre_open
+
+            async def pre_open() -> CycleReport:
+                settled.append("amma")
+                return await original()
+
+            later.pre_open = pre_open  # type: ignore[method-assign]
+
+            assert await loops.admit(later) is True
+
+            assert settled == ["amma"], "its own pre-open pass, and only its own"
+            assert loops.running == frozenset({str(CLIENT), "amma-zerodha"})
+        finally:
+            await loops.stop()
+
+    async def test_admitting_an_account_already_cycling_starts_nothing_twice(
+        self, instruments: InstrumentLookup, alerts: AlertManager
+    ) -> None:
+        loop, _, _ = build(instruments, alerts, FakeBroker())
+        loops = TradeLoops(ReplayClock(TODAY), alerts)
+        loops.add(loop)
+        await loops.start()
+        try:
+            assert await loops.admit(loop) is False
+            assert loops.running == frozenset({str(CLIENT)})
         finally:
             await loops.stop()
