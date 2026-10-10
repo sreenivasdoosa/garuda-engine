@@ -24,6 +24,17 @@ export interface Symbol {
   hasFuturesWeeklyExpiry: boolean;
   hasFuturesMonthlyExpiry: boolean;
   contractMultiplier: number; // Units per lot (e.g., CRUDEOIL=100 barrels), synced from market-data
+  /** Where this symbol sits on a page. Null is no preference and sorts last. */
+  displayOrder?: number | null;
+  /** Which series the engine prices for this underlying. Each costs a chain
+   *  walk per tick, so they are per symbol rather than global. */
+  derivesStraddle?: boolean;
+  derivesPcr?: boolean;
+  derivesIv?: boolean;
+  derivesSynthetic?: boolean;
+  /** Strikes either side of the money the put-call ratio covers. Null is the
+   *  whole chain, which far strikes nobody trades dominate. */
+  pcrStrikesEachSide?: number | null;
 }
 
 // Create symbol request (not used - symbols come from market-data)
@@ -42,6 +53,12 @@ export interface CreateSymbolRequest {
   hasOptionsMonthlyExpiry?: boolean;
   hasFuturesWeeklyExpiry?: boolean;
   hasFuturesMonthlyExpiry?: boolean;
+  displayOrder?: number | null;
+  derivesStraddle?: boolean;
+  derivesPcr?: boolean;
+  derivesIv?: boolean;
+  derivesSynthetic?: boolean;
+  pcrStrikesEachSide?: number | null;
 }
 
 // Update symbol request

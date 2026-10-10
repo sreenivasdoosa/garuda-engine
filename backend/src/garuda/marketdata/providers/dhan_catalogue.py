@@ -16,7 +16,9 @@ from __future__ import annotations
 import logging
 from collections.abc import Iterable, Mapping, Sequence
 
+from garuda.domain.errors import DomainError
 from garuda.domain.instrument import InstrumentId
+from garuda.domain.instrument import canonical_symbol as reduce_symbol
 from garuda.marketdata.providers.dhan_master import DhanInstrument
 from garuda.marketdata.providers.dhan_packets import INDEX_SEGMENT, SEGMENT_NUMBERS
 from garuda.marketdata.providers.dhan_rest import instrument_kind
@@ -51,9 +53,23 @@ class DhanCatalogue:
         unknown_segments: set[str] = set()
 
         for row in instruments:
-            if not row.trading_symbol or not row.exchange:
+            # Dhan publishes an index under its spaced name, "NIFTY 50", which
+            # is not an instrument id. Reduced by the domain's rule rather than
+            # this module's, because the broker master the engine matches
+            # against reduces it by the same one -- and an index the two spell
+            # differently quotes and never ticks.
+            symbol = reduce_symbol(row.trading_symbol)
+            # Checked *after* reducing: a symbol of nothing but spaces is
+            # truthy before and empty after, and would otherwise be indexed
+            # under the bare exchange prefix.
+            if not symbol or not row.exchange:
                 continue
-            instrument = InstrumentId(f"{row.exchange}:{row.trading_symbol}")
+            try:
+                instrument = InstrumentId(f"{row.exchange}:{symbol}")
+            except DomainError as error:
+                # One unusable row must not cost the other eighty thousand.
+                logger.warning("dhan: skipping %r: %s", row.trading_symbol, error)
+                continue
             forward[instrument] = row
 
             number = SEGMENT_NUMBERS.get(row.segment)
@@ -155,3 +171,8 @@ class DhanCatalogue:
                 continue
             grouped.setdefault(row.segment, []).append(instrument)
         return grouped
+
+
+#: What a Dhan adapter reads before the master has been downloaded. Every
+#: lookup on it answers "not listed", which at that moment is the truth.
+EMPTY = DhanCatalogue([])

@@ -9,7 +9,7 @@ is where they meet.
 from __future__ import annotations
 
 import logging
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from decimal import Decimal
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -27,6 +27,45 @@ from garuda.persistence.uow import UnitOfWork
 from garuda.protocols.clock import Clock
 
 logger = logging.getLogger(__name__)
+
+
+class SymbolBook(Mapping[str, SymbolInfo]):
+    """The curated symbols, swappable while the engine runs.
+
+    A `Mapping`, so everything that already takes one is unchanged -- the
+    engine, the watchlist, the market view. What it adds is
+    :meth:`replace`: the contents are swapped in place, so every holder sees
+    the new configuration at once rather than the snapshot it was handed at
+    startup.
+
+    That is the whole point. Turning a derived series on for CRUDEOIL used to
+    write a row and change nothing until a restart, because the symbols were
+    read once during build and captured by four different components. A
+    version counter lets a consumer that has to *rebuild* something -- the
+    synthetic sources, say -- notice that it must.
+    """
+
+    def __init__(self, symbols: Mapping[str, SymbolInfo] | None = None) -> None:
+        self._symbols: dict[str, SymbolInfo] = dict(symbols or {})
+        #: Bumped on every swap. A consumer compares it against what it last
+        #: built from; equal means nothing to redo.
+        self.version = 0
+
+    def replace(self, symbols: Mapping[str, SymbolInfo]) -> None:
+        """Take the new configuration whole. Never merged: a symbol deleted
+        from the table has to disappear, and a merge would keep it forever."""
+        self._symbols = dict(symbols)
+        self.version += 1
+        logger.info("symbols reloaded: %d curated (version %d)", len(self._symbols), self.version)
+
+    def __getitem__(self, symbol: str) -> SymbolInfo:
+        return self._symbols[symbol]
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._symbols)
+
+    def __len__(self) -> int:
+        return len(self._symbols)
 
 
 async def load_symbols(sessions: async_sessionmaker[AsyncSession]) -> dict[str, SymbolInfo]:
@@ -81,6 +120,12 @@ def _symbol_from(row: SymbolsRow) -> SymbolInfo:
             else defaults.has_monthly_futures
         ),
         hedge_strike_rounding=Decimal(row.hedge_strike_rounding_multiple or 0),
+        derives_straddle=bool(row.derives_straddle),
+        derives_pcr=bool(row.derives_pcr),
+        derives_iv=bool(row.derives_iv),
+        derives_synthetic=bool(row.derives_synthetic),
+        pcr_strikes_each_side=row.pcr_strikes_each_side,
+        display_order=row.display_order,
     )
 
 

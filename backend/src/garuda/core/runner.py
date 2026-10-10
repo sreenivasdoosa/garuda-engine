@@ -17,6 +17,7 @@ does not survive the restart it is meant to protect against.
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
@@ -26,6 +27,8 @@ from garuda.domain.errors import DomainError
 from garuda.domain.exchange import Exchange
 from garuda.domain.phases import DayOffsets, DayPhase, PhaseInstant, due_phases, next_phase_after
 from garuda.protocols.clock import Clock
+
+logger = logging.getLogger(__name__)
 
 #: How long the runner waits when it has nothing to do and no next phase to
 #: sleep until. Long enough not to spin, short enough that a configuration
@@ -197,6 +200,18 @@ class EngineRunner:
                 await task(context)
             except Exception as error:
                 reason = f"{name}: {type(error).__name__}: {error}"
+                # Logged as well as recorded. The recorder is what makes the
+                # phase retry; the log is the only place an operator finds out
+                # *why* -- and a DAY_INIT that cannot load the instrument
+                # master leaves an engine that connects, subscribes to nothing
+                # it can resolve, and reports itself healthy.
+                logger.exception(
+                    "%s %s failed on %s: %s",
+                    exchange.code,
+                    instant.phase.value,
+                    instant.trading_day,
+                    reason,
+                )
                 await self._recorder.record_failure(instant, reason)
                 return reason
 

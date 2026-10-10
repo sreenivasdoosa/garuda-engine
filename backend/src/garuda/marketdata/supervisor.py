@@ -28,7 +28,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from garuda.core.backoff import ReconnectPolicy
 from garuda.marketdata.hub import TickHub
@@ -59,11 +59,16 @@ class FeedSupervisor:
         clock: Clock,
         *,
         policy: ReconnectPolicy | None = None,
+        market_is_open: Callable[[datetime], bool] | None = None,
     ) -> None:
         self._hub = hub
         self._factory = factory
         self._clock = clock
         self._policy = policy or ReconnectPolicy()
+        #: Whether any venue is trading right now. Silence only counts as a
+        #: fault while something is meant to be quoting; the default says yes
+        #: always, which is what a test with no calendar wants.
+        self._market_is_open = market_is_open or (lambda _: True)
         self._feed: MarketDataFeed | None = None
         self.state = SupervisorState()
 
@@ -113,19 +118,55 @@ class FeedSupervisor:
             logger.warning("closing feed %s failed: %s: %s", feed.name, type(error).__name__, error)
 
     def needs_reconnect(self, now: datetime) -> str | None:
-        """Why the feed should be replaced, or None when it is healthy."""
+        """Why the feed should be replaced, or None when it is healthy.
+
+        Three reasons, in the order they are cheap to check: there is no feed,
+        the socket is down, or the socket is up and nothing is arriving.
+
+        The last one is the delicate one. A feed can stall without
+        disconnecting -- no frames, no error, every status green, prices simply
+        stop -- which is why it is checked at all. But two things must not be
+        mistaken for it:
+
+        * **A market that is closed.** Nothing is meant to be quoting, so
+          silence is correct. The reference service never reconnects on silence
+          for exactly this reason; it replaces the ticker only when the ticker
+          says it is disconnected. Treating a quiet weekend as a stall
+          reconnects every cycle, forever, against an account that is fine.
+        * **A connection that has not had time yet.** Before this fix, "no
+          tick has *ever* arrived" counted as a stall immediately, so a feed
+          started before the open was torn down on the first monitor pass and
+          every one after it.
+
+        So silence is measured from the last tick when there is one, and from
+        the moment the socket opened when there is not.
+        """
         if self._feed is None:
             return "no feed"
         if not self._feed.is_connected:
             return self._hub.health.last_disconnect_reason or "disconnected"
-        age = self._hub.health.age(now)
         if not self._hub.subscriptions:
             return None
-        if age is None or age > self._policy.silence_before_reconnect:
-            # The socket is open and nothing is arriving. Every status reads
-            # connected; only the absence of ticks says otherwise.
-            return f"no ticks for {age if age is not None else 'the whole session'}"
+        if not self._market_is_open(now):
+            return None
+
+        quiet = self._quiet_for(now)
+        if quiet is not None and quiet > self._policy.silence_before_reconnect:
+            return f"no ticks for {quiet}"
         return None
+
+    def _quiet_for(self, now: datetime) -> timedelta | None:
+        """How long nothing has arrived, or None when that cannot be said yet.
+
+        None rather than "forever" when neither a tick nor a connection time is
+        known: that is a hub which has seen nothing at all, and replacing a
+        feed over it is guesswork.
+        """
+        age = self._hub.health.age(now)
+        if age is not None:
+            return age
+        opened = self._hub.health.connected_since
+        return None if opened is None else now - opened
 
     async def reconcile(self) -> bool:
         """Replace the feed if it needs replacing. Returns whether it did."""

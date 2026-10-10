@@ -23,7 +23,7 @@ not a path anything could have held, so each source records how it rolls.
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal
@@ -36,6 +36,7 @@ from garuda.domain.instrument import InstrumentId
 from garuda.domain.market import Tick
 from garuda.domain.money import Currency, Money
 from garuda.domain.strikes import atm_strike
+from garuda.domain.symbol import SymbolInfo
 from garuda.marketdata.pricing import implied_volatility, years_to_expiry
 
 logger = logging.getLogger(__name__)
@@ -302,6 +303,30 @@ class _AtTheMoney(_OverTheChain):
         )
 
 
+@dataclass(frozen=True, slots=True)
+class IVReading:
+    """Both legs of an at-the-money implied volatility, taken together.
+
+    The published :class:`ImpliedVolatility` tick carries the *average*,
+    deliberately -- one number for a threshold to be written against. The
+    stored series carries both sides, because that is what a volatility chart
+    shows and what the reference service records.
+
+    Both legs are required. The reference refuses the sample unless the solver
+    answered for each, and a call IV stored beside an empty put is a chart with
+    one line that silently changes meaning.
+
+    Volatilities are percentages, as every screen shows them. The strikes and
+    the spot are prices.
+    """
+
+    call: Decimal
+    put: Decimal
+    call_strike: Decimal
+    put_strike: Decimal
+    spot: Money
+
+
 @synthetic("implied_volatility")
 @dataclass(frozen=True)
 class ImpliedVolatility(_AtTheMoney):
@@ -325,6 +350,31 @@ class ImpliedVolatility(_AtTheMoney):
             return None
         average = sum(readable, Decimal(0)) / Decimal(len(readable))
         return Money(average * Decimal(100), Currency.INR)
+
+    def reading(self, view: ChainView) -> IVReading | None:
+        """Both legs, their strikes and the spot -- what gets stored.
+
+        None unless every part is there. Garuda reads both legs at the same
+        at-the-money strike, so the two strikes agree today; they are recorded
+        separately because the shape allows a future series that walks them
+        apart, and because a stored strike is the only way to read an IV
+        across a roll.
+        """
+        today = view.today()
+        call = self._implied(view, OptionType.CALL, today)
+        put = self._implied(view, OptionType.PUT, today)
+        found = self._strikes(view)
+        spot = view.spot(self.underlying)
+        if call is None or put is None or found is None or spot is None:
+            return None
+        strike = found[1][self.levels]
+        return IVReading(
+            call=call * Decimal(100),
+            put=put * Decimal(100),
+            call_strike=strike,
+            put_strike=strike,
+            spot=spot,
+        )
 
 
 @synthetic("iv_skew")
@@ -422,21 +472,57 @@ class SyntheticPublisher:
         self._days.clear()
 
 
-def for_symbols(symbols: Sequence[InstrumentId], *, levels: int = 10) -> tuple[Synthetic, ...]:
-    """The synthetics maintained for each underlying that has options.
+def for_symbol(
+    underlying: InstrumentId, info: SymbolInfo, *, levels: int = 10
+) -> tuple[Synthetic, ...]:
+    """The series this underlying is configured to price.
 
-    Declared by the symbols an operator has curated rather than by a table of
-    their own: a synthetic is a property of an underlying, and one that
-    existed for a symbol nobody trades would be a series nobody reads.
+    Each flag is a row an operator edits, not a global: every one of these
+    walks the option chain on each tick, so running all five for every listed
+    underlying is most of a core spent on series nobody reads. The reference
+    service ran them for a handful of indices, and that is the shape.
+
+    The skew rides on the IV flag rather than having one of its own. It is
+    read off the same two at-the-money options IV already fetched, so once IV
+    is on it is nearly free -- and a skew without an IV to read it beside is
+    not a chart anyone asked for.
+    """
+    sources: list[Synthetic] = []
+    # The expiry this underlying actually lists. A commodity has no weekly
+    # options, so a series built for a weekly expiry finds no chain and prices
+    # to nothing -- with no error, because an unpriceable straddle and a quiet
+    # one are the same thing from here.
+    kind = info.option_expiry_kind
+    if info.derives_straddle:
+        sources.append(RollingStraddle(underlying=underlying, levels=levels, expiry_kind=kind))
+    if info.derives_pcr:
+        sources.append(
+            PutCallRatio(
+                underlying=underlying,
+                levels=info.pcr_strikes_each_side or levels,
+                expiry_kind=kind,
+            )
+        )
+    if info.derives_synthetic:
+        sources.append(SyntheticFuture(underlying=underlying, levels=levels, expiry_kind=kind))
+    if info.derives_iv:
+        sources.append(ImpliedVolatility(underlying=underlying, levels=levels, expiry_kind=kind))
+        sources.append(
+            ImpliedVolatilitySkew(underlying=underlying, levels=levels, expiry_kind=kind)
+        )
+    return tuple(sources)
+
+
+def for_symbols(
+    symbols: Mapping[InstrumentId, SymbolInfo], *, levels: int = 10
+) -> tuple[Synthetic, ...]:
+    """Every configured series, across every curated underlying.
+
+    Underlyings with nothing switched on contribute nothing, so an install that
+    has not asked for any of this pays for none of it.
     """
     return tuple(
         source
-        for underlying in symbols
-        for source in (
-            RollingStraddle(underlying=underlying, levels=levels),
-            PutCallRatio(underlying=underlying, levels=levels),
-            SyntheticFuture(underlying=underlying, levels=levels),
-            ImpliedVolatility(underlying=underlying, levels=levels),
-            ImpliedVolatilitySkew(underlying=underlying, levels=levels),
-        )
+        for underlying, info in symbols.items()
+        for source in for_symbol(underlying, info, levels=levels)
     )

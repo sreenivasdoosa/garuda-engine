@@ -39,6 +39,9 @@ from garuda.brokers.zerodha.account import ZerodhaAccountStream
 from garuda.brokers.zerodha.broker import ZerodhaBroker
 from garuda.brokers.zerodha.rest import KiteClient
 from garuda.composition.candle_view import CachedCandles
+from garuda.composition.catalogues import empty_catalogue_for
+from garuda.composition.data_providers import DataProviders
+from garuda.composition.provider_context import ProviderContext, gates
 from garuda.composition.providers import register_providers
 from garuda.composition.risk import gated, realised_today
 from garuda.composition.venues import Venues
@@ -54,6 +57,7 @@ from garuda.domain.trade import Trade
 from garuda.marketdata.history import CandleCache
 from garuda.marketdata.hub import TickHub
 from garuda.marketdata.loader import InstrumentRegistryHolder
+from garuda.marketdata.providers.catalogues import CatalogueHolder
 from garuda.marketdata.providers.registry import (
     ProviderUnsupportedError,
     feed_factory,
@@ -124,6 +128,9 @@ class EngineParts:
     hub: TickHub
     registry: TaskRegistry
     clock: Clock
+    #: Each provider's own translation table. Loaded at DAY_INIT alongside the
+    #: instrument master, and empty until then.
+    catalogues: CatalogueHolder = field(default_factory=CatalogueHolder)
     market_data: MarketDataService | None = None
     #: Closed-bar history, on the same account that carries the feed: both are
     #: its session, and without one there is neither. None when no account is
@@ -185,6 +192,15 @@ def build_engine(
     #: an install predating the Data Providers page has.
     active_ticker: str | None = None,
     active_history: str | None = None,
+    #: The Data Providers page's rows, already resolved. None means no page
+    #: has been filled in, and market data falls back to the trading client
+    #: nominated for it.
+    data_providers: DataProviders | None = None,
+    #: Each provider's translation table, filled in at DAY_INIT.
+    catalogues: CatalogueHolder | None = None,
+    #: Whose instrument master is the engine's canonical set of instruments.
+    #: A data provider's catalogue translates onto this, never replaces it.
+    master_broker: str = "zerodha",
 ) -> Engine:
     """Build every part the current configuration allows.
 
@@ -196,6 +212,7 @@ def build_engine(
     bus = InProcessEventBus()
     alerts = _build_alerts(sessions, bus, clock, venues)
     instruments = InstrumentRegistryHolder()
+    catalogues = catalogues or CatalogueHolder()
     hub = TickHub(bus, clock)
 
     parts = EngineParts(
@@ -207,10 +224,31 @@ def build_engine(
         registry=TaskRegistry(),
         clock=clock,
     )
+    parts.catalogues = catalogues
     parts.market_data = _build_market_data(
-        resolver, instruments, hub, clock, now, connector, active_ticker
+        resolver,
+        instruments,
+        catalogues,
+        hub,
+        clock,
+        now,
+        connector,
+        active_ticker,
+        data_providers,
+        master_broker,
+        venues,
     )
-    parts.candles = _build_candles(resolver, instruments, clock, now, active_history)
+    parts.candles = _build_candles(
+        resolver,
+        instruments,
+        catalogues,
+        clock,
+        connector,
+        now,
+        active_history,
+        data_providers,
+        master_broker,
+    )
 
     for account in resolver.accounts:
         parts.accounts[account.id] = account
@@ -287,29 +325,38 @@ def _build_alerts(
 def _build_market_data(
     resolver: SessionResolver,
     instruments: InstrumentRegistryHolder,
+    catalogues: CatalogueHolder,
     hub: TickHub,
     clock: Clock,
     now: datetime,
     connector: Connector,
     active_ticker: str | None,
+    data_providers: DataProviders | None,
+    master_broker: str,
+    venues: Venues,
 ) -> MarketDataService | None:
-    """The feed, on whichever account the operator nominated for it.
+    """The feed, from whichever provider the operator nominated for ticks.
 
-    None when no account is nominated or the nominated one has not logged in.
+    None when nothing is nominated or the nominated one has not logged in.
     That is a real state rather than a failure to build: the engine still
     starts, and the operator is told plainly that nothing has prices.
     """
-    try:
-        credentials = resolver.market_data_credentials(now)
-    except SessionUnavailableError as error:
-        logger.warning("no market data: %s", error)
+    resolved = _provider_for(
+        resolver,
+        instruments,
+        catalogues,
+        clock,
+        connector,
+        now,
+        active_ticker,
+        data_providers,
+        master_broker,
+        "ticks",
+    )
+    if resolved is None:
         return None
+    provider, context = resolved
 
-    # Which provider streams is the operator's choice, held in
-    # `marketdata.active.ticker`. Unset means the account nominated on the
-    # Trading Clients page, which is what installs before the Data Providers
-    # page existed have and is still a complete answer.
-    provider = active_ticker or credentials.broker.lower()
     try:
         build_feed = feed_factory(provider)
     except ProviderUnsupportedError as error:
@@ -319,52 +366,160 @@ def _build_market_data(
         logger.error("no market data: %s", error)
         return None
 
-    registry = _registry_for(instruments, credentials.broker)
-
     async def open_feed() -> MarketDataFeed:
-        return build_feed(
-            api_key=credentials.api_key,
-            access_token=credentials.access_token,
-            registry=registry,
-            clock=clock,
-            connector=connector,
+        return build_feed(**context.as_kwargs())
+
+    def any_market_open(at: datetime) -> bool:
+        """Whether anything is meant to be quoting right now.
+
+        The feed stays connected across a closed session -- reconnecting costs
+        a login and Kite meters those -- but silence is only a fault while a
+        venue is actually trading. Any venue, not all: an equity holiday on
+        which commodities trade still needs a live feed.
+        """
+        return any(exchange.is_open(at) for exchange in venues.all)
+
+    return MarketDataService(
+        hub,
+        FeedSupervisor(hub, open_feed, clock, market_is_open=any_market_open),
+        clock,
+    )
+
+
+def _provider_for(
+    resolver: SessionResolver,
+    instruments: InstrumentRegistryHolder,
+    catalogues: CatalogueHolder,
+    clock: Clock,
+    connector: Connector,
+    now: datetime,
+    active: str | None,
+    data_providers: DataProviders | None,
+    master_broker: str,
+    purpose: str,
+) -> tuple[str, ProviderContext] | None:
+    """Which provider serves this purpose, and what its adapters are built from.
+
+    The Data Providers row wins when the operator nominated one and it is
+    logged in. Otherwise it is the account nominated on the Trading Clients
+    page, which is what installs predating that page have and is still a
+    complete answer.
+    """
+    if active and data_providers is not None:
+        connection = data_providers.connection_for(active)
+        if connection is not None:
+            configured = connection.credentials
+            quote_gate, history_gate = gates(
+                configured.quote_min_interval_ms, configured.history_min_interval_ms, clock
+            )
+            return active, ProviderContext(
+                provider=active,
+                api_key=configured.api_key,
+                access_token=connection.session.access_token,
+                client_id=connection.client_id,
+                # The canonical instruments, which come from the *master*
+                # broker's file. A provider catalogue is a translation on top
+                # of that set, never a second opinion about what exists.
+                registry=_registry_for(instruments, master_broker),
+                clock=clock,
+                connector=connector,
+                # Through the borrowed client's proxy when it has one: the
+                # address the vendor whitelisted belongs to whoever's key this
+                # is, not to the engine.
+                http=trading_client_factory(configured.static_ip),
+                static_ip=configured.static_ip,
+                quote_gate=quote_gate,
+                history_gate=history_gate,
+                catalogue=_catalogue_for(catalogues, active),
+                websocket_port=configured.websocket_port,
+                history_port=configured.history_port,
+                batch_size=configured.batch_size,
+            )
+        why = data_providers.unusable.get(active)
+        logger.warning(
+            "%s is nominated for %s but is not usable (%s); falling back to the account "
+            "nominated on the Trading Clients page",
+            active,
+            purpose,
+            why or "it has not logged in",
         )
 
-    return MarketDataService(hub, FeedSupervisor(hub, open_feed, clock), clock)
+    try:
+        credentials = resolver.market_data_credentials(now)
+    except SessionUnavailableError as error:
+        logger.warning("no %s: %s", purpose, error)
+        return None
+
+    provider = active or credentials.broker.lower()
+    quote_gate, history_gate = gates(0, 0, clock)
+    return provider, ProviderContext(
+        provider=provider,
+        api_key=credentials.api_key,
+        access_token=credentials.access_token,
+        client_id=credentials.client_id,
+        registry=_registry_for(instruments, credentials.broker),
+        clock=clock,
+        connector=connector,
+        http=trading_client_factory(credentials.static_ip),
+        # No gates on this path: there is no Data Providers row to read the
+        # spacing from, and inventing one would throttle an install that
+        # worked before the page existed.
+        quote_gate=quote_gate,
+        history_gate=history_gate,
+        catalogue=_catalogue_for(catalogues, provider),
+        static_ip=credentials.static_ip,
+    )
+
+
+def _catalogue_for(catalogues: CatalogueHolder, provider: str) -> Callable[[], object]:
+    """The provider's table, read fresh each time.
+
+    A callable rather than the table itself, because it is replaced whole
+    every morning and an adapter holding one would resolve yesterday's
+    strikes.
+    """
+    return lambda: catalogues.for_provider(provider, empty_catalogue_for(provider))
 
 
 def _build_candles(
     resolver: SessionResolver,
     instruments: InstrumentRegistryHolder,
+    catalogues: CatalogueHolder,
     clock: Clock,
+    connector: Connector,
     now: datetime,
     active_history: str | None,
+    data_providers: DataProviders | None,
+    master_broker: str,
 ) -> CandleCache | None:
-    """History from whichever account provides market data.
+    """History from whichever provider the operator nominated for candles.
 
     Built here rather than above the engine because it needs the instrument
     registry, which the engine holds and replaces whole every morning.
     """
-    try:
-        credentials = resolver.market_data_credentials(now)
-    except SessionUnavailableError as error:
-        logger.warning("no candle history and no indicators: %s", error)
+    resolved = _provider_for(
+        resolver,
+        instruments,
+        catalogues,
+        clock,
+        connector,
+        now,
+        active_history,
+        data_providers,
+        master_broker,
+        "candle history",
+    )
+    if resolved is None:
         return None
+    provider, context = resolved
 
-    provider = active_history or credentials.broker.lower()
     try:
         build_history = history_factory(provider)
     except ProviderUnsupportedError as error:
         logger.error("no candle history and no indicators: %s", error)
         return None
 
-    source = build_history(
-        api_key=credentials.api_key,
-        access_token=credentials.access_token,
-        registry=_registry_for(instruments, credentials.broker),
-        static_ip=credentials.static_ip,
-    )
-    return CandleCache(source=source, clock=clock)
+    return CandleCache(source=build_history(**context.as_kwargs()), clock=clock)
 
 
 def _build_client(

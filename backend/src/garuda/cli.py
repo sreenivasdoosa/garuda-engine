@@ -18,9 +18,11 @@ import sys
 from collections.abc import Mapping
 from contextlib import suppress
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
+
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
 from garuda.brokers.routing import trading_client_factory
 from garuda.brokers.sessions import Credentials, SessionResolver, SessionUnavailableError
@@ -28,10 +30,16 @@ from garuda.brokers.websocket import websocket_connector
 from garuda.capital import CapitalLotAllocator, Sizer
 from garuda.capital.event_days import EventDays
 from garuda.composition.accounts import build_resolver
-from garuda.composition.data_providers import load_active_providers
+from garuda.composition.catalogues import CatalogueLoad, build_catalogue_loads
+from garuda.composition.data_providers import (
+    DataProviders,
+    load_active_providers,
+    load_data_providers,
+)
+from garuda.composition.derived_series import DerivedSeriesRecorder
 from garuda.composition.engine import Engine, build_engine
 from garuda.composition.event_days import load_event_days
-from garuda.composition.instruments import build_loader, load_symbols
+from garuda.composition.instruments import SymbolBook, build_loader, load_symbols
 from garuda.composition.risk import load_kill_switches, load_limits
 from garuda.composition.runtime import Runtime, start
 from garuda.composition.strategies import Loaded, load_strategies
@@ -42,17 +50,26 @@ from garuda.composition.watchlist import Watchlist
 from garuda.config.settings import Settings, load_settings
 from garuda.core.clock import LiveClock
 from garuda.domain.errors import DomainError
-from garuda.domain.instrument import Instrument, InstrumentId
+from garuda.domain.instrument import Instrument, InstrumentId, canonical_symbol
 from garuda.domain.symbol import SymbolInfo
 from garuda.engine.signals import SignalFactory
 from garuda.engine.strategy import StrategyRunner
 from garuda.engine.tranches import TrancheLedger
 from garuda.marketdata.loader import InstrumentLoader
+from garuda.marketdata.providers.catalogues import CatalogueHolder
 from garuda.marketdata.registry import InstrumentRegistry
-from garuda.marketdata.synthetics import Synthetic, SyntheticPublisher, for_symbols
+from garuda.marketdata.synthetics import (
+    ImpliedVolatility,
+    Synthetic,
+    SyntheticPublisher,
+    for_symbol,
+    for_symbols,
+)
+from garuda.persistence.derived_bars import DerivedBarStore
 from garuda.persistence.engine import create_engine, create_session_factory
 from garuda.persistence.secrets import SecretBox
 from garuda.persistence.seed import load_seed
+from garuda.persistence.single_engine import SingleEngineLock
 from garuda.persistence.uow import UnitOfWork
 from garuda.protocols.clock import Clock
 
@@ -71,13 +88,17 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="garuda", description="An algorithmic trading engine.")
     parser.add_argument("--log-level", default="INFO", help="Python logging level (default: INFO)")
     commands = parser.add_subparsers(dest="command", required=True)
-    commands.add_parser("run", help="Start the engine and trade the day.")
+    commands.add_parser("run", help="Trade the day with no Console. `serve` runs both.")
     commands.add_parser("check", help="Build the engine and report, without connecting.")
     commands.add_parser("seed", help="Load reference data: venues, holidays, symbols, brokers.")
-    serve = commands.add_parser("serve", help="Serve the API the Console talks to.")
+    serve = commands.add_parser("serve", help="Run the engine and the Console together.")
     serve.add_argument("--host", default=None, help="Interface to bind. Defaults to the setting.")
     serve.add_argument("--port", type=int, default=None, help="Port. Defaults to the setting.")
-    serve.add_argument("--reload", action="store_true", help="Restart on a source change.")
+    serve.add_argument(
+        "--reload",
+        action="store_true",
+        help="Serve the API alone, restarting on a source change. No engine, so no prices.",
+    )
 
     args = parser.parse_args(argv)
     logging.basicConfig(
@@ -103,23 +124,114 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _serve(host: str | None, port: int | None, *, reload: bool) -> int:
-    """Run the HTTP surface.
+    """Run the engine and the API the Console talks to, in one process.
 
-    Separate from `run`, which trades. An operator wanting both runs both:
-    the Console reads and writes configuration, and the engine acts on it, and
-    keeping them apart means a restart of one is not a restart of the other.
+    One process because a tick has nowhere else to live. It exists in the hub
+    for an instant and is never written anywhere a second process could read
+    it in time, so an API served apart from the engine can show configuration
+    and history and nothing that moves. That is the shape `DESIGN.md`
+    specifies, and this is it.
+
+    `--reload` is the exception: it re-imports the application in a child
+    process on every edit, which no live engine can survive. It therefore
+    serves the API alone, and says so.
+    """
+    settings = load_settings()
+    if reload:
+        return _serve_api_only(settings, host, port)
+    return asyncio.run(_serve_with_engine(settings, host, port))
+
+
+def _serve_api_only(settings: Settings, host: str | None, port: int | None) -> int:
+    """The API on its own, reloading on every edit.
+
+    For working on the Console. Nothing has prices: no engine is running, so
+    the feed, the synthetics and the live socket are all absent.
     """
     import uvicorn
 
-    settings = load_settings()
+    logger.warning(
+        "--reload serves the API alone: no engine, so no live prices, no socket and "
+        "no derived series. Run `garuda serve` without it to trade."
+    )
     uvicorn.run(
         "garuda.api:create_app",
         factory=True,
         host=host or settings.host,
         port=port or settings.port,
-        reload=reload,
+        reload=True,
         log_level="info",
     )
+    return 0
+
+
+async def _serve_with_engine(settings: Settings, host: str | None, port: int | None) -> int:
+    """Build the engine, start the day, and serve the Console over it."""
+    import uvicorn
+
+    from garuda.api import create_app
+
+    clock = LiveClock()
+    assembled = await _build(settings, clock)
+
+    # Taken before anything opens a socket or places anything. A second engine
+    # on one database would read the same subscriptions and place the same
+    # orders, and both would look correct doing it.
+    lock = SingleEngineLock(assembled.database)
+    await lock.acquire()
+
+    runtime: Runtime | None = None
+    try:
+        runtime = await start(
+            assembled.engine,
+            resolver=assembled.resolver,
+            loader=assembled.loader,
+            connector=websocket_connector(),
+            now=clock.now(),
+            strategies=_strategy_loop(assembled, clock),
+            catalogue_loads=assembled.catalogue_loads,
+        )
+
+        async def reload_symbols() -> None:
+            """Re-read the Symbols page into the engine's book.
+
+            Everything that reads symbols reads the book, so swapping its
+            contents is the whole of taking effect: the strategy loop notices
+            the version change on its next sweep and rebuilds the derived
+            series from it -- enabling one, and disabling one, without a
+            restart.
+            """
+            assembled.symbols.replace(await load_symbols(assembled.sessions))
+
+        server = uvicorn.Server(
+            uvicorn.Config(
+                create_app(
+                    settings,
+                    engine=assembled.engine,
+                    reload_symbols=reload_symbols,
+                ),
+                host=host or settings.host,
+                port=port or settings.port,
+                log_level="info",
+            )
+        )
+        # The runner drives the venue's day; the server answers the Console.
+        # Whichever finishes first brings the other down: a stopped engine
+        # must not leave a Console that looks alive.
+        running = asyncio.create_task(runtime.runner.run_forever(), name="runner")
+        serving = asyncio.create_task(server.serve(), name="api")
+        await asyncio.wait({running, serving}, return_when=asyncio.FIRST_COMPLETED)
+        logger.info("stopping")
+        server.should_exit = True
+        with suppress(asyncio.CancelledError):
+            await serving
+        running.cancel()
+    finally:
+        if runtime is not None:
+            # Unwinds through Runtime.stop rather than a cancelled task: the
+            # last thing it does is write the book out.
+            await runtime.stop()
+        await lock.release()
     return 0
 
 
@@ -131,7 +243,9 @@ async def _build(settings: Settings, clock: Clock) -> _Assembled:
 
     venues = await load_venues(sessions)
     resolver = await build_resolver(sessions, secrets, _timezone(venues))
-    symbols = await load_symbols(sessions)
+    # A book rather than a snapshot: the Symbols page can swap its contents
+    # while the engine runs, and everything holding it sees the change.
+    symbols = SymbolBook(await load_symbols(sessions))
     loader = build_loader(
         broker=DEFAULT_BROKER,
         directory=Path(settings.app_home) / "instruments",
@@ -144,6 +258,18 @@ async def _build(settings: Settings, clock: Clock) -> _Assembled:
     limits = await load_limits(sessions)
     event_days = await load_event_days(sessions)
     active_ticker, active_history = await load_active_providers(sessions)
+    providers = await load_data_providers(sessions, secrets, resolver)
+    # Loaded at DAY_INIT, empty until then. The holder is built here rather
+    # than inside the engine so the same one is both read by the adapters and
+    # written by the day's tasks.
+    catalogues = CatalogueHolder()
+    catalogue_loads = build_catalogue_loads(
+        providers=providers.configured,
+        directory=Path(settings.app_home) / "instruments",
+        timezone=_timezone(venues),
+        clock=clock,
+        http=trading_client_factory(None),
+    )
     # The venue's day, not the server's: a switch set on Tuesday evening in
     # one timezone must not still be stopping Wednesday in another.
     stopped = await load_kill_switches(sessions, today=_trading_day(venues, clock.now()))
@@ -158,6 +284,9 @@ async def _build(settings: Settings, clock: Clock) -> _Assembled:
         kill_switch=stopped,
         active_ticker=active_ticker,
         active_history=active_history,
+        data_providers=providers,
+        catalogues=catalogues,
+        master_broker=DEFAULT_BROKER,
     )
     strategies = await load_strategies(sessions)
     _report(strategies)
@@ -175,6 +304,10 @@ async def _build(settings: Settings, clock: Clock) -> _Assembled:
         strategies=strategies,
         market_data=market_data,
         event_days=event_days,
+        sessions=sessions,
+        database=database,
+        providers=providers,
+        catalogue_loads=catalogue_loads,
     )
 
 
@@ -186,13 +319,26 @@ class _Assembled:
     venues: Venues
     loader: InstrumentLoader
     resolver: SessionResolver
-    symbols: Mapping[str, SymbolInfo]
+    symbols: SymbolBook
     strategies: Loaded
     #: Whose session fetches history, when one is nominated.
     market_data: Credentials | None
     #: Dates the operator wants traded at reduced size, and any strategy that
     #: differs. Empty means every date is full size.
     event_days: EventDays
+    #: How anything below opens its own transaction. Carried here because the
+    #: engine deliberately does not hold it: the stores do.
+    sessions: async_sessionmaker[AsyncSession]
+    #: The connection pool itself, for the one thing that needs a connection of
+    #: its own rather than a transaction: the lock saying this process is the
+    #: engine.
+    database: AsyncEngine
+    #: The Data Providers page's rows, resolved. Empty on an install that has
+    #: not filled the page in, which falls back to the nominated client.
+    providers: DataProviders
+    #: How to load each configured provider's translation table, registered at
+    #: DAY_INIT beside the instrument master.
+    catalogue_loads: Mapping[str, CatalogueLoad]
 
 
 def _report(strategies: Loaded) -> None:
@@ -271,15 +417,34 @@ async def _seed() -> int:
 
 
 def _strategy_loop(assembled: _Assembled, clock: Clock) -> StrategyLoop | None:
-    """The loop that looks for entries, if anything is subscribed.
+    """The loop that sweeps the day.
 
-    None when nothing is: an engine with no subscriptions still runs, manages
-    whatever is already on, and squares off on time. It simply never enters.
+    It looks for entries, but that is not all it does: it also keeps the feed
+    subscribed to what should be quoted, and prices the derived series. Both
+    of those belong to the Console rather than to any strategy, so the loop
+    runs when there is *anything* to do -- an index to watch or a series to
+    derive is enough.
+
+    Building it only when something was subscribed is what left the Live Feed
+    blank on an engine that was otherwise healthy: no loop, so no watchlist, so
+    the feed connected with nothing to quote.
+
+    None when there is genuinely nothing: the engine still runs, still manages
+    whatever is already on, and still squares off on time.
     """
-    if not assembled.strategies.subscriptions:
-        return None
-
     engine = assembled.engine
+    watchlist = _watchlist(assembled)
+    derived = _derived(assembled, clock)
+    # `configured_indices`, not `indices`: this runs before the instrument
+    # master has loaded, when nothing resolves yet. The question is whether
+    # the operator has curated any, not whether today's master lists them.
+    if (
+        not assembled.strategies.subscriptions
+        and not watchlist.configured_indices()
+        and derived is None
+    ):
+        logger.info("nothing subscribed, no index curated and no series configured; not sweeping")
+        return None
     venues = assembled.venues.all
     if not venues:
         logger.warning("no venue is configured, so no strategy can be evaluated")
@@ -325,29 +490,123 @@ def _strategy_loop(assembled: _Assembled, clock: Clock) -> StrategyLoop | None:
         alerts=engine.parts.alerts,
         runner=StrategyRunner(factory=factory, deliver=deliver, ledger=ledger),
         ledger=ledger,
-        watchlist=Watchlist(hub=engine.parts.hub, symbols=assembled.symbols),
+        watchlist=watchlist,
         synthetics=SyntheticPublisher(sources=_synthetics(assembled)),
+        derived=derived,
+        symbols=assembled.symbols,
+    )
+
+
+def _watchlist(assembled: _Assembled) -> Watchlist:
+    return Watchlist(
+        hub=assembled.engine.parts.hub,
+        symbols=assembled.symbols,
+        # Venues holds only what is switched on, so this is already the enabled
+        # set rather than every exchange the engine knows.
+        exchanges=frozenset(assembled.venues.exchanges),
+    )
+
+
+def _derived(assembled: _Assembled, clock: Clock) -> DerivedSeriesRecorder | None:
+    """Somewhere to keep the series, when any symbol asked for one.
+
+    None when nothing is configured, so an install that has not switched any
+    of this on runs exactly as it did before: no folding, no writes, no table
+    growing in the background.
+    """
+    configured = _configured(assembled)
+    if not configured:
+        return None
+    # The skew extends _AtTheMoney rather than ImpliedVolatility, so this
+    # picks up the level series only -- which is the one that can answer for
+    # both legs at once.
+    volatility = tuple(
+        (underlying, source)
+        for underlying, info in configured.items()
+        for source in for_symbol(underlying, info)
+        if isinstance(source, ImpliedVolatility)
+    )
+
+    def opened_today(symbol: str) -> datetime | None:
+        """The open of the session this instant falls in, on this symbol's venue.
+
+        Per symbol rather than one window for everything: MCX trades until
+        half past eleven at night and NSE closes at half past three, so a
+        single venue's session drops a commodity's whole evening.
+
+        **The session containing `now`, not the engine's trading day.** After
+        a venue closes, the trading day rolls to the next one -- correctly, for
+        deciding what to trade -- and a window from tomorrow makes every bar
+        recorded this evening "before the open". That is what silently stopped
+        every series from being stored the moment the first venue shut.
+
+        Yesterday is considered too, for a session that began before midnight.
+        None when nothing matches, which stores the bar: the guard exists to
+        keep indicative pre-open prices out, not to arbitrate what may be kept.
+        """
+        info = assembled.symbols.get(symbol)
+        if info is None:
+            return None
+        venue = assembled.venues.exchanges.get(info.exchange_code)
+        if venue is None:
+            return None
+
+        now = clock.now()
+        local = now.astimezone(venue.timezone).date()
+        starts = [
+            window.start
+            for day in (local, local - timedelta(days=1))
+            for window in venue.calendar.windows_on(day)
+            if window.start <= now
+        ]
+        return max(starts) if starts else None
+
+    return DerivedSeriesRecorder(
+        store=DerivedBarStore(assembled.sessions),
+        timezone=_timezone(assembled.venues),
+        volatility=volatility,
+        session_start=opened_today,
     )
 
 
 def _synthetics(assembled: _Assembled) -> tuple[Synthetic, ...]:
-    """The series maintained, one set per underlying anything trades.
+    """The series maintained, as the Symbols page asks for them.
 
-    Declared by what is subscribed rather than by what is curated: a rolling
-    straddle for a symbol nobody trades is a chain subscription and a
-    calculation every second for a series nobody reads.
+    Declared by what is *curated* rather than by what is subscribed. Both are
+    defensible and this is the one the Console needs: these series are charted
+    and stored whether or not a strategy happens to trade the underlying
+    today, and an operator watching the NIFTY straddle should not have to
+    create a subscription to see it.
+
+    The cost that made the old rule attractive is paid by the flags instead --
+    an underlying with none set contributes nothing and walks no chain.
     """
-    underlyings = sorted(
-        {subscription.spec.underlying for subscription in assembled.strategies.subscriptions},
-        key=lambda instrument: instrument.value,
-    )
-    return for_symbols(underlyings)
+    return for_symbols(_configured(assembled))
+
+
+def _configured(assembled: _Assembled) -> dict[InstrumentId, SymbolInfo]:
+    """Curated underlyings that asked for at least one derived series."""
+    return {
+        InstrumentId(f"{info.exchange_code}:{canonical_symbol(info.symbol)}"): info
+        for info in sorted(assembled.symbols.values(), key=lambda i: i.symbol)
+        if info.derives_anything
+    }
 
 
 async def _run() -> int:
+    """The engine with no HTTP surface.
+
+    `serve` is what an operator runs; this is the same engine without the
+    Console, for a box that is driven entirely from the database. It takes the
+    same lock, so running both is refused rather than silently doubling every
+    order.
+    """
     settings = load_settings()
     clock = LiveClock()
     assembled = await _build(settings, clock)
+
+    lock = SingleEngineLock(assembled.database)
+    await lock.acquire()
 
     runtime = await start(
         assembled.engine,
@@ -356,8 +615,12 @@ async def _run() -> int:
         connector=websocket_connector(),
         now=clock.now(),
         strategies=_strategy_loop(assembled, clock),
+        catalogue_loads=assembled.catalogue_loads,
     )
-    await _run_until_signalled(runtime)
+    try:
+        await _run_until_signalled(runtime)
+    finally:
+        await lock.release()
     return 0
 
 

@@ -418,3 +418,79 @@ async def test_looking_back_asks_for_the_bars_behind_it_too(
 def test_looking_back_a_negative_number_of_bars_is_refused(context: LiveContext) -> None:
     with pytest.raises(DomainError):
         context.indicator("sma", NIFTY, BarInterval.ONE_DAY, back=-1, params={"period": 2})
+
+
+# -- where the spot price is read from ---------------------------------------
+
+
+def a_view(hub: TickHub, registry: InstrumentRegistry, **symbols: SymbolInfo) -> MarketView:
+    return MarketView(hub=hub, registry=lambda: registry, symbols=symbols, timezone=IST)
+
+
+async def quote_on(hub: TickHub, instrument: InstrumentId, price: str) -> None:
+    await hub.consume([TicksReceived((Tick(instrument, Money.of(price, Currency.INR), NOW),))])
+    await hub.dispatch_once()
+
+
+class TestReadingTheSpot:
+    @pytest.mark.asyncio
+    async def test_an_index_is_read_from_its_own_feed_symbol(
+        self, hub: TickHub, registry: InstrumentRegistry
+    ) -> None:
+        """The chain is keyed by the underlying (`NSE:NIFTY`) but the level
+        arrives on `NSE:NIFTY_50`. Reusing the chain's key to read the price
+        finds nothing -- no spot, no at-the-money strike, and every synthetic
+        prices to None with nothing logged."""
+        view = a_view(
+            hub,
+            registry,
+            NIFTY=SymbolInfo(symbol="NIFTY", exchange_code="NSE", index_symbol="NIFTY 50"),
+        )
+        await quote_on(hub, InstrumentId("NSE:NIFTY_50"), "25010")
+
+        assert view.spot_price(NIFTY, TODAY) == Money.of("25010", Currency.INR)
+
+    @pytest.mark.asyncio
+    async def test_the_underlyings_own_id_is_not_where_an_index_is_quoted(
+        self, hub: TickHub, registry: InstrumentRegistry
+    ) -> None:
+        """A tick on the derivative name must not be mistaken for the level."""
+        view = a_view(
+            hub,
+            registry,
+            NIFTY=SymbolInfo(symbol="NIFTY", exchange_code="NSE", index_symbol="NIFTY 50"),
+        )
+        await quote_on(hub, NIFTY, "99999")
+
+        assert view.spot_price(NIFTY, TODAY) is None
+
+    @pytest.mark.asyncio
+    async def test_a_symbol_that_is_its_own_spot_is_read_directly(
+        self, hub: TickHub, registry: InstrumentRegistry
+    ) -> None:
+        view = a_view(hub, registry, NIFTY=SymbolInfo(symbol="NIFTY", exchange_code="NSE"))
+        await quote_on(hub, NIFTY, "25010")
+
+        assert view.spot_price(NIFTY, TODAY) == Money.of("25010", Currency.INR)
+
+    @pytest.mark.asyncio
+    async def test_an_uncurated_symbol_falls_back_to_its_own_id(
+        self, hub: TickHub, registry: InstrumentRegistry
+    ) -> None:
+        """No curated row, so no reference to redirect through."""
+        view = a_view(hub, registry)
+        await quote_on(hub, NIFTY, "25010")
+
+        assert view.spot_price(NIFTY, TODAY) == Money.of("25010", Currency.INR)
+
+    @pytest.mark.asyncio
+    async def test_nothing_quoted_is_no_spot_rather_than_a_stale_one(
+        self, hub: TickHub, registry: InstrumentRegistry
+    ) -> None:
+        view = a_view(
+            hub,
+            registry,
+            NIFTY=SymbolInfo(symbol="NIFTY", exchange_code="NSE", index_symbol="NIFTY 50"),
+        )
+
+        assert view.spot_price(NIFTY, TODAY) is None

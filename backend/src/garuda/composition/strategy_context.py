@@ -41,6 +41,7 @@ from garuda.engine.daycondition import DayCondition, conditions_on
 from garuda.engine.indicators import build as build_indicator
 from garuda.marketdata.history import CandleCache
 from garuda.marketdata.hub import TickHub
+from garuda.marketdata.reference import reference_for
 from garuda.marketdata.registry import InstrumentRegistry
 from garuda.trademgmt.client import TradingClientManager
 
@@ -58,6 +59,33 @@ class MarketView:
     #: Candle history, as far as it has been fetched. None before anything
     #: supplies one, which makes every candle rule read UNAVAILABLE.
     candles: CandleCache | None = None
+
+    def spot_price(self, underlying: InstrumentId, trading_day: date) -> Money | None:
+        """The level strikes are chosen around.
+
+        **Not the underlying's own id.** An index publishes its level under a
+        separate feed symbol -- NIFTY's arrives as "NIFTY 50" -- and a
+        commodity publishes none at all, only futures. The option chain is
+        keyed by the underlying (`NSE:NIFTY`), so a lookup that reuses that key
+        for the price finds nothing: no spot, no at-the-money strike, and every
+        synthetic silently prices to None.
+
+        That is exactly what happened: real ticks flowed and not one derived
+        series did, with nothing logged, because a straddle that cannot be
+        priced is indistinguishable from a quiet one.
+
+        Resolved through the same rule the watchlist subscribes by, so the
+        instrument quoted and the instrument read are the same instrument.
+        """
+        info = self.symbols.get(underlying.value.split(":", 1)[-1])
+        if info is None:
+            # No curated symbol, so no reference to redirect through. The
+            # underlying's own id is the only candidate left.
+            quote = self.hub.latest(underlying)
+            return quote.last_price if quote is not None else None
+        carrier = reference_for(info, self.registry(), trading_day)
+        quote = self.hub.latest(carrier or underlying)
+        return quote.last_price if quote is not None else None
 
 
 @dataclass(frozen=True)
@@ -146,20 +174,23 @@ class LiveContext:
     def spot(self, underlying: InstrumentId) -> Money | None:
         """The price strikes are chosen around.
 
-        The underlying's own last trade, which for an index is the index level
-        the feed publishes. A strategy whose underlying is not subscribed has
-        no spot, and every leg of it will fail to resolve — loudly, at the
-        evaluator, rather than by picking a strike around a stale number.
+        Read from whichever instrument carries this underlying's level, which
+        for an index is a separate feed symbol. A strategy whose underlying is
+        not quoted has no spot, and every leg of it fails to resolve — loudly,
+        at the evaluator, rather than by picking a strike around a stale
+        number.
         """
-        quote = self.quote(underlying)
-        return quote.last_price if quote is not None else None
+        return self.market.spot_price(underlying, self.trading_day)
 
     def strike_gap(self, underlying: InstrumentId) -> Decimal | None:
         info = self._symbol(underlying)
         return info.strike_gap if info is not None else None
 
     def expiry(self, underlying: InstrumentId, kind: ExpiryKind) -> date | None:
-        return self.market.registry().expiry_for(underlying, kind, self.trading_day)
+        # The option chain's expiry, not the underlying's soonest: a
+        # commodity's options expire before its future, and every caller of
+        # this is choosing strikes.
+        return self.market.registry().option_expiry_for(underlying, kind, self.trading_day)
 
     def option(
         self,
@@ -223,15 +254,17 @@ class ChainOnly:
     trading_day: date
 
     def spot(self, underlying: InstrumentId) -> Money | None:
-        quote = self.quote(underlying)
-        return quote.last_price if quote is not None else None
+        return self.market.spot_price(underlying, self.trading_day)
 
     def strike_gap(self, underlying: InstrumentId) -> Decimal | None:
         info = self.market.symbols.get(underlying.value.split(":", 1)[-1])
         return info.strike_gap if info is not None else None
 
     def expiry(self, underlying: InstrumentId, kind: ExpiryKind) -> date | None:
-        return self.market.registry().expiry_for(underlying, kind, self.trading_day)
+        # The option chain's expiry, not the underlying's soonest: a
+        # commodity's options expire before its future, and every caller of
+        # this is choosing strikes.
+        return self.market.registry().option_expiry_for(underlying, kind, self.trading_day)
 
     def option(
         self,

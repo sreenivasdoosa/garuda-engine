@@ -1,129 +1,187 @@
 /**
- * MarketDataContext - React context for real-time market data via WebSocket.
- * Used by the Live Feed page in Standalone mode.
+ * Live market data, over the one socket.
+ *
+ * There is a single WebSocket for the whole Console (`/socket`, owned by
+ * WebSocketContext) and this reads ticks off it. It used to open a second
+ * connection of its own, which meant two sockets per browser authenticating,
+ * reconnecting and backing off independently against the same engine.
+ *
+ * **The engine sends every tick down one channel, synthetic ones included.**
+ * A rolling straddle is an instrument here, addressed `SYNTH:STRADDLE-NIFTY`,
+ * so it arrives as an ordinary tick and is bucketed by series below rather
+ * than needing a stream of its own.
+ *
+ * **Prices arrive as strings and are parsed once, here.** The engine holds
+ * them as exact decimals and JSON has only floats, so the string is the wire
+ * format; converting at the edge keeps the imprecision in one place instead
+ * of at every call site that formats a number.
  */
 
-import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from 'react';
 import {
-  marketDataWebSocket,
-  type TickData,
-  type StraddleTick,
-  type Signal,
-  type WebSocketEventType,
-  type WebSocketMessage,
-} from '@/api/marketDataWebSocket';
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react';
+import { useWebSocket } from '@/hooks/useWebSocket';
+
+/** The series the engine prices for itself. The name is the middle segment of
+ *  `SYNTH:<series>-<underlying>`. */
+export type SeriesKind = 'STRADDLE' | 'PCR' | 'IV' | 'IVSKEW' | 'SYNFUT';
+
+export interface LiveTick {
+  /** The engine's own id, e.g. `NSE:NIFTY_50` or `SYNTH:STRADDLE-NIFTY`. */
+  instrument: string;
+  exchange: string;
+  /** The part after the colon. For a synthetic this is `STRADDLE-NIFTY`. */
+  symbol: string;
+  lastPrice: number;
+  timestamp: string;
+  open: number | null;
+  high: number | null;
+  low: number | null;
+  previousClose: number | null;
+  volume: number | null;
+  openInterest: number | null;
+  isSynthetic: boolean;
+  /** Last close to last price, when there is a previous close to compare. */
+  change: number | null;
+  changePercent: number | null;
+}
+
+interface WireTick {
+  instrument: string;
+  lastPrice: string;
+  timestamp: string;
+  open: string | null;
+  high: string | null;
+  low: string | null;
+  previousClose: string | null;
+  volume: number | null;
+  openInterest: number | null;
+  isSynthetic: boolean;
+}
 
 interface MarketDataContextType {
   isConnected: boolean;
-  ticks: Map<string, TickData>;
-  straddleTicks: Map<string, StraddleTick>;
-  signals: Map<string, Signal>;
-  lastHeartbeat: Date | null;
-  connect: () => void;
-  disconnect: () => void;
-  clearTicks: () => void;
-  clearStraddleTicks: () => void;
-  clearSignals: () => void;
+  /** Real instruments, keyed by their engine id. */
+  ticks: Map<string, LiveTick>;
+  /** One map per derived series, keyed by underlying. */
+  series: Map<SeriesKind, Map<string, LiveTick>>;
+  lastTickAt: Date | null;
+  seriesFor: (kind: SeriesKind) => Map<string, LiveTick>;
 }
 
 const MarketDataContext = createContext<MarketDataContextType | null>(null);
 
-export function MarketDataProvider({ children }: { children: ReactNode }) {
-  const [isConnected, setIsConnected] = useState(false);
-  const [ticks, setTicks] = useState<Map<string, TickData>>(new Map());
-  const [straddleTicks, setStraddleTicks] = useState<Map<string, StraddleTick>>(new Map());
-  const [signals, setSignals] = useState<Map<string, Signal>>(new Map());
-  const [lastHeartbeat, setLastHeartbeat] = useState<Date | null>(null);
+const NO_SERIES: Map<string, LiveTick> = new Map();
 
-  const handleMessage = useCallback((type: WebSocketEventType, data: WebSocketMessage) => {
-    switch (type) {
-      case 'connected':
-        setIsConnected(true);
-        break;
-      case 'disconnected':
-      case 'error':
-        setIsConnected(false);
-        break;
-      case 'tick':
-        if (data.tick) {
-          const tick = data.tick;
-          const key = `${tick.exchange}:${tick.tradingSymbol}`;
-          setTicks((prev) => {
-            const next = new Map(prev);
-            next.set(key, tick);
-            return next;
-          });
-        }
-        break;
-      case 'sTick':
-        if (data.sTick) {
-          const sTick = data.sTick;
-          const key = `${sTick.exchange}:${sTick.symbol}`;
-          setStraddleTicks((prev) => {
-            const next = new Map(prev);
-            next.set(key, sTick);
-            return next;
-          });
-        }
-        break;
-      case 'signal':
-        if (data.signal) {
-          const signal = data.signal;
-          const key = `${signal.strategyName}:${signal.exchange}:${signal.tranch}:${signal.condition}`;
-          setSignals((prev) => {
-            const next = new Map(prev);
-            next.set(key, signal);
-            return next;
-          });
-        }
-        break;
-      case 'heartbeat':
-        setLastHeartbeat(new Date());
-        break;
+function num(value: string | null): number | null {
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+/** `SYNTH:STRADDLE-NIFTY` -> `['STRADDLE', 'NIFTY']`, else null. */
+export function splitSeries(instrument: string): [SeriesKind, string] | null {
+  const [prefix, rest] = instrument.split(':', 2);
+  if (prefix !== 'SYNTH' || !rest) return null;
+  const dash = rest.indexOf('-');
+  if (dash <= 0) return null;
+  return [rest.slice(0, dash) as SeriesKind, rest.slice(dash + 1)];
+}
+
+function toTick(wire: WireTick): LiveTick {
+  const [exchange, symbol] = wire.instrument.includes(':')
+    ? [wire.instrument.split(':', 1)[0], wire.instrument.slice(wire.instrument.indexOf(':') + 1)]
+    : ['', wire.instrument];
+  const lastPrice = num(wire.lastPrice) ?? 0;
+  const previousClose = num(wire.previousClose);
+  // A zero previous close is a real state for a synthetic on its first day,
+  // and dividing by it would render Infinity in a card.
+  const change = previousClose === null ? null : lastPrice - previousClose;
+  return {
+    instrument: wire.instrument,
+    exchange,
+    symbol,
+    lastPrice,
+    timestamp: wire.timestamp,
+    open: num(wire.open),
+    high: num(wire.high),
+    low: num(wire.low),
+    previousClose,
+    volume: wire.volume ?? null,
+    openInterest: wire.openInterest ?? null,
+    isSynthetic: wire.isSynthetic,
+    change,
+    changePercent:
+      change === null || previousClose === null || previousClose === 0
+        ? null
+        : (change / previousClose) * 100,
+  };
+}
+
+export function MarketDataProvider({ children }: { children: ReactNode }) {
+  const [ticks, setTicks] = useState<Map<string, LiveTick>>(new Map());
+  const [series, setSeries] = useState<Map<SeriesKind, Map<string, LiveTick>>>(new Map());
+  const [lastTickAt, setLastTickAt] = useState<Date | null>(null);
+
+  const handleMessage = useCallback((data: unknown) => {
+    const message = data as { type?: string; tick?: WireTick };
+    if (message.type !== 'tick' || !message.tick) return;
+
+    const tick = toTick(message.tick);
+    setLastTickAt(new Date());
+
+    const derived = splitSeries(tick.instrument);
+    if (derived === null) {
+      setTicks((prev) => new Map(prev).set(tick.instrument, tick));
+      return;
     }
+    const [kind, underlying] = derived;
+    setSeries((prev) => {
+      const next = new Map(prev);
+      const bucket = new Map(next.get(kind) ?? NO_SERIES);
+      bucket.set(underlying, tick);
+      next.set(kind, bucket);
+      return next;
+    });
   }, []);
 
+  const ws = useWebSocket({
+    subscriptions: ['ticks'],
+    autoReconnect: true,
+    onMessage: handleMessage,
+  });
+
   useEffect(() => {
-    const unsubscribe = marketDataWebSocket.subscribe(handleMessage);
-    marketDataWebSocket.connect();
-    if (marketDataWebSocket.isConnected()) {
-      setIsConnected(true);
-    }
-    return () => {
-      unsubscribe();
-    };
-  }, [handleMessage]);
+    ws.connect();
+    // Deliberately not cleaning up on unmount: the socket is shared with the
+    // Terminal and alerts, and closing it here would take their stream too.
+    // WebSocketContext drops it when its last subscriber goes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const connect = useCallback(() => marketDataWebSocket.connect(), []);
-  const disconnect = useCallback(() => marketDataWebSocket.disconnect(), []);
-  const clearTicks = useCallback(() => setTicks(new Map()), []);
-  const clearStraddleTicks = useCallback(() => setStraddleTicks(new Map()), []);
-  const clearSignals = useCallback(() => setSignals(new Map()), []);
-
-  return (
-    <MarketDataContext.Provider
-      value={{
-        isConnected,
-        ticks,
-        straddleTicks,
-        signals,
-        lastHeartbeat,
-        connect,
-        disconnect,
-        clearTicks,
-        clearStraddleTicks,
-        clearSignals,
-      }}
-    >
-      {children}
-    </MarketDataContext.Provider>
+  const seriesFor = useCallback(
+    (kind: SeriesKind) => series.get(kind) ?? NO_SERIES,
+    [series],
   );
+
+  const value = useMemo(
+    () => ({ isConnected: ws.isConnected, ticks, series, lastTickAt, seriesFor }),
+    [ws.isConnected, ticks, series, lastTickAt, seriesFor],
+  );
+
+  return <MarketDataContext.Provider value={value}>{children}</MarketDataContext.Provider>;
 }
 
 export function useMarketData() {
-  const context = useContext(MarketDataContext);
-  if (!context) {
+  const found = useContext(MarketDataContext);
+  if (!found) {
     throw new Error('useMarketData must be used within a MarketDataProvider');
   }
-  return context;
+  return found;
 }

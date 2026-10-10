@@ -25,12 +25,15 @@ import {
   Card,
   Col,
   Form,
+  InputGroup,
   Modal,
   Row,
   Spinner,
 } from '@/components/ui/rbShim';
 import {
   BsBoxArrowUpRight,
+  BsCheck2,
+  BsClipboard,
   BsCheckCircleFill,
   BsGear,
   BsPlug,
@@ -59,6 +62,7 @@ const DataProvidersPage: React.FC = () => {
   const [editing, setEditing] = useState<DataProvider | null>(null);
   const [form, setForm] = useState<DataProviderEdit>(emptyEdit());
   const [secret, setSecret] = useState('');
+  const [copied, setCopied] = useState(false);
 
   const { data: providers, isLoading } = useQuery({
     queryKey: ['data-providers'],
@@ -153,11 +157,39 @@ const DataProvidersPage: React.FC = () => {
     });
   };
 
+  // Where the vendor sends the browser back. Derived, never typed: Fyers
+  // checks the redirect URI it is given against the one registered on its app,
+  // so a value entered by hand is one typo away from a login that fails as if
+  // the key were wrong. The origin is the browser's own because this is a
+  // *browser* redirect -- the vendor never calls it -- so whatever address the
+  // operator reaches the Console at is by definition the right one.
+  //
+  // The owner segment matches what the login endpoint builds: the trading
+  // client when the credentials are borrowed, else the literal `provider`.
+  const callbackOwner =
+    form.credentialSource === 'TRADING_CLIENT' ? (form.tradingClientId ?? 'provider') : 'provider';
+  const callbackUrl = editing
+    ? `${window.location.origin}/api/auth/callback/${editing.provider}/${callbackOwner}`
+    : '';
+
+  const copyCallback = async () => {
+    try {
+      await navigator.clipboard.writeText(callbackUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      toast.error('Could not copy — select the URL and copy it by hand.');
+    }
+  };
+
   const submit = () => {
     if (!editing) return;
     const data: DataProviderEdit = { ...form };
     // Absent means leave it; an empty string clears it.
     if (secret) data.apiSecret = secret;
+    // Stored rather than entered, so the value Fyers is sent at login is the
+    // same one shown here and registered on its app.
+    if (editing.loginStyle === 'REDIRECT') data.redirectUrl = callbackUrl;
     saveMutation.mutate({ provider: editing.provider, data });
   };
 
@@ -423,15 +455,21 @@ const DataProvidersPage: React.FC = () => {
                       <Col md={6}>
                         <Form.Group className="mb-3">
                           <Form.Label>Redirect URL</Form.Label>
-                          <Form.Control
-                            value={form.redirectUrl ?? ''}
-                            onChange={(e) => setForm({ ...form, redirectUrl: e.target.value })}
-                          />
+                          <InputGroup>
+                            <Form.Control readOnly value={callbackUrl} className="font-mono" />
+                            <Button
+                              variant="outline-secondary"
+                              onClick={copyCallback}
+                              title={copied ? 'Copied' : 'Copy to clipboard'}
+                              aria-label="Copy the redirect URL"
+                            >
+                              {copied ? <BsCheck2 /> : <BsClipboard />}
+                            </Button>
+                          </InputGroup>
                           <small className="text-ink-faint">
-                            Register this in the vendor’s console:{' '}
-                            <code>
-                              {window.location.origin}/api/auth/callback/{editing.provider}/provider
-                            </code>
+                            Garuda builds this; copy it into the vendor’s console exactly. It is
+                            not editable because the vendor matches what it is sent against what
+                            is registered, and a value typed twice is a value that can differ.
                           </small>
                         </Form.Group>
                       </Col>

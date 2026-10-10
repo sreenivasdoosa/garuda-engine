@@ -472,6 +472,28 @@ class SymbolsRow(Base):
     straddle_max_premium_diff: Mapped[Decimal | None] = mapped_column(Numeric(20, 6), nullable=True)
     contract_multiplier: Mapped[int | None] = mapped_column(Integer, nullable=True)
     hedge_strike_rounding_multiple: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    #: Which series the engine prices for this underlying. Off by default: a
+    #: chain-wide straddle recomputed every tick for every listed underlying is
+    #: most of a core spent on series nobody reads.
+    derives_straddle: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    derives_pcr: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    derives_iv: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    derives_synthetic: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    #: Strikes either side of at-the-money the put-call ratio is taken over.
+    #: Null means the whole chain, which far strikes nobody trades dominate.
+    pcr_strikes_each_side: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    #: Where this symbol sits on a page the operator reads. Null is no
+    #: preference and sorts last; the symbol breaks ties, so the order is
+    #: total and a page never reshuffles between loads.
+    display_order: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class SymbolBrokerInfoRow(Base):
@@ -2008,3 +2030,69 @@ class SyntheticCandlesRow(Base):
     high: Mapped[Decimal | None] = mapped_column(Numeric(20, 6), nullable=True)
     low: Mapped[Decimal | None] = mapped_column(Numeric(20, 6), nullable=True)
     close: Mapped[Decimal | None] = mapped_column(Numeric(20, 6), nullable=True)
+
+
+class _DerivedBarRow(Base):
+    """Shared shape: one minute of one derived series, for one underlying.
+
+    Abstract, so the four tables below are one definition rather than four
+    copies that drift. Keyed by symbol and the bar's own start, so re-running
+    a minute overwrites it rather than doubling it.
+    """
+
+    __abstract__ = True
+
+    symbol: Mapped[str] = mapped_column(String(100), primary_key=True)
+    bar_start: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
+    open: Mapped[Decimal | None] = mapped_column(Numeric(20, 6), nullable=True)
+    high: Mapped[Decimal | None] = mapped_column(Numeric(20, 6), nullable=True)
+    low: Mapped[Decimal | None] = mapped_column(Numeric(20, 6), nullable=True)
+    close: Mapped[Decimal | None] = mapped_column(Numeric(20, 6), nullable=True)
+
+
+class StraddleBars1MinRow(_DerivedBarRow):
+    """STRADDLE_DATA_1MIN in the reference market-data service."""
+
+    __tablename__ = "straddle_bars_1min"
+
+    #: Which strike the series sat on when the bar closed. A rolling straddle
+    #: steps, and a chart that cannot say where it stepped shows a gap that
+    #: reads as bad data.
+    strike: Mapped[Decimal | None] = mapped_column(Numeric(20, 6), nullable=True)
+
+
+class SyntheticBars1MinRow(_DerivedBarRow):
+    """SYNTHETIC_DATA_1MIN in the reference market-data service."""
+
+    __tablename__ = "synthetic_bars_1min"
+
+
+class PcrBars1MinRow(_DerivedBarRow):
+    """PCR_DATA_1MIN in the reference market-data service."""
+
+    __tablename__ = "pcr_bars_1min"
+
+
+class IvBars1MinRow(Base):
+    """IV_DATA_1MIN in the reference market-data service.
+
+    Two series in one row, because they are sampled together and charted
+    together: a minute where only the call had a bar would be a chart whose
+    two lines cover different time.
+    """
+
+    __tablename__ = "iv_bars_1min"
+
+    symbol: Mapped[str] = mapped_column(String(100), primary_key=True)
+    bar_start: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), primary_key=True)
+    call_open: Mapped[Decimal | None] = mapped_column(Numeric(20, 6), nullable=True)
+    call_high: Mapped[Decimal | None] = mapped_column(Numeric(20, 6), nullable=True)
+    call_low: Mapped[Decimal | None] = mapped_column(Numeric(20, 6), nullable=True)
+    call_close: Mapped[Decimal | None] = mapped_column(Numeric(20, 6), nullable=True)
+    put_open: Mapped[Decimal | None] = mapped_column(Numeric(20, 6), nullable=True)
+    put_high: Mapped[Decimal | None] = mapped_column(Numeric(20, 6), nullable=True)
+    put_low: Mapped[Decimal | None] = mapped_column(Numeric(20, 6), nullable=True)
+    put_close: Mapped[Decimal | None] = mapped_column(Numeric(20, 6), nullable=True)
+    call_strike: Mapped[Decimal | None] = mapped_column(Numeric(20, 6), nullable=True)
+    put_strike: Mapped[Decimal | None] = mapped_column(Numeric(20, 6), nullable=True)
+    spot_close: Mapped[Decimal | None] = mapped_column(Numeric(20, 6), nullable=True)

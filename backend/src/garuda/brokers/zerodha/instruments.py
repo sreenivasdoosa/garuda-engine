@@ -43,6 +43,7 @@ from garuda.domain.enums import (
 from garuda.domain.errors import DomainError
 from garuda.domain.exchange import Exchange
 from garuda.domain.instrument import BrokerToken, Instrument, InstrumentId
+from garuda.domain.instrument import canonical_symbol as reduce_symbol
 from garuda.domain.symbol import SymbolInfo
 
 #: Where Kite publishes the master. A plain CSV over HTTP, several megabytes,
@@ -94,17 +95,12 @@ async def download_master(client: httpx.AsyncClient, *, url: str = MASTER_URL) -
 
 
 def canonical_symbol(broker_symbol: str) -> str:
-    """A broker symbol reduced to something usable as an identifier.
+    """Kite's spelling of a symbol, reduced to an instrument id's alphabet.
 
-    Zerodha writes index symbols with spaces -- "NIFTY 50", "NIFTY BANK" --
-    and an engine instrument id must not contain whitespace: it appears in log
-    lines, journal keys and correlation strings, where a space makes it
-    unparseable.
-
-    The broker's own spelling is not lost. It stays on the instrument as
-    ``trading_symbol``, which is what the adapter sends back to the broker.
+    The rule itself is the domain's, because every master that names an index
+    must reduce it identically or the same index becomes two instruments.
     """
-    return "_".join(broker_symbol.split())
+    return reduce_symbol(broker_symbol)
 
 
 @dataclass(frozen=True, slots=True)

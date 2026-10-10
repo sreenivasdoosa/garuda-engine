@@ -29,6 +29,8 @@ from garuda.api.routers import (
     event_days,
     exchanges,
     holidays,
+    market_data,
+    socket,
     special_trading_days,
     symbols,
     universes,
@@ -56,8 +58,30 @@ class ChangePasswordRequest(BaseModel):
     newPassword: str  # noqa: N815
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
-    """The application, and the one identity that signs in to it."""
+def create_app(
+    settings: Settings | None = None,
+    engine: Any = None,
+    reload_symbols: Any = None,
+) -> FastAPI:
+    """The application, and the one identity that signs in to it.
+
+    ``engine`` is the *running* engine, when the API is being served in the
+    same process as it -- which is how an operator runs garuda. It is reachable
+    to routes as ``request.app.state.engine`` and is what lets the Console see
+    live prices at all: a tick lives in the hub for a moment and is never
+    written anywhere another process could read it in time.
+
+    None means the API is being served on its own. Everything backed by a
+    table still works; nothing backed by the feed does, and the routes that
+    need it say so rather than hanging.
+
+    ``reload_symbols`` is an awaitable the composition root supplies, called
+    after the Symbols page writes. It is injected rather than imported because
+    reloading means reading rows into domain objects and swapping the engine's
+    book -- work that lives above this layer, which may not reach up into it.
+    Without it, enabling a derived series writes a row and changes nothing
+    until a restart.
+    """
     config = settings or load_settings()
     secret = config.jwt_secret.get_secret_value() or config.secret_key.get_secret_value()
     if not secret:
@@ -71,6 +95,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
 
     app = FastAPI(title="Garuda Engine", docs_url="/api/docs", openapi_url="/api/openapi.json")
+    # Set even when it is None, so a route reads one attribute rather than
+    # asking whether the attribute exists.
+    app.state.engine = engine
+    app.state.reload_symbols = reload_symbols
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(DEV_ORIGINS),
@@ -167,5 +195,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(
         data_providers.build(sessions, SecretBox(config.secret_key.get_secret_value()), LiveClock())
     )
+    # One socket for everything the Console streams. Registered whether or not
+    # an engine is attached: without one it accepts, says there are no prices
+    # and closes, which is a far clearer answer than a route that is not there.
+    app.include_router(market_data.build(sessions, LiveClock()))
+    app.include_router(socket.build(secret))
 
     return app

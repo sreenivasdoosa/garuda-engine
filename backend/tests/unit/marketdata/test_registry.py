@@ -160,3 +160,88 @@ class TestChoosingAnExpiry:
         monthly = registry.monthly_expiries_for(InstrumentId("NSE:X"))
 
         assert list(monthly) == [date(2026, 9, 24), date(2026, 10, 29)]
+
+
+class TestAnOptionChainsOwnExpiry:
+    """Options and futures on one underlying do not always expire together.
+
+    An MCX commodity's options expire a few days *before* its future, so the
+    last expiry of the month belongs to the future. Choosing an option chain
+    from the combined list asks for a date on which no option is listed, and
+    the chain comes back empty with nothing to explain it -- which is how
+    CRUDEOIL's straddle priced as None while spot, strikes and subscriptions
+    all looked healthy.
+    """
+
+    CRUDE: ClassVar[InstrumentId] = InstrumentId("MCX:CRUDEOIL")
+
+    def build(self, mcx: Exchange) -> InstrumentRegistry:
+        options = date(2026, 9, 17)
+        future = date(2026, 9, 21)
+        return InstrumentRegistry.build(
+            [
+                Instrument(
+                    id=InstrumentId("MCX:CRUDEOIL26SEP8600CE"),
+                    exchange=mcx,
+                    segment=Segment.COMMODITY,
+                    kind=InstrumentKind.OPTION,
+                    trading_symbol="CRUDEOIL26SEP8600CE",
+                    lot_size=100,
+                    tick_size=Decimal("1"),
+                    underlying=self.CRUDE,
+                    expiry=options,
+                    strike=Decimal(8600),
+                    option_type=OptionType.CALL,
+                    exercise_style=ExerciseStyle.EUROPEAN,
+                    settlement_type=SettlementType.CASH,
+                ),
+                Instrument(
+                    id=InstrumentId("MCX:CRUDEOIL26SEPFUT"),
+                    exchange=mcx,
+                    segment=Segment.COMMODITY,
+                    kind=InstrumentKind.FUTURE,
+                    trading_symbol="CRUDEOIL26SEPFUT",
+                    lot_size=100,
+                    tick_size=Decimal("1"),
+                    underlying=self.CRUDE,
+                    expiry=future,
+                    exercise_style=ExerciseStyle.EUROPEAN,
+                    settlement_type=SettlementType.CASH,
+                ),
+            ]
+        )
+
+    def test_the_monthly_across_everything_is_the_futures_expiry(self, mcx: Exchange) -> None:
+        """Unchanged, and still correct for anything choosing a future."""
+        registry = self.build(mcx)
+
+        chosen = registry.expiry_for(self.CRUDE, ExpiryKind.MONTHLY, date(2026, 9, 2))
+
+        assert chosen == date(2026, 9, 21)
+
+    def test_the_option_chains_monthly_is_the_options_expiry(self, mcx: Exchange) -> None:
+        registry = self.build(mcx)
+
+        chosen = registry.option_expiry_for(self.CRUDE, ExpiryKind.MONTHLY, date(2026, 9, 2))
+
+        assert chosen == date(2026, 9, 17)
+
+    def test_the_chain_resolves_at_that_expiry(self, mcx: Exchange) -> None:
+        """The whole point: the expiry chosen has to be one the chain answers."""
+        registry = self.build(mcx)
+        chosen = registry.option_expiry_for(self.CRUDE, ExpiryKind.MONTHLY, date(2026, 9, 2))
+
+        assert chosen is not None
+        found = registry.option_at(self.CRUDE, chosen, Decimal(8600), OptionType.CALL)
+        assert found is not None
+        assert found.trading_symbol == "CRUDEOIL26SEP8600CE"
+
+    def test_an_underlying_with_no_options_has_no_option_expiry(self, mcx: Exchange) -> None:
+        registry = self.build(mcx)
+
+        assert (
+            registry.option_expiry_for(
+                InstrumentId("MCX:NOTHING"), ExpiryKind.MONTHLY, date(2026, 9, 2)
+            )
+            is None
+        )

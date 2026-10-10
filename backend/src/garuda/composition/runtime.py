@@ -12,10 +12,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import Awaitable, Sequence
+from collections.abc import Awaitable, Callable, Mapping, Sequence
 from contextlib import suppress
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Any
 
 from garuda.brokers.sessions import Credentials, SessionResolver
 from garuda.brokers.streams import AccountStreamManager, UpdateHandler
@@ -28,7 +29,11 @@ from garuda.domain.alert import EntityType
 from garuda.domain.client import TradingClientId
 from garuda.domain.market import Tick
 from garuda.marketdata.loader import InstrumentLoader
-from garuda.marketdata.tasks import register_feed_lifecycle, register_instrument_load
+from garuda.marketdata.tasks import (
+    register_feed_lifecycle,
+    register_instrument_load,
+    register_provider_catalogue,
+)
 from garuda.protocols.account import AccountEvent, AccountStream, OrderUpdate
 from garuda.protocols.topics import Topic
 from garuda.trademgmt.tasks import register_trade_loops
@@ -90,6 +95,9 @@ async def start(
     connector: Connector,
     now: datetime,
     strategies: StrategyLoop | None = None,
+    #: Each data provider's translation table, as a name and how to load it.
+    #: Registered at DAY_INIT beside the instrument master.
+    catalogue_loads: Mapping[str, Callable[[], Awaitable[Any]]] | None = None,
 ) -> Runtime:
     """Restore the books, open the channels, and register the day's tasks."""
     parts = engine.parts
@@ -118,7 +126,7 @@ async def start(
             key="account-streams-none",
         )
 
-    _register_tasks(engine, loader)
+    _register_tasks(engine, loader, catalogue_loads or {})
     runner = EngineRunner(
         parts.exchanges,
         parts.clock,
@@ -235,7 +243,11 @@ def _account_streams(
     return AccountStreamManager(resolver, factory, parts.clock, route_updates(engine), parts.alerts)
 
 
-def _register_tasks(engine: Engine, loader: InstrumentLoader | None) -> None:
+def _register_tasks(
+    engine: Engine,
+    loader: InstrumentLoader | None,
+    catalogue_loads: Mapping[str, Callable[[], Awaitable[Any]]],
+) -> None:
     """Everything a venue's day is made of, in phase order."""
     parts = engine.parts
     exchanges: Sequence[str] = [e.code for e in parts.exchanges]
@@ -243,6 +255,10 @@ def _register_tasks(engine: Engine, loader: InstrumentLoader | None) -> None:
     if loader is not None:
         register_instrument_load(
             parts.registry, loader, parts.instruments, broker=loader.broker, exchanges=exchanges
+        )
+    for provider, load in catalogue_loads.items():
+        register_provider_catalogue(
+            parts.registry, parts.catalogues, load, provider=provider, exchanges=exchanges
         )
     if parts.market_data is not None:
         register_feed_lifecycle(parts.registry, parts.market_data, parts.exchanges)

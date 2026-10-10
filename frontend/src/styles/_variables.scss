@@ -1,9 +1,9 @@
 // The fallback when a CSS custom property has not been set. One brand, so
 // one colour; the custom property is what a theme actually overrides.
-$brand-fallback: #6366f1;
+$brand-fallback: #0277b3;
 
 // Default theme color (can be overridden by CSS custom property)
-$brand-primary: var(--brand-primary, #6366f1);
+$brand-primary: var(--brand-primary, #0277b3);
 
 // Bootstrap color overrides
 $primary: $brand-primary;

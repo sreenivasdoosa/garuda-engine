@@ -96,6 +96,25 @@ class TestListing:
         }
         assert all(row["isConfigured"] is False for row in rows)
 
+    async def test_they_come_back_in_the_order_the_page_should_show_them(
+        self, client: httpx.AsyncClient
+    ) -> None:
+        """The two that carry data first, then the three that only configure.
+
+        Order is served rather than sorted in the Console: which providers
+        matter is something the server knows, and alphabetically the page opens
+        on Dhan above Zerodha and TrueData above both.
+        """
+        rows = (await client.get("/api/data-providers")).json()["data"]
+
+        assert [row["provider"] for row in rows] == [
+            "zerodha",
+            "dhan",
+            "fyers",
+            "xts",
+            "truedata",
+        ]
+
     async def test_it_says_which_login_each_provider_uses(self, client: httpx.AsyncClient) -> None:
         by_name = {
             row["provider"]: row for row in (await client.get("/api/data-providers")).json()["data"]

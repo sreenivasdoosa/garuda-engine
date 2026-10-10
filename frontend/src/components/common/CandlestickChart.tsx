@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { createChart, type IChartApi, type ISeriesApi, ColorType, CandlestickSeries, LineSeries } from 'lightweight-charts';
+import { createChart, type IChartApi, type ISeriesApi, ColorType, CandlestickSeries, LineSeries, type UTCTimestamp } from 'lightweight-charts';
 import { useDarkMode } from '@/hooks/useDarkMode';
 import { mdHistoryApi, type OHLCCandle, type HistoryInterval } from '@/api/marketDataApi';
 import { BsGraphUp, BsBarChart, BsChevronLeft, BsChevronRight, BsDash, BsPlus, BsArrowsAngleExpand, BsExclamationTriangle } from 'react-icons/bs';
@@ -28,7 +28,21 @@ interface CandlestickChartProps {
   height?: number;
   showTypeToggle?: boolean; // Show button to toggle between candlestick and line
   liveTick?: LiveTickData;  // Live tick data from WebSocket for real-time updates
+  /**
+   * Something to read the series against, offered as a toggle and off by
+   * default. Meant for a synthetic future, which exists to be compared with
+   * the spot it is derived from and the listed future it competes with.
+   *
+   * Omit `spotSymbol` where there is no cash index -- MCX -- so the toggle is
+   * hidden rather than being a control that can only ever draw nothing.
+   */
+  spotSymbol?: string;
+  futuresSymbol?: string;
 }
+
+/** An overlay's own price scale, so a comparison never rescales the series. */
+const SPOT_SCALE = 'compare-spot';
+const FUTURES_SCALE = 'compare-futures';
 
 /**
  * Reusable candlestick/line chart component using TradingView Lightweight Charts.
@@ -41,6 +55,8 @@ export default function CandlestickChart({
   height,
   showTypeToggle = true,
   liveTick,
+  spotSymbol,
+  futuresSymbol,
 }: CandlestickChartProps) {
   const { isDark } = useDarkMode();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -54,6 +70,17 @@ export default function CandlestickChart({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [chartType, setChartType] = useState<ChartType>('candlestick');
+  // Off by default: a chart that opens with three lines on it makes the
+  // reader hunt for the one they came for.
+  const [compareSpot, setCompareSpot] = useState(false);
+  const [compareFutures, setCompareFutures] = useState(false);
+  const spotSeriesRef = useRef<ISeriesApi<'Line' | 'Candlestick'> | null>(null);
+  const futuresSeriesRef = useRef<ISeriesApi<'Line' | 'Candlestick'> | null>(null);
+  // Bumped whenever the chart object is replaced -- which happens on an
+  // interval change and on switching candle/line. Anything that attached a
+  // series to the old one has to attach it again; a ref left pointing at a
+  // destroyed series is not null, so it looks live and is not.
+  const [chartGeneration, setChartGeneration] = useState(0);
   const [selectedInterval, setSelectedInterval] = useState<HistoryInterval>(interval);
   const [hoveredData, setHoveredData] = useState<{
     time: string;
@@ -180,6 +207,9 @@ export default function CandlestickChart({
       chartRef.current.remove();
       chartRef.current = null;
       seriesRef.current = null;
+      // The comparison lines belonged to that chart and died with it.
+      spotSeriesRef.current = null;
+      futuresSeriesRef.current = null;
     }
   }, [selectedInterval]);
 
@@ -199,6 +229,8 @@ export default function CandlestickChart({
         chartRef.current.remove();
         chartRef.current = null;
         seriesRef.current = null;
+        spotSeriesRef.current = null;
+        futuresSeriesRef.current = null;
       }
 
       const containerHeight = chartContainerRef.current.clientHeight || chartHeight;
@@ -227,6 +259,8 @@ export default function CandlestickChart({
       });
 
       chartRef.current = chart;
+      // Tell the comparison effect to draw onto this one.
+      setChartGeneration((n) => n + 1);
 
       // Create series based on chart type
       let series: any;
@@ -256,7 +290,13 @@ export default function CandlestickChart({
 
         const candle = timeToCandleRef.current.get(param.time as number);
         if (candle) {
+          // Read back in UTC, because the timestamp already *is* the
+          // venue's wall clock expressed as an epoch -- that is what the time
+          // axis needs, since lightweight-charts renders in UTC and offers no
+          // timezone. Formatting it in IST as well adds five and a half hours
+          // twice: a 17:36 bar reads 23:06.
           const time = new Date(candle.timestamp).toLocaleTimeString('en-IN', {
+            timeZone: 'UTC',
             hour: '2-digit',
             minute: '2-digit',
             hour12: false,
@@ -347,6 +387,132 @@ export default function CandlestickChart({
       seriesRef.current = null;
     };
   }, []);
+
+  /**
+   * The comparison lines.
+   *
+   * Fetched only while switched on -- an unopened comparison should not be
+   * pulling a day of minute bars -- and each drawn on its own price scale,
+   * because a synthetic near 23,900 and a basis of forty points share no
+   * useful range and forcing one flattens both.
+   */
+  useEffect(() => {
+    const chart = chartRef.current;
+    if (!chart) return;
+    let dropped = false;
+
+    const draw = async (
+      wanted: boolean,
+      instrument: string | undefined,
+      scale: string,
+      colours: { up: string; down: string },
+      title: string,
+      ref: React.MutableRefObject<ISeriesApi<'Line' | 'Candlestick'> | null>,
+    ) => {
+      if (!wanted || !instrument) {
+        if (ref.current) {
+          try {
+            chart.removeSeries(ref.current);
+          } catch {
+            // Already gone with a chart that was replaced underneath it.
+          }
+          ref.current = null;
+        }
+        return;
+      }
+      try {
+        const bars = await mdHistoryApi.getHistory({
+          symbol: instrument,
+          interval: selectedInterval,
+          from: fromDateStr,
+          to: toDateStr,
+        });
+        // The toggle may have been switched off, or the chart torn down,
+        // while this was in flight.
+        if (dropped || !chartRef.current) return;
+        // The comparison follows the candle/line choice. A line drawn over
+        // candles reads as a different *kind* of thing, not as the same
+        // instrument being compared -- which is why the reference switches it
+        // too rather than always drawing a line.
+        const drawn =
+          ref.current ??
+          (chartType === 'candlestick'
+            ? chart.addSeries(CandlestickSeries, {
+                upColor: colours.up,
+                downColor: colours.down,
+                borderUpColor: colours.up,
+                borderDownColor: colours.down,
+                wickUpColor: colours.up,
+                wickDownColor: colours.down,
+                priceScaleId: scale,
+                priceLineVisible: false,
+                title,
+              })
+            : chart.addSeries(LineSeries, {
+                color: colours.down,
+                lineWidth: 2,
+                priceScaleId: scale,
+                priceLineVisible: false,
+                title,
+              }));
+        ref.current = drawn;
+        const times = bars.map(
+          (bar) => (Math.floor(bar.timestamp / 1000) + timezoneOffsetSeconds) as UTCTimestamp,
+        );
+        if (chartType === 'candlestick') {
+          (drawn as ISeriesApi<'Candlestick'>).setData(
+            bars.map((bar, at) => ({
+              time: times[at],
+              open: bar.open,
+              high: bar.high,
+              low: bar.low,
+              close: bar.close,
+            })),
+          );
+        } else {
+          (drawn as ISeriesApi<'Line'>).setData(
+            bars.map((bar, at) => ({ time: times[at], value: bar.close })),
+          );
+        }
+      } catch {
+        // A comparison that will not load costs the comparison, not the chart.
+      }
+    };
+
+    void draw(
+      compareSpot,
+      spotSymbol,
+      SPOT_SCALE,
+      { up: '#38bdf8', down: '#0284c7' },
+      'Spot',
+      spotSeriesRef,
+    );
+    void draw(
+      compareFutures,
+      futuresSymbol,
+      FUTURES_SCALE,
+      { up: '#fbbf24', down: '#f59e0b' },
+      futuresSymbol?.split(':')[1] ?? 'Futures',
+      futuresSeriesRef,
+    );
+    return () => {
+      dropped = true;
+    };
+  }, [
+    compareSpot,
+    compareFutures,
+    spotSymbol,
+    futuresSymbol,
+    selectedInterval,
+    fromDateStr,
+    toDateStr,
+    timezoneOffsetSeconds,
+    loading,
+    // Not chartType: switching candle/line replaces the chart, and this runs
+    // off the generation that replacement bumps. Depending on chartType as
+    // well would run it once against the chart being torn down.
+    chartGeneration,
+  ]);
 
   // Get interval duration in milliseconds
   const getIntervalMs = useCallback((interval: HistoryInterval): number => {
@@ -684,6 +850,29 @@ export default function CandlestickChart({
             <small className="text-ink-soft">
               {candles.length} data points
             </small>
+            {/* Only rendered where there is something to compare against, so
+                a chart of an ordinary instrument is unchanged. */}
+            {spotSymbol && (
+              <label className="flex items-center gap-1 cursor-pointer select-none" style={{ fontSize: '0.8rem' }}>
+                <input
+                  type="checkbox"
+                  checked={compareSpot}
+                  onChange={(e) => setCompareSpot(e.target.checked)}
+                />
+                <span style={{ color: '#38bdf8' }}>&#9632;</span> Spot
+              </label>
+            )}
+            {futuresSymbol && (
+              <label className="flex items-center gap-1 cursor-pointer select-none" style={{ fontSize: '0.8rem' }}>
+                <input
+                  type="checkbox"
+                  checked={compareFutures}
+                  onChange={(e) => setCompareFutures(e.target.checked)}
+                />
+                <span style={{ color: '#f59e0b' }}>&#9632;</span>{' '}
+                {futuresSymbol.split(':')[1] ?? 'Futures'}
+              </label>
+            )}
             {hoveredData && (
               <div className="flex items-center gap-2 font-mono" style={{ fontSize: '0.8rem' }}>
                 <span className="text-ink-soft">{hoveredData.time}</span>

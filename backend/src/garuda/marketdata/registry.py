@@ -59,6 +59,15 @@ class InstrumentRegistry:
     #: Derived from the master rather than from a rule about last Thursdays:
     #: venues move expiry days, and a rule would be wrong the week they do.
     _monthly: dict[InstrumentId, list[date]] = field(default_factory=dict)
+    #: The same two, restricted to expiries that actually have an option chain.
+    #:
+    #: Options and futures on one underlying do not always expire together:
+    #: an MCX commodity's options expire a few days *before* its future, so
+    #: the last expiry of the month is the future's. Choosing an option chain
+    #: from the combined list therefore asks for a date on which no option is
+    #: listed, and the chain comes back empty with nothing to explain it.
+    _option_expiries: dict[InstrumentId, list[date]] = field(default_factory=dict)
+    _option_monthly: dict[InstrumentId, list[date]] = field(default_factory=dict)
 
     @classmethod
     def build(
@@ -71,6 +80,7 @@ class InstrumentRegistry:
         options: dict[tuple[InstrumentId, date], list[Instrument]] = defaultdict(list)
         futures: dict[InstrumentId, list[Instrument]] = defaultdict(list)
         expiries: dict[InstrumentId, set[date]] = defaultdict(set)
+        option_expiries: dict[InstrumentId, set[date]] = defaultdict(set)
 
         for instrument in instruments:
             by_id[instrument.id] = instrument
@@ -81,6 +91,7 @@ class InstrumentRegistry:
             expiries[instrument.underlying].add(instrument.expiry)
             if instrument.kind is InstrumentKind.OPTION:
                 options[(instrument.underlying, instrument.expiry)].append(instrument)
+                option_expiries[instrument.underlying].add(instrument.expiry)
             elif instrument.kind is InstrumentKind.FUTURE:
                 futures[instrument.underlying].append(instrument)
 
@@ -105,6 +116,10 @@ class InstrumentRegistry:
             _futures=dict(futures),
             _expiries={key: sorted(value) for key, value in expiries.items()},
             _monthly={key: _last_of_each_month(sorted(value)) for key, value in expiries.items()},
+            _option_expiries={key: sorted(value) for key, value in option_expiries.items()},
+            _option_monthly={
+                key: _last_of_each_month(sorted(value)) for key, value in option_expiries.items()
+            },
         )
 
     # -- lookups ------------------------------------------------------------
@@ -162,14 +177,26 @@ class InstrumentRegistry:
         matters -- a master that lost this week's expiry would otherwise have a
         strategy quietly trade next week's, at quite different premiums.
         """
+        return self._expiry_from(
+            self._monthly if kind is ExpiryKind.MONTHLY else self._expiries,
+            underlying,
+            kind,
+            on,
+            offset,
+        )
+
+    def _expiry_from(
+        self,
+        source: dict[InstrumentId, list[date]],
+        underlying: InstrumentId,
+        kind: ExpiryKind,
+        on: date,
+        offset: int,
+    ) -> date | None:
         if offset < 0:
             raise DomainError(f"{underlying}: expiry offset {offset} is negative")
 
-        listed = (
-            self._monthly.get(underlying, [])
-            if kind is ExpiryKind.MONTHLY
-            else self._expiries.get(underlying, [])
-        )
+        listed = source.get(underlying, [])
         upcoming = listed[bisect_left(listed, on) :]
         if not upcoming:
             return None
@@ -181,6 +208,31 @@ class InstrumentRegistry:
             return None
 
         return upcoming[offset] if offset < len(upcoming) else None
+
+    def option_expiry_for(
+        self,
+        underlying: InstrumentId,
+        kind: ExpiryKind,
+        on: date,
+        *,
+        offset: int = 0,
+    ) -> date | None:
+        """The expiry an **option chain** means, which is not always the same
+        date as :meth:`expiry_for`.
+
+        Restricted to expiries that have options listed. On MCX a commodity's
+        options expire days before its future, so the month's last expiry
+        belongs to the future -- and asking the chain for it returns nothing,
+        silently, which is how a commodity's straddle came to price as None
+        while every input looked healthy.
+        """
+        return self._expiry_from(
+            self._option_monthly if kind is ExpiryKind.MONTHLY else self._option_expiries,
+            underlying,
+            kind,
+            on,
+            offset,
+        )
 
     def option_chain(self, underlying: InstrumentId, expiry: date) -> Sequence[Instrument]:
         return self._options.get((underlying, expiry), [])

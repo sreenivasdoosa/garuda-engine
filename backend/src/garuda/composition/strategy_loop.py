@@ -25,7 +25,9 @@ from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 
 from garuda.alerts.manager import AlertManager
+from garuda.composition.derived_series import DerivedSeriesRecorder
 from garuda.composition.engine import ClientParts, Engine
+from garuda.composition.instruments import SymbolBook
 from garuda.composition.routing import deliver
 from garuda.composition.strategies import Loaded, Strategy
 from garuda.composition.strategy_context import (
@@ -37,12 +39,18 @@ from garuda.composition.strategy_context import (
 from garuda.composition.watchlist import Watchlist
 from garuda.domain.alert import EntityType
 from garuda.domain.exchange import Exchange
+from garuda.domain.instrument import InstrumentId, canonical_symbol
 from garuda.domain.trade import Trade
 from garuda.engine.daycondition import DayCondition
 from garuda.engine.signals import SignalBatch
 from garuda.engine.strategy import Result, StrategyRunner, StrategySubscription
 from garuda.engine.tranches import TrancheLedger
-from garuda.marketdata.synthetics import SyntheticPublisher
+from garuda.marketdata.synthetics import (
+    ImpliedVolatility,
+    SyntheticPublisher,
+    for_symbol,
+    for_symbols,
+)
 from garuda.protocols.clock import Clock
 from garuda.protocols.feed import TicksReceived
 
@@ -71,6 +79,16 @@ class StrategyLoop:
     watchlist: Watchlist | None = None
     #: Prices the series nobody publishes. None when none are declared.
     synthetics: SyntheticPublisher | None = None
+    #: Folds those synthetics into minute bars and keeps them, so the
+    #: Console can chart a past the feed does not carry. None means the
+    #: series are published and not stored, which is what an install with
+    #: nothing switched on gets.
+    derived: DerivedSeriesRecorder | None = None
+    #: The curated symbols, swappable. Held so the loop can notice that the
+    #: configuration changed and rebuild what depends on it -- which is what
+    #: makes turning a series on take effect without a restart.
+    symbols: SymbolBook | None = None
+    _symbols_version: int = -1
     interval: timedelta = DEFAULT_INTERVAL
     _stopping: bool = False
     #: Strategies that raised on the way in, so the alert is raised once and
@@ -89,6 +107,9 @@ class StrategyLoop:
         happens.
         """
         now = self.clock.now()
+        # Before the watchlist, so a series enabled a moment ago has its chain
+        # subscribed in the same sweep rather than the next one.
+        self._refresh_series()
         await self._watch()
         await self._publish_synthetics(now)
         await self._refresh_history()
@@ -138,6 +159,43 @@ class StrategyLoop:
         except Exception:
             logger.exception("could not update what the feed is watching")
 
+    def _refresh_series(self) -> None:
+        """Rebuild the derived series when the symbols have been swapped.
+
+        Cheap and idempotent: the version is an integer compare, and nothing
+        is rebuilt while it is unchanged. Rebuilding rather than mutating
+        because a synthetic is frozen and carries its own configuration -- a
+        changed PCR width is a different object, not an edited one.
+
+        A series switched **off** disappears from the sources here, which is
+        what stops it being priced and stored. Its past stays in the table:
+        turning a chart off is not a reason to delete a morning of it.
+        """
+        if self.symbols is None or self.synthetics is None:
+            return
+        if self.symbols.version == self._symbols_version:
+            return
+
+        configured = {
+            InstrumentId(f"{info.exchange_code}:{canonical_symbol(info.symbol)}"): info
+            for info in sorted(self.symbols.values(), key=lambda i: i.symbol)
+            if info.derives_anything
+        }
+        self.synthetics.sources = for_symbols(configured)
+        if self.derived is not None:
+            self.derived.volatility = tuple(
+                (underlying, source)
+                for underlying, info in configured.items()
+                for source in for_symbol(underlying, info)
+                if isinstance(source, ImpliedVolatility)
+            )
+        self._symbols_version = self.symbols.version
+        logger.info(
+            "derived series rebuilt: %d source(s) across %d underlying(s)",
+            len(self.synthetics.sources),
+            len(configured),
+        )
+
     async def _publish_synthetics(self, now: datetime) -> None:
         """Price the series nobody publishes, and put them on the hub.
 
@@ -150,10 +208,15 @@ class StrategyLoop:
             return
         try:
             view = ChainOnly(market=self.market, trading_day=self.trading_day)
-            ticks = self.synthetics.ticks(view, now)
+            ticks = tuple(self.synthetics.ticks(view, now))
             if ticks:
-                await self.engine.parts.hub.consume([TicksReceived(tuple(ticks))])
+                await self.engine.parts.hub.consume([TicksReceived(ticks)])
                 await self.engine.parts.hub.dispatch_once()
+            if self.derived is not None:
+                # After the hub, never before it. Storing is bookkeeping and
+                # the engine's own read of the series must not wait on a
+                # database round trip.
+                await self.derived.record(ticks, view, now)
         except Exception:
             logger.exception("could not publish the synthetic series")
 

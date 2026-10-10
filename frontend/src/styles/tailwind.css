@@ -60,38 +60,47 @@
   }
 
   /* =====================================================================
-   * Garuda Engine — blue identity, light surfaces
+   * Garuda Engine — Slate & Sky.
+   *
+   * One cool family, end to end: sky for identity, cyan for the gradient's
+   * tail, slate for every surface. No violet and no purple anywhere, which is
+   * the point -- the old indigo-to-purple brand sat on a blue-black ground and
+   * the two had nothing to separate them.
+   *
+   * The accent deliberately stays in the blue/cyan band. Green, red and amber
+   * are *semantic* in this console -- profit, loss, warning -- so an accent
+   * borrowed from any of them competes with the numbers it sits beside.
    * ===================================================================== */
   :root,
   [data-theme='garuda-engine'] {
-    /* Primary ramp (brand accent) */
-    --c-primary-50: 238 242 255;
-    --c-primary-100: 224 231 255;
-    --c-primary-200: 199 210 254;
-    --c-primary-300: 165 180 252;
-    --c-primary-400: 129 140 248;
-    --c-primary-500: 99 102 241;
-    --c-primary-600: 79 70 229;
-    --c-primary-700: 67 56 202;
-    --c-primary-800: 55 48 163;
-    --c-primary-900: 49 46 129;
-    --c-primary-950: 30 27 75;
+    /* Primary ramp (brand accent) — sky */
+    --c-primary-50: 240 249 255;
+    --c-primary-100: 224 242 254;
+    --c-primary-200: 186 230 253;
+    --c-primary-300: 125 211 252;
+    --c-primary-400: 56 189 248;
+    --c-primary-500: 14 165 233;
+    --c-primary-600: 2 132 199;
+    --c-primary-700: 3 105 161;
+    --c-primary-800: 7 89 133;
+    --c-primary-900: 12 74 110;
+    --c-primary-950: 8 47 73;
 
-    /* Secondary accent (info / gradient tail) */
-    --c-accent-400: 56 189 248;
-    --c-accent-500: 14 165 233;
-    --c-accent-600: 2 132 199;
+    /* Secondary accent (info / gradient tail) — cyan */
+    --c-accent-400: 34 211 238;
+    --c-accent-500: 6 182 212;
+    --c-accent-600: 8 145 178;
 
-    --gradient-accent: linear-gradient(100deg, #38bdf8 0%, #6366f1 45%, #a855f7 100%);
+    --gradient-accent: linear-gradient(100deg, #22d3ee 0%, #38bdf8 45%, #3b82f6 100%);
     --hero-mesh:
-      radial-gradient(ellipse 80% 50% at 50% -10%, rgba(99, 102, 241, 0.14) 0%, transparent 60%),
-      radial-gradient(ellipse 60% 40% at 85% 60%, rgba(56, 189, 248, 0.07) 0%, transparent 50%);
+      radial-gradient(ellipse 80% 50% at 50% -10%, rgba(56, 189, 248, 0.14) 0%, transparent 60%),
+      radial-gradient(ellipse 60% 40% at 85% 60%, rgba(34, 211, 238, 0.07) 0%, transparent 50%);
 
     /* Light surfaces + text */
-    --c-app: 245 247 250;
+    --c-app: 246 248 250;
     --c-card: 255 255 255;
-    --c-raised: 241 245 249;
-    --c-hairline: 226 232 240;
+    --c-raised: 238 242 246;
+    --c-hairline: 221 228 236;
     --c-ink: 51 65 85;
     --c-ink-soft: 100 116 139;
     --c-ink-faint: 148 163 184;
@@ -109,20 +118,35 @@
 
 
 
-  /* ---- Dark surfaces: the sign-in page's near-black. ---- */
+  /* ---- Dark surfaces: graphite, not navy. ----
+   *
+   * The previous dark field was a heavily blue-tinted near-black (#080b14 at
+   * 0.60 saturation, cards #141a2a at 0.52). Two things went wrong with it.
+   * The blue cast sat directly under an indigo brand, so the accent had almost
+   * nothing to separate itself from and the whole page read as one murky
+   * wash. And the ground was so close to pure black that cards floated on a
+   * void rather than resting on a surface.
+   *
+   * These are slate: the same cool family as the light surfaces, lifted well
+   * off black so cards rest on a ground rather than float in a void. The
+   * surface ladder -- app, card, raised -- reads as depth rather than as tint.
+   *
+   * Contrast on the card, all measured rather than guessed:
+   *   ink 13.7:1 · ink-soft 6.7:1 · ink-faint 3.9:1 · sky-400 7.6:1
+   * The border is deliberately ~2:1 -- visible as an edge, never as a line. */
   .dark {
     /* Tells the browser to draw its own chrome dark too -- scrollbars, the
      * popup list of a native <select>, date pickers. Without it those stay
      * light and punch white holes in the page. */
     color-scheme: dark;
 
-    --c-app: 8 11 20;
-    --c-card: 20 26 42;
-    --c-raised: 32 40 62;
-    --c-hairline: 57 67 94;
-    --c-ink: 237 240 248;
-    --c-ink-soft: 154 163 184;
-    --c-ink-faint: 106 116 138;
+    --c-app: 15 20 26;
+    --c-card: 26 33 43;
+    --c-raised: 37 47 61;
+    --c-hairline: 66 80 103;
+    --c-ink: 230 237 243;
+    --c-ink-soft: 155 168 184;
+    --c-ink-faint: 112 126 145;
 
     /* Status-green back to the standard bright shades on dark surfaces. */
     --c-success-500: 34 197 94;

@@ -19,10 +19,11 @@ stricter than the exchange.
 
 from __future__ import annotations
 
+import logging
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -34,6 +35,8 @@ from garuda.persistence.repositories import (
     SymbolBrokerInfoRepository,
     SymbolsRepository,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _decimal(value: Any, field: str) -> Decimal:
@@ -63,6 +66,12 @@ def _wire(row: models.SymbolsRow) -> dict[str, Any]:
         "hasFuturesWeeklyExpiry": bool(row.has_futures_weekly_expiry),
         "hasFuturesMonthlyExpiry": bool(row.has_futures_monthly_expiry),
         "contractMultiplier": row.contract_multiplier,
+        "derivesStraddle": bool(row.derives_straddle),
+        "derivesPcr": bool(row.derives_pcr),
+        "derivesIv": bool(row.derives_iv),
+        "derivesSynthetic": bool(row.derives_synthetic),
+        "pcrStrikesEachSide": row.pcr_strikes_each_side,
+        "displayOrder": row.display_order,
     }
 
 
@@ -88,6 +97,12 @@ class SymbolEdit(BaseModel):
     hasFuturesWeeklyExpiry: bool | None = None  # noqa: N815
     hasFuturesMonthlyExpiry: bool | None = None  # noqa: N815
     contractMultiplier: int | None = None  # noqa: N815
+    derivesStraddle: bool | None = None  # noqa: N815
+    derivesPcr: bool | None = None  # noqa: N815
+    derivesIv: bool | None = None  # noqa: N815
+    derivesSynthetic: bool | None = None  # noqa: N815
+    pcrStrikesEachSide: int | None = None  # noqa: N815
+    displayOrder: int | None = None  # noqa: N815
 
 
 class NewSymbol(SymbolEdit):
@@ -120,6 +135,12 @@ _COLUMNS: dict[str, tuple[str, Any]] = {
     "hasFuturesWeeklyExpiry": ("has_futures_weekly_expiry", bool),
     "hasFuturesMonthlyExpiry": ("has_futures_monthly_expiry", bool),
     "contractMultiplier": ("contract_multiplier", lambda v: v),
+    "derivesStraddle": ("derives_straddle", bool),
+    "derivesPcr": ("derives_pcr", bool),
+    "derivesIv": ("derives_iv", bool),
+    "derivesSynthetic": ("derives_synthetic", bool),
+    "pcrStrikesEachSide": ("pcr_strikes_each_side", lambda v: v),
+    "displayOrder": ("display_order", lambda v: v),
 }
 
 
@@ -158,6 +179,17 @@ def _refuse_what_the_loader_would_skip(values: dict[str, Any], symbol: str) -> N
             status_code=400, detail=f"{symbol}: freezeLimitQty must be at least one unit"
         )
 
+    position = values.get("display_order")
+    if position is not None and position < 0:
+        raise HTTPException(status_code=400, detail=f"{symbol}: displayOrder cannot be negative")
+
+    strikes = values.get("pcr_strikes_each_side")
+    if strikes is not None and strikes < 1:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{symbol}: pcrStrikesEachSide must cover at least one strike",
+        )
+
     levels = values.get("max_option_chain_levels")
     if levels is not None and levels < 1:
         raise HTTPException(
@@ -170,6 +202,27 @@ def _refuse_what_the_loader_would_skip(values: dict[str, Any], symbol: str) -> N
             status_code=400,
             detail=f"{symbol}: hedgeStrikeRoundingMultiple cannot be negative",
         )
+
+
+async def _took_effect(request: Request) -> None:
+    """Tell the engine its symbol configuration changed.
+
+    The engine reads the symbols once at startup and hands the snapshot to
+    four components, so a saved row used to change nothing until a restart --
+    a derived series switched on stayed off, silently. The composition root
+    supplies the reload; this only asks for it.
+
+    Never raises. The row is already written and that is what was asked for;
+    a reload that fails costs the engine noticing until the next restart, and
+    saying so in the log is more use than failing the save.
+    """
+    reload = getattr(request.app.state, "reload_symbols", None)
+    if reload is None:
+        return
+    try:
+        await reload()
+    except Exception:
+        logger.exception("symbols saved, but the engine could not reload them")
 
 
 def build(sessions: async_sessionmaker[AsyncSession]) -> APIRouter:
@@ -205,7 +258,9 @@ def build(sessions: async_sessionmaker[AsyncSession]) -> APIRouter:
         return ok(_wire(row))
 
     @router.post("")
-    async def create_symbol(body: NewSymbol, db: AsyncSession = Depends(session)) -> dict[str, Any]:
+    async def create_symbol(
+        body: NewSymbol, request: Request, db: AsyncSession = Depends(session)
+    ) -> dict[str, Any]:
         name = body.symbol.strip()
         symbols = SymbolsRepository(db)
         if await symbols.get(name) is not None:
@@ -219,11 +274,12 @@ def build(sessions: async_sessionmaker[AsyncSession]) -> APIRouter:
         symbols.add(row)
         await db.commit()
         await db.refresh(row)
+        await _took_effect(request)
         return ok(_wire(row), message=f"{name} added")
 
     @router.put("/{symbol}")
     async def update_symbol(
-        symbol: str, body: SymbolEdit, db: AsyncSession = Depends(session)
+        symbol: str, body: SymbolEdit, request: Request, db: AsyncSession = Depends(session)
     ) -> dict[str, Any]:
         symbols = SymbolsRepository(db)
         if await symbols.get(symbol) is None:
@@ -235,16 +291,20 @@ def build(sessions: async_sessionmaker[AsyncSession]) -> APIRouter:
         if values:
             await symbols.update(symbol, **values)
             await db.commit()
+            await _took_effect(request)
         return ok(_wire(await symbols.require(symbol)), message=f"{symbol} saved")
 
     @router.delete("/{symbol}")
-    async def delete_symbol(symbol: str, db: AsyncSession = Depends(session)) -> dict[str, Any]:
+    async def delete_symbol(
+        symbol: str, request: Request, db: AsyncSession = Depends(session)
+    ) -> dict[str, Any]:
         # The per-broker overrides go with it: they are keyed by symbol and
         # would otherwise describe something that no longer exists.
         await SymbolBrokerInfoRepository(db).delete_where(symbol=symbol)
         if not await SymbolsRepository(db).delete(symbol):
             raise HTTPException(status_code=404, detail=f"no symbol {symbol!r}")
         await db.commit()
+        await _took_effect(request)
         return ok(None, message=f"{symbol} removed")
 
     # -- one broker's freeze limit for this symbol ---------------------------

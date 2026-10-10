@@ -54,6 +54,36 @@ class DataProviders:
     def is_logged_in(self, provider: str) -> bool:
         return provider in self.sessions
 
+    def connection_for(self, provider: str) -> ProviderConnection | None:
+        """Credentials and a live token together, or None if either is missing.
+
+        None rather than a raise: a provider configured but not logged in is
+        an ordinary morning state, and the caller says so in its own words.
+        """
+        credentials = self.configured.get(provider)
+        session = self.sessions.get(provider)
+        if credentials is None or session is None:
+            return None
+        return ProviderConnection(credentials=credentials, session=session)
+
+
+@dataclass(frozen=True)
+class ProviderConnection:
+    """One provider, configured and logged in."""
+
+    credentials: ProviderCredentials
+    session: ProviderSession
+
+    @property
+    def provider(self) -> str:
+        return self.credentials.provider
+
+    @property
+    def client_id(self) -> str:
+        """Whoever the vendor says logged in, falling back to what was
+        configured. Dhan sends it on every request."""
+        return self.session.client_id or self.credentials.client_id or ""
+
 
 async def load_data_providers(
     sessions: async_sessionmaker[AsyncSession],
@@ -122,6 +152,10 @@ def _borrowed(row: DataProvidersRow, resolver: SessionResolver) -> ProviderCrede
         api_secret="",
         client_id=account.client_id,
         borrowed_from=client_id,
+        static_ip=account.static_ip,
+        quote_min_interval_ms=row.quote_min_interval_ms or 0,
+        history_min_interval_ms=row.history_min_interval_ms or 0,
+        batch_size=row.batch_size,
     )
 
 
@@ -144,6 +178,9 @@ def _own(row: DataProvidersRow, secrets: SecretBox) -> ProviderCredentials:
         redirect_url=row.redirect_url,
         websocket_port=row.websocket_port,
         history_port=row.history_port,
+        quote_min_interval_ms=row.quote_min_interval_ms or 0,
+        history_min_interval_ms=row.history_min_interval_ms or 0,
+        batch_size=row.batch_size,
     )
 
 

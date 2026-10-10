@@ -102,3 +102,13 @@ def history_factory(provider: str) -> HistoryFactory:
             "is not written. Choose another provider for history."
         )
     return adapters.history
+
+
+def quote_factory(provider: str) -> QuoteFactory:
+    adapters = adapters_for(provider)
+    if adapters.quotes is None:
+        raise ProviderUnsupportedError(
+            f"{provider} is configured but cannot answer quotes here yet; its quote adapter is "
+            "not written. Choose another provider for quotes."
+        )
+    return adapters.quotes

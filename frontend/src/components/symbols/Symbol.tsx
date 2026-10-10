@@ -81,6 +81,12 @@ const Symbol: React.FC<SymbolProps> = ({
         straddleMaxPremiumDiff: symbol.straddleMaxPremiumDiff || 25,
         hedgeStrikeRoundingMultiple: symbol.hedgeStrikeRoundingMultiple || 0,
         contractMultiplier: symbol.contractMultiplier || 1,
+        displayOrder: symbol.displayOrder ?? null,
+        derivesStraddle: symbol.derivesStraddle ?? false,
+        derivesPcr: symbol.derivesPcr ?? false,
+        derivesIv: symbol.derivesIv ?? false,
+        derivesSynthetic: symbol.derivesSynthetic ?? false,
+        pcrStrikesEachSide: symbol.pcrStrikesEachSide ?? null,
         hasOptionsWeeklyExpiry: symbol.hasOptionsWeeklyExpiry || false,
         hasOptionsMonthlyExpiry: symbol.hasOptionsMonthlyExpiry || false,
         hasFuturesWeeklyExpiry: symbol.hasFuturesWeeklyExpiry || false,
@@ -280,7 +286,13 @@ const Symbol: React.FC<SymbolProps> = ({
                     />
                   ) : (
                     <Form.Control
-                      value={formData.isIndex ? 'Index' : 'Stock'}
+                      value={
+                        !formData.isIndex
+                          ? 'Stock'
+                          : formData.indexSymbol
+                            ? 'Index'
+                            : 'Index — priced from futures'
+                      }
                       disabled
                       className="bg-raised"
                     />
@@ -375,6 +387,100 @@ const Symbol: React.FC<SymbolProps> = ({
                   disabled={!allFieldsEditable}
                   className="mb-4"
                 />
+              </Col>
+            </Row>
+
+            {/* Where the symbol sits on a page, and which series the engine
+                prices for it. Both only matter for the handful of underlyings
+                an operator actually watches, which is why they are per row
+                rather than a global setting. */}
+            <hr className="border-hairline" />
+            <Row>
+              <Col md={3}>
+                <Form.Group className="mb-4">
+                  <Form.Label>Display Order</Form.Label>
+                  <Form.Control
+                    type="number"
+                    min={0}
+                    placeholder="unset"
+                    value={formData.displayOrder ?? ''}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        displayOrder: e.target.value === '' ? null : parseInt(e.target.value),
+                      })
+                    }
+                    disabled={!allFieldsEditable}
+                    className={!allFieldsEditable ? 'bg-raised' : ''}
+                  />
+                  <small className="text-ink-faint">
+                    Lower comes first on the Live Feed. Blank sorts last.
+                  </small>
+                </Form.Group>
+              </Col>
+              <Col md={3}>
+                <Form.Group className="mb-4">
+                  <Form.Label>PCR Strikes Each Side</Form.Label>
+                  <Form.Control
+                    type="number"
+                    min={1}
+                    placeholder="whole chain"
+                    value={formData.pcrStrikesEachSide ?? ''}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        pcrStrikesEachSide:
+                          e.target.value === '' ? null : parseInt(e.target.value),
+                      })
+                    }
+                    disabled={!allFieldsEditable}
+                    className={!allFieldsEditable ? 'bg-raised' : ''}
+                  />
+                  <small className="text-ink-faint">
+                    Blank covers the whole chain, which far strikes dominate.
+                  </small>
+                </Form.Group>
+              </Col>
+              <Col md={6}>
+                <Form.Label>Derived Series</Form.Label>
+                <div className="flex flex-wrap gap-4 mt-2">
+                  <Form.Check
+                    type="switch"
+                    label="Straddle"
+                    checked={formData.derivesStraddle ?? false}
+                    onChange={(e) =>
+                      setFormData({ ...formData, derivesStraddle: e.target.checked })
+                    }
+                    disabled={!allFieldsEditable}
+                  />
+                  <Form.Check
+                    type="switch"
+                    label="IV"
+                    checked={formData.derivesIv ?? false}
+                    onChange={(e) => setFormData({ ...formData, derivesIv: e.target.checked })}
+                    disabled={!allFieldsEditable}
+                  />
+                  <Form.Check
+                    type="switch"
+                    label="PCR"
+                    checked={formData.derivesPcr ?? false}
+                    onChange={(e) => setFormData({ ...formData, derivesPcr: e.target.checked })}
+                    disabled={!allFieldsEditable}
+                  />
+                  <Form.Check
+                    type="switch"
+                    label="Synthetic"
+                    checked={formData.derivesSynthetic ?? false}
+                    onChange={(e) =>
+                      setFormData({ ...formData, derivesSynthetic: e.target.checked })
+                    }
+                    disabled={!allFieldsEditable}
+                  />
+                </div>
+                <small className="text-ink-faint">
+                  Each walks the option chain on every tick, so leave them off for
+                  underlyings nobody is charting. IV brings its skew with it.
+                </small>
               </Col>
             </Row>
           </Form>

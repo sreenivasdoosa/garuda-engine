@@ -11,6 +11,7 @@ from garuda.marketdata.providers.registry import (
     adapters_for,
     feed_factory,
     history_factory,
+    quote_factory,
     register,
 )
 
@@ -69,3 +70,22 @@ def test_zerodha_can_do_both_once_the_composition_root_has_registered() -> None:
 
     assert adapters_for("zerodha").can_stream is True
     assert adapters_for("zerodha").can_answer_history is True
+
+
+def test_a_provider_with_no_quotes_says_it_cannot_answer_them() -> None:
+    register("fyers", ProviderAdapters())
+
+    with pytest.raises(ProviderUnsupportedError, match="cannot answer quotes"):
+        quote_factory("fyers")
+
+
+def test_a_registered_quote_adapter_is_reachable() -> None:
+    """Registered and unreachable is the same as not registered: without this
+    accessor nothing could ever ask a provider for a price."""
+
+    def build(**_: object) -> object:
+        return object()
+
+    register("dhan", ProviderAdapters(quotes=build))  # type: ignore[arg-type]
+
+    assert quote_factory("dhan") is build

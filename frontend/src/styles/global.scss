@@ -12,7 +12,12 @@
 html {
   // The root every rem in the app is measured against, so this is the one
   // dial that moves all of it -- Tailwind's text-* classes included.
-  font-size: 16px;
+  //
+  // The chrome does NOT follow: $navbar-height and $sidebar-width are px, so
+  // the 60px header and 240px rail stay put while their labels grow. That is
+  // what limits this dial. 17px is comfortable; much past 18px and the header
+  // gets tight and long sidebar labels start to wrap.
+  font-size: 17px;
 }
 
 body {
@@ -181,7 +186,7 @@ a {
   overflow: hidden;
 
   &:focus {
-    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2) !important;
+    box-shadow: 0 0 0 3px rgba(var(--brand-primary-rgb), 0.2) !important;
   }
 
   &:active {
@@ -209,7 +214,7 @@ a {
 
   &:hover, &:focus {
     background: var(--brand-gradient-dark) !important;
-    box-shadow: 0 6px 20px rgba(99, 102, 241, 0.4) !important;
+    box-shadow: 0 6px 20px rgba(var(--brand-primary-rgb), 0.4) !important;
     transform: translateY(-2px) !important;
     color: #fff !important;
   }
@@ -226,7 +231,7 @@ a {
   background: transparent !important;
 
   &:hover, &:focus {
-    background: rgba(99, 102, 241, 0.14) !important;
+    background: rgba(var(--brand-primary-rgb), 0.14) !important;
     border-color: var(--brand-primary) !important;
     color: #fff !important;
     transform: translateY(-2px) !important;
@@ -272,7 +277,7 @@ a {
 
   &:focus {
     border-color: var(--brand-primary, $brand-fallback);
-    box-shadow: 0 0 0 3px rgba(var(--brand-primary-rgb, 99, 102, 241), 0.12);
+    box-shadow: 0 0 0 3px rgba(var(--brand-primary-rgb, 2, 119, 179), 0.12);
     background: #fff;
   }
 
@@ -333,7 +338,7 @@ select {
 
   &:focus {
     border-color: var(--brand-primary, $brand-fallback);
-    box-shadow: 0 0 0 3px rgba(var(--brand-primary-rgb, 99, 102, 241), 0.12);
+    box-shadow: 0 0 0 3px rgba(var(--brand-primary-rgb, 2, 119, 179), 0.12);
   }
 }
 
@@ -357,7 +362,7 @@ select {
   }
 
   &:focus {
-    box-shadow: 0 0 0 3px rgba(var(--brand-primary-rgb, 99, 102, 241), 0.15);
+    box-shadow: 0 0 0 3px rgba(var(--brand-primary-rgb, 2, 119, 179), 0.15);
   }
 }
 
@@ -438,7 +443,7 @@ select {
 }
 
 .table-hover tbody tr:hover {
-  background: linear-gradient(90deg, rgba(99, 102, 241, 0.06) 0%, rgba(99, 102, 241, 0.02) 100%) !important;
+  background: linear-gradient(90deg, rgba(var(--brand-primary-rgb), 0.06) 0%, rgba(var(--brand-primary-rgb), 0.02) 100%) !important;
   transform: scale(1.005);
 
   td {
@@ -477,7 +482,7 @@ select {
   }
 
   &.bg-primary-subtle {
-    background: linear-gradient(135deg, rgba(var(--brand-primary-rgb, 99, 102, 241), 0.15) 0%, rgba(var(--brand-primary-rgb, 99, 102, 241), 0.08) 100%) !important;
+    background: linear-gradient(135deg, rgba(var(--brand-primary-rgb, 2, 119, 179), 0.15) 0%, rgba(var(--brand-primary-rgb, 2, 119, 179), 0.08) 100%) !important;
   }
 }
 
@@ -507,12 +512,12 @@ select {
   margin: 0.125rem 0;
 
   &:hover {
-    background: linear-gradient(135deg, rgba(var(--brand-primary-rgb, 99, 102, 241), 0.08) 0%, rgba(var(--brand-primary-rgb, 99, 102, 241), 0.04) 100%);
+    background: linear-gradient(135deg, rgba(var(--brand-primary-rgb, 2, 119, 179), 0.08) 0%, rgba(var(--brand-primary-rgb, 2, 119, 179), 0.04) 100%);
     color: var(--brand-primary, $brand-fallback);
   }
 
   &:active {
-    background: linear-gradient(135deg, rgba(var(--brand-primary-rgb, 99, 102, 241), 0.15) 0%, rgba(var(--brand-primary-rgb, 99, 102, 241), 0.08) 100%);
+    background: linear-gradient(135deg, rgba(var(--brand-primary-rgb, 2, 119, 179), 0.15) 0%, rgba(var(--brand-primary-rgb, 2, 119, 179), 0.08) 100%);
     color: var(--brand-primary, $brand-fallback);
   }
 }
@@ -637,7 +642,7 @@ select {
     right: 0;
     width: 120px;
     height: 120px;
-    background: radial-gradient(circle at top right, rgba(99, 102, 241, 0.1) 0%, transparent 70%);
+    background: radial-gradient(circle at top right, rgba(var(--brand-primary-rgb), 0.1) 0%, transparent 70%);
     pointer-events: none;
   }
 
@@ -655,7 +660,7 @@ select {
 
   &:hover {
     transform: translateY(-6px) !important;
-    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.12), 0 6px 16px rgba(99, 102, 241, 0.1) !important;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.12), 0 6px 16px rgba(var(--brand-primary-rgb), 0.1) !important;
 
     &::after {
       opacity: 1;
@@ -791,7 +796,7 @@ select {
     right: 0;
     width: 200px;
     height: 200px;
-    background: radial-gradient(circle at top right, rgba(99, 102, 241, 0.08) 0%, transparent 60%);
+    background: radial-gradient(circle at top right, rgba(var(--brand-primary-rgb), 0.08) 0%, transparent 60%);
     pointer-events: none;
   }
 }
@@ -1164,7 +1169,7 @@ html.dark {
     transform: translate(-50%, -50%);
     width: 200px;
     height: 200px;
-    background: radial-gradient(circle, rgba(var(--brand-primary-rgb, 99, 102, 241), 0.05) 0%, transparent 70%);
+    background: radial-gradient(circle, rgba(var(--brand-primary-rgb, 2, 119, 179), 0.05) 0%, transparent 70%);
     border-radius: 50%;
     pointer-events: none;
   }
@@ -1310,10 +1315,10 @@ html.dark {
 
 @keyframes glow {
   from {
-    box-shadow: 0 0 5px rgba(var(--brand-primary-rgb, 99, 102, 241), 0.2);
+    box-shadow: 0 0 5px rgba(var(--brand-primary-rgb, 2, 119, 179), 0.2);
   }
   to {
-    box-shadow: 0 0 20px rgba(var(--brand-primary-rgb, 99, 102, 241), 0.4);
+    box-shadow: 0 0 20px rgba(var(--brand-primary-rgb, 2, 119, 179), 0.4);
   }
 }
 
@@ -1388,7 +1393,7 @@ html.dark {
   }
 
   &.alert-primary {
-    background: linear-gradient(135deg, rgba(var(--brand-primary-rgb, 99, 102, 241), 0.12) 0%, rgba(var(--brand-primary-rgb, 99, 102, 241), 0.06) 100%);
+    background: linear-gradient(135deg, rgba(var(--brand-primary-rgb, 2, 119, 179), 0.12) 0%, rgba(var(--brand-primary-rgb, 2, 119, 179), 0.06) 100%);
   }
 }
 

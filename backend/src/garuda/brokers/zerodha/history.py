@@ -18,6 +18,7 @@ from collections.abc import Callable, Sequence
 from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any, Final
+from zoneinfo import ZoneInfo
 
 from garuda.brokers.zerodha.rest import KiteClient
 from garuda.domain.errors import DomainError
@@ -53,6 +54,10 @@ MAX_SPAN: Final[dict[BarInterval, timedelta]] = {
 
 #: How Kite wants the range expressed.
 _WHEN = "%Y-%m-%d %H:%M:%S"
+
+#: Kite reads and writes its candle times in India's zone, with no offset in
+#: the string, whatever the caller is in.
+KITE_ZONE = ZoneInfo("Asia/Kolkata")
 
 
 class ZerodhaHistory:
@@ -104,7 +109,15 @@ class ZerodhaHistory:
     ) -> Sequence[Bar]:
         payload = await self._client.get(
             f"/instruments/historical/{token}/{KITE_INTERVALS[interval]}",
-            {"from": start.strftime(_WHEN), "to": end.strftime(_WHEN)},
+            # Converted to India's zone before formatting. The string carries
+            # no offset and Kite reads it as exchange local time, so handing it
+            # a UTC instant asks for a window five and a half hours earlier
+            # than intended -- which silently truncates the tail of today and
+            # looks like a provider that has stopped publishing.
+            {
+                "from": start.astimezone(KITE_ZONE).strftime(_WHEN),
+                "to": end.astimezone(KITE_ZONE).strftime(_WHEN),
+            },
         )
         rows = (payload or {}).get("candles") or []
         return [

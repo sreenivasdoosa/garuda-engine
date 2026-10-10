@@ -40,8 +40,18 @@ SHAREABLE = frozenset({"zerodha", "fyers", "dhan"})
 #: never a valid source for them.
 DATA_ONLY = frozenset({"truedata"})
 
-#: Every provider this engine can talk to.
-KNOWN = frozenset({"zerodha", "fyers", "dhan", "xts", "truedata"})
+#: Every provider this engine can talk to, in the order an operator should meet
+#: them: the two that carry data today first, then the three that configure and
+#: log in but have no adapter yet. Alphabetical would open the page on a
+#: provider that cannot currently do anything.
+#:
+#: A tuple, because this is the order the API serves and the Console renders --
+#: a set has none, and sorting one at each call site is how two pages end up
+#: disagreeing about where Dhan belongs.
+PROVIDERS = ("zerodha", "dhan", "fyers", "xts", "truedata")
+
+#: The same names, for membership tests. Derived so the two cannot drift.
+KNOWN = frozenset(PROVIDERS)
 
 
 class ProviderNotConfiguredError(DomainError):
@@ -70,6 +80,22 @@ class ProviderCredentials:
     #: Set when these came from a trading client rather than the provider's own
     #: row -- which is what makes one login serve both pages.
     borrowed_from: TradingClientId | None = None
+    #: The outbound address the vendor whitelisted, when the credentials were
+    #: borrowed from a trading client that has one. Carried rather than looked
+    #: up again because it belongs to whoever's key is being used: a borrowed
+    #: provider calling from the wrong address is refused by the vendor in a
+    #: way that reads as a bad token. A provider holding its own credentials
+    #: has no such row and goes direct.
+    static_ip: str | None = None
+
+    #: Minimum spacing between calls of each kind, in milliseconds, straight
+    #: from the provider's row. Zero is no gate. These belong to the provider
+    #: even when the credentials are borrowed: how hard to lean on an API is a
+    #: property of the API, not of whose key opens it.
+    quote_min_interval_ms: int = 0
+    history_min_interval_ms: int = 0
+    #: How many instruments go in one quote request, where the provider batches.
+    batch_size: int | None = None
 
     @property
     def is_borrowed(self) -> bool:
@@ -96,7 +122,7 @@ def check_pairing(provider: str, source: str, trading_client: str | None) -> Non
     """
     if provider not in KNOWN:
         raise ProviderNotConfiguredError(
-            f"{provider} is not a provider this engine knows; one of {', '.join(sorted(KNOWN))}"
+            f"{provider} is not a provider this engine knows; one of {', '.join(PROVIDERS)}"
         )
     if source not in CREDENTIAL_SOURCES:
         raise ProviderNotConfiguredError(

@@ -8,13 +8,15 @@ the decision about *when* it happens stays with the day model.
 from __future__ import annotations
 
 import logging
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from datetime import date
+from typing import Any
 
 from garuda.core.runner import PhaseContext, TaskRegistry
 from garuda.domain.exchange import Exchange
 from garuda.domain.phases import DayPhase
 from garuda.marketdata.loader import InstrumentLoader, InstrumentRegistryHolder
+from garuda.marketdata.providers.catalogues import CatalogueHolder
 from garuda.marketdata.service import MarketDataService
 
 logger = logging.getLogger(__name__)
@@ -61,6 +63,46 @@ def register_instrument_load(
 
     registry.register(
         DayPhase.DAY_INIT, load, name=f"instrument-master:{broker}", exchanges=exchanges
+    )
+
+
+def register_provider_catalogue(
+    registry: TaskRegistry,
+    holder: CatalogueHolder,
+    load: Callable[[], Awaitable[Any]],
+    *,
+    provider: str,
+    exchanges: Sequence[str] | None = None,
+) -> None:
+    """Load one data provider's translation table at DAY_INIT.
+
+    Separate from the instrument master, and after it in nothing: the two are
+    independent. The master says what exists; this says what the provider
+    calls it. A provider that is not the active one still gets its table
+    loaded, which costs a download and means switching provider mid-day does
+    not need a restart.
+
+    A failure does **not** propagate. An engine whose feed provider has no
+    catalogue carries no ticks, and that is worth a loud log -- but taking
+    DAY_INIT down with it would also cost the instrument master, the venues
+    and every trade loop, on a day the operator may not even be using this
+    provider.
+    """
+
+    async def load_catalogue(_: PhaseContext) -> None:
+        try:
+            catalogue = await load()
+        except Exception:
+            logger.exception(
+                "%s: its catalogue could not be loaded, so it can carry no data today. "
+                "Choose another provider or fix the download.",
+                provider,
+            )
+            return
+        holder.publish(provider, catalogue)
+
+    registry.register(
+        DayPhase.DAY_INIT, load_catalogue, name=f"catalogue:{provider}", exchanges=exchanges
     )
 
 

@@ -59,6 +59,25 @@ class InstrumentId:
         return self.value
 
 
+def canonical_symbol(broker_symbol: str) -> str:
+    """A broker symbol reduced to something usable inside an instrument id.
+
+    Brokers write index symbols with spaces -- "NIFTY 50", "NIFTY BANK" -- and
+    an instrument id must not contain whitespace: it appears in log lines,
+    journal keys and correlation strings, where a space makes it unparseable.
+
+    It lives here rather than in one adapter because every master that names an
+    index has to reduce it **the same way**. Two adapters reducing "NIFTY 50"
+    differently produce two ids for one index, and the provider's catalogue
+    then translates nothing: the instrument quotes and never ticks, which looks
+    exactly like an illiquid contract.
+
+    The broker's own spelling is not lost. It stays on the instrument as
+    ``trading_symbol``, which is what the adapter sends back to the broker.
+    """
+    return "_".join(broker_symbol.split())
+
+
 @dataclass(frozen=True, slots=True)
 class Instrument:
     """A tradable (or, for synthetics, priceable) instrument."""

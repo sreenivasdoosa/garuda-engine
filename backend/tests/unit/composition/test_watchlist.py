@@ -301,3 +301,216 @@ async def test_nothing_new_is_nothing_said_to_the_broker(
     await watchlist.ensure([subscribed()], registry, TODAY)
 
     assert calls == []
+
+
+# -- indices, watched whether or not anything trades them --------------------
+
+
+def index_symbols() -> dict[str, SymbolInfo]:
+    return {
+        "NIFTY": SymbolInfo(
+            symbol="NIFTY", exchange_code="NSE", is_index=True, index_symbol="NIFTY 50"
+        ),
+        # Its level is published under its own name, which the operator
+        # records the same way as any other.
+        "SENSEX": SymbolInfo(
+            symbol="SENSEX", exchange_code="BSE", is_index=True, index_symbol="SENSEX"
+        ),
+        # Not an index: a stock is only watched when something trades it.
+        "RELIANCE": SymbolInfo(symbol="RELIANCE", exchange_code="NSE"),
+    }
+
+
+async def test_every_index_on_an_enabled_exchange_is_watched_from_the_open(
+    hub: TickHub, registry: InstrumentRegistry
+) -> None:
+    """Nothing trades them here. The Console still needs a price per card, and
+    a card with no price is the page looking broken."""
+    watching = Watchlist(hub=hub, symbols=index_symbols(), exchanges=frozenset({"NSE", "BSE"}))
+
+    await watching.ensure([], registry, TODAY)
+
+    assert watching.watched == frozenset({InstrumentId("NSE:NIFTY_50"), InstrumentId("BSE:SENSEX")})
+
+
+async def test_an_index_is_watched_by_its_spot_symbol(
+    hub: TickHub, registry: InstrumentRegistry
+) -> None:
+    """NIFTY's level arrives as "NIFTY 50". Subscribing to the derivative name
+    would subscribe to nothing at all, silently."""
+    watching = Watchlist(hub=hub, symbols=index_symbols(), exchanges=frozenset({"NSE"}))
+
+    await watching.ensure([], registry, TODAY)
+
+    assert InstrumentId("NSE:NIFTY_50") in watching.watched
+    assert InstrumentId("NSE:NIFTY") not in watching.watched
+
+
+async def test_an_index_on_a_disabled_exchange_is_not_watched(
+    hub: TickHub, registry: InstrumentRegistry
+) -> None:
+    """The feed would refuse it, and on a venue that is off it never ticks."""
+    watching = Watchlist(hub=hub, symbols=index_symbols(), exchanges=frozenset({"NSE"}))
+
+    await watching.ensure([], registry, TODAY)
+
+    assert InstrumentId("BSE:SENSEX") not in watching.watched
+
+
+async def test_a_tradable_symbol_is_not_watched_just_for_being_curated(
+    hub: TickHub, registry: InstrumentRegistry
+) -> None:
+    """Only indices get this. Subscribing to every curated stock would spend
+    the connection's budget on prices nothing reads."""
+    watching = Watchlist(hub=hub, symbols=index_symbols(), exchanges=frozenset({"NSE", "BSE"}))
+
+    await watching.ensure([], registry, TODAY)
+
+    assert InstrumentId("NSE:RELIANCE") not in watching.watched
+
+
+async def test_with_no_exchange_enabled_nothing_is_watched(
+    hub: TickHub, registry: InstrumentRegistry
+) -> None:
+    watching = Watchlist(hub=hub, symbols=index_symbols())
+
+    await watching.ensure([], registry, TODAY)
+
+    assert watching.watched == frozenset()
+
+
+async def test_indices_are_added_alongside_what_a_strategy_needs(
+    hub: TickHub, registry: InstrumentRegistry
+) -> None:
+    """They add prices; they never replace the strategy's own."""
+    symbols = index_symbols()
+    symbols["NIFTY"] = SymbolInfo(
+        symbol="NIFTY", exchange_code="NSE", is_index=True, index_symbol="NIFTY 50"
+    )
+    watching = Watchlist(hub=hub, symbols=symbols, exchanges=frozenset({"NSE"}))
+
+    await watching.ensure([subscribed()], registry, TODAY)
+
+    assert InstrumentId("NSE:NIFTY_50") in watching.watched
+    assert NIFTY in watching.watched
+
+
+def a_future(nse: Exchange) -> Instrument:
+    return Instrument(
+        id=InstrumentId("NFO:NIFTY26SEPFUT"),
+        exchange=nse,
+        segment=Segment.FNO,
+        kind=InstrumentKind.FUTURE,
+        trading_symbol="NIFTY26SEPFUT",
+        lot_size=75,
+        tick_size=Decimal("0.05"),
+        underlying=NIFTY,
+        expiry=EXPIRY,
+        exercise_style=ExerciseStyle.EUROPEAN,
+        settlement_type=SettlementType.CASH,
+    )
+
+
+async def test_a_commodity_is_watched_by_its_current_month_future(
+    hub: TickHub, nse: Exchange
+) -> None:
+    """MCX publishes no CRUDEOIL level, only its futures. Subscribing to the
+    bare name subscribes to a symbol the master has never heard of, and it
+    never ticks. Ported from the reference's futures reference symbol."""
+    # A master with the future but no spot instrument, which is what a
+    # commodity underlying looks like.
+    with_future = InstrumentRegistry.build([a_future(nse)])
+    watching = Watchlist(
+        hub=hub,
+        symbols={"NIFTY": SymbolInfo(symbol="NIFTY", exchange_code="NSE", is_index=True)},
+        exchanges=frozenset({"NSE"}),
+    )
+
+    assert watching.indices(with_future, TODAY) == {InstrumentId("NFO:NIFTY26SEPFUT")}
+
+
+async def test_an_underlying_with_neither_spot_nor_future_is_skipped(
+    hub: TickHub, registry: InstrumentRegistry
+) -> None:
+    """Not guessed at. A subscription to something the master does not list
+    is a silent no-op, which is worse than an absent card."""
+    watching = Watchlist(
+        hub=hub,
+        symbols={"NOTHING": SymbolInfo(symbol="NOTHING", exchange_code="NSE", is_index=True)},
+        exchanges=frozenset({"NSE"}),
+    )
+
+    assert watching.indices(registry, TODAY) == set()
+
+
+def test_what_is_curated_is_known_before_the_master_loads(
+    hub: TickHub,
+) -> None:
+    """The engine decides whether to sweep at all before anything resolves."""
+    watching = Watchlist(hub=hub, symbols=index_symbols(), exchanges=frozenset({"NSE", "BSE"}))
+
+    assert {info.symbol for info in watching.configured_indices()} == {"NIFTY", "SENSEX"}
+
+
+async def test_a_derived_series_subscribes_the_chain_of_its_underlying(
+    hub: TickHub, registry: InstrumentRegistry
+) -> None:
+    """A straddle is the at-the-money call plus put, so switching one on has
+    to subscribe the strikes -- no strategy required.
+
+    The id the chain is looked up by is the **symbol** (`NSE:NIFTY`), which is
+    what options record as their underlying. The price is read from the
+    **index symbol** (`NSE:NIFTY_50`). Both come from the symbols table, and
+    passing the second where the first belongs matches no options at all and
+    subscribes nothing -- silently, because a straddle with no quotes looks
+    exactly like a quiet one.
+    """
+    watching = Watchlist(
+        hub=hub,
+        symbols={
+            "NIFTY": SymbolInfo(
+                symbol="NIFTY",
+                exchange_code="NSE",
+                is_index=True,
+                index_symbol="NIFTY 50",
+                strike_gap=Decimal(50),
+                option_chain_levels=3,
+                derives_straddle=True,
+            )
+        },
+        exchanges=frozenset({"NSE"}),
+    )
+    # The level arrives on the index symbol, which is what gives the chain a
+    # strike to centre on.
+    await quote(hub, InstrumentId("NSE:NIFTY_50"), "25010")
+
+    await watching.ensure([], registry, TODAY)
+
+    options = {i for i in watching.watched if i.value.endswith(("CE", "PE"))}
+    assert options, "the chain was not subscribed"
+    assert InstrumentId("NSE:NIFTY_50") in watching.watched
+
+
+async def test_an_underlying_deriving_nothing_gets_no_chain(
+    hub: TickHub, registry: InstrumentRegistry
+) -> None:
+    """The chain is the expensive part. An index nobody is charting is one
+    subscription, not forty."""
+    watching = Watchlist(
+        hub=hub,
+        symbols={
+            "NIFTY": SymbolInfo(
+                symbol="NIFTY",
+                exchange_code="NSE",
+                is_index=True,
+                index_symbol="NIFTY 50",
+                strike_gap=Decimal(50),
+            )
+        },
+        exchanges=frozenset({"NSE"}),
+    )
+    await quote(hub, InstrumentId("NSE:NIFTY_50"), "25010")
+
+    await watching.ensure([], registry, TODAY)
+
+    assert watching.watched == frozenset({InstrumentId("NSE:NIFTY_50")})

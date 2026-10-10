@@ -15,10 +15,11 @@ vendor calls back; for XTS and TrueData the call completes in place.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -32,6 +33,7 @@ from garuda.marketdata.providers.auth import (
 from garuda.marketdata.providers.credentials import (
     KNOWN,
     OWN,
+    PROVIDERS,
     SHAREABLE,
     TRADING_CLIENT,
     ProviderCredentials,
@@ -47,6 +49,8 @@ from garuda.persistence.repositories import (
 )
 from garuda.persistence.secrets import SecretBox
 from garuda.protocols.clock import Clock
+
+logger = logging.getLogger(__name__)
 
 #: Where the two choices live. Independent: ticks and history may come from
 #: different providers.
@@ -196,10 +200,14 @@ def build(
         Rows that do not exist yet are returned as unconfigured rather than
         omitted, so the page lists what is possible instead of only what has
         been set up.
+
+        Served in :data:`PROVIDERS` order rather than alphabetically, and the
+        Console renders what it is given: the order is a fact about which
+        providers matter, which the server knows and the page does not.
         """
         rows = {row.provider: row for row in await DataProvidersRepository(db).all()}
         out = []
-        for name in sorted(KNOWN):
+        for name in PROVIDERS:
             row = rows.get(name)
             if row is None:
                 quote, history, batch = DEFAULT_LIMITS[name]
@@ -422,7 +430,9 @@ def build(
     # -- logging in ---------------------------------------------------------
 
     @router.post("/api/data-providers/{provider}/login")
-    async def login(provider: str, db: AsyncSession = Depends(session)) -> dict[str, Any]:
+    async def login(
+        provider: str, request: Request, db: AsyncSession = Depends(session)
+    ) -> dict[str, Any]:
         """Start a login. Always operator-initiated.
 
         Returns a URL for the browser where the vendor uses a redirect, and a
@@ -456,13 +466,21 @@ def build(
         assert start.session is not None
         await _store(db, name, start.session.access_token, start.session.client_id)
         await db.commit()
+        await _renew_feed(request, name, "logged in")
         return ok({"loginStyle": "DIRECT", "isLoggedIn": True}, message=f"{name} logged in")
 
     @router.post("/api/data-providers/{provider}/logout")
-    async def logout(provider: str, db: AsyncSession = Depends(session)) -> dict[str, Any]:
+    async def logout(
+        provider: str, request: Request, db: AsyncSession = Depends(session)
+    ) -> dict[str, Any]:
         name = provider.strip().lower()
         await DataProviderSessionsRepository(db).delete(name)
         await db.commit()
+        # The token is gone, so the socket carrying it is finished. Dropping it
+        # here rather than leaving it to time out means the Console shows the
+        # provider as logged out and priceless in one step, instead of logged
+        # out while prices keep arriving for another minute.
+        await _renew_feed(request, name, "logged out")
         return ok(None, message=f"{name} logged out")
 
     async def _store(db: AsyncSession, provider: str, token: str, client_id: str | None) -> None:
@@ -478,12 +496,35 @@ def build(
             conflict_on=("provider",),
         )
 
+    async def _renew_feed(request: Request, provider: str, why: str) -> None:
+        """Tell the running engine its credentials changed.
+
+        A feed built with an expired token keeps its socket open and carries
+        nothing, and the supervisor -- seeing a connected feed -- correctly
+        leaves it alone. So a login has to say so explicitly. The reference
+        service does the same, stopping its ticker on a manual login or a
+        provider switch rather than waiting for a throttle to expire.
+
+        Never raises. The session is already stored and that is the part that
+        matters; a feed that did not come back is retried by the monitor.
+        """
+        engine = getattr(request.app.state, "engine", None)
+        market_data = getattr(getattr(engine, "parts", None), "market_data", None)
+        if market_data is None:
+            # No engine in this process, or nothing nominated for ticks.
+            return
+        try:
+            await market_data.reconnect(f"{provider} {why}")
+        except Exception:
+            logger.exception("%s: could not replace the feed after %s", provider, why)
+
     # -- the callback -------------------------------------------------------
 
     @router.get("/api/auth/callback/{provider}/{owner}")
     async def callback(
         provider: str,
         owner: str,
+        request: Request,
         db: AsyncSession = Depends(session),
         request_token: str | None = None,
         auth_code: str | None = None,
@@ -518,6 +559,10 @@ def build(
         del owner  # the path segment identifies the app; the row is the record
         await _store(db, name, session_out.access_token, session_out.client_id)
         await db.commit()
+        # Before the redirect, so the Console reloads onto a feed that is
+        # already coming up with the new token rather than one still carrying
+        # nothing on the old.
+        await _renew_feed(request, name, "completed its login")
         return RedirectResponse(f"{console_url}?login={name}&ok=1")
 
     return router

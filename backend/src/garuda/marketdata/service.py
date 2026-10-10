@@ -75,6 +75,12 @@ class MarketDataService:
 
         connected = await self._supervisor.start()
         self._tasks = [
+            # Reads the socket. Without this the feed connects, subscribes, and
+            # every tick Zerodha sends piles up in an async generator nobody
+            # iterates -- so nothing is staged, nothing is published, and even
+            # `FeedConnected` never lands, which leaves the hub reporting a
+            # live connection as disconnected.
+            asyncio.create_task(self._drain(), name="tick-drain"),
             asyncio.create_task(self._hub.dispatch_forever(), name="tick-dispatch"),
             asyncio.create_task(self._monitor(), name="feed-monitor"),
         ]
@@ -84,6 +90,25 @@ class MarketDataService:
             len(self._hub.subscriptions),
         )
         return connected
+
+    async def reconnect(self, why: str) -> bool:
+        """Replace the connection now, whatever its state.
+
+        This is what a login is for. A feed built with yesterday's token keeps
+        its socket open and simply carries nothing; the supervisor sees a
+        connected feed and, correctly, leaves it alone. So the credential
+        change has to say so -- the reference service does the same thing,
+        stopping its ticker on a manual login or a provider switch so the next
+        pass builds a fresh one rather than waiting out a throttle.
+
+        Returns whether a feed came back up. False is not fatal: the monitor
+        keeps trying.
+        """
+        if not self.is_running:
+            return False
+        logger.info("replacing the feed: %s", why)
+        await self._supervisor.stop()
+        return await self._supervisor.start()
 
     async def stop(self) -> None:
         """Stop the loops and close the connection. Safe to call twice."""
@@ -95,6 +120,30 @@ class MarketDataService:
                 await task
         await self._supervisor.stop()
         logger.info("market data stopped")
+
+    async def _drain(self) -> None:
+        """Fold whatever the feed is saying into the hub, for as long as it says it.
+
+        One task across reconnects rather than one per feed: the supervisor
+        replaces the connection underneath, and a task tied to a particular
+        socket would die with it and leave the replacement unread.
+
+        A feed that ends its stream is not an error here -- it is what a closed
+        socket looks like -- and the monitor is what replaces it.
+        """
+        while True:
+            if self._supervisor.feed is None:
+                await self._clock.sleep(self._monitor_interval)
+                continue
+            try:
+                await self._hub.consume()
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:
+                logger.warning("the feed stream ended: %s: %s", type(error).__name__, error)
+            # Either the stream finished or it failed. Wait for the monitor to
+            # put a new connection in place rather than spinning on a dead one.
+            await self._clock.sleep(self._monitor_interval)
 
     async def _monitor(self) -> None:
         """Ask, on a short cycle, whether the feed still works.

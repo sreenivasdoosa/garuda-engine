@@ -21,7 +21,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from decimal import Decimal
 
+from garuda.domain.enums import ExpiryKind
 from garuda.domain.errors import DomainError
+
+#: Where a symbol with no chosen position sorts. Far enough out that an
+#: operator never has to compete with it.
+UNORDERED = 1_000_000
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,6 +56,40 @@ class SymbolInfo:
     #: Rounding applied when placing a hedge strike, where it is coarser than
     #: the strike gap. Zero means use the strike gap.
     hedge_strike_rounding: Decimal = Decimal(0)
+    #: Which series the engine prices for this underlying, as the operator set
+    #: them. They are per underlying rather than global because each costs a
+    #: chain walk per tick, and because only a handful of indices are worth
+    #: charting this way.
+    derives_straddle: bool = False
+    derives_pcr: bool = False
+    derives_iv: bool = False
+    derives_synthetic: bool = False
+    #: Strikes either side of at-the-money the put-call ratio covers. None is
+    #: the whole chain.
+    pcr_strikes_each_side: int | None = None
+    #: Where the operator wants this symbol to appear. None is no preference.
+    display_order: int | None = None
+
+    @property
+    def sort_key(self) -> tuple[int, str]:
+        """Ordering for anything an operator reads.
+
+        Unordered symbols sort after ordered ones rather than before: a
+        curated list of four indices should not be pushed down the page by
+        four hundred equities nobody arranged. The symbol breaks ties so the
+        order is total.
+        """
+        return (
+            self.display_order if self.display_order is not None else UNORDERED,
+            self.symbol,
+        )
+
+    @property
+    def derives_anything(self) -> bool:
+        """Whether this underlying needs the chain walked at all."""
+        return (
+            self.derives_straddle or self.derives_pcr or self.derives_iv or self.derives_synthetic
+        )
 
     def __post_init__(self) -> None:
         if not self.symbol.strip():
@@ -67,6 +106,12 @@ class SymbolInfo:
             raise DomainError(f"{self.symbol}: option chain levels must be at least one")
         if self.hedge_strike_rounding < 0:
             raise DomainError(f"{self.symbol}: hedge strike rounding cannot be negative")
+        if self.pcr_strikes_each_side is not None and self.pcr_strikes_each_side < 1:
+            raise DomainError(
+                f"{self.symbol}: pcr strikes each side must cover at least one strike"
+            )
+        if self.display_order is not None and self.display_order < 0:
+            raise DomainError(f"{self.symbol}: display order cannot be negative")
 
     @property
     def spot_symbol(self) -> str:
@@ -76,6 +121,18 @@ class SymbolInfo:
         stock's spot is the stock; an index's spot is a separate feed symbol.
         """
         return self.index_symbol or self.symbol
+
+    @property
+    def option_expiry_kind(self) -> ExpiryKind:
+        """Which expiry an at-the-money chain means for this underlying.
+
+        Weekly where the underlying has one, monthly otherwise. Not a
+        constant: MCX commodities list no weekly options at all, so asking for
+        a weekly expiry answers None, the chain comes back empty, and every
+        series over it prices to nothing -- silently, because an unpriceable
+        straddle looks exactly like a quiet one.
+        """
+        return ExpiryKind.WEEKLY if self.has_weekly_options else ExpiryKind.MONTHLY
 
     @property
     def hedge_strike_step(self) -> Decimal:

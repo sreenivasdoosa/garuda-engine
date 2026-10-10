@@ -66,7 +66,10 @@ const capabilities = [
 
 const AuthLayout: React.FC = () => {
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[#080b14] text-white">
+    /* Always dark, whichever mode the console is in -- hence a literal rather
+       than the app token, which flips to a light surface and would leave white
+       text on it. Kept in step with the dark field's `--c-app` by hand. */
+    <div className="relative min-h-screen overflow-hidden bg-[#0f141a] text-white">
       {/* A quiet grid, and two soft lights behind it. */}
       <div
         aria-hidden

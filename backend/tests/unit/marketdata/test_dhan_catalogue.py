@@ -115,6 +115,37 @@ class TestIndexRows:
         assert catalogue.is_index(INDEX) is True
         assert catalogue.segment_number_for(INDEX) == 0
 
+    def test_an_index_published_with_a_space_is_reduced_to_an_instrument_id(self) -> None:
+        """Dhan publishes the index as "NIFTY 50". An instrument id may not
+        carry whitespace, and the broker master the engine matches against
+        reduces the same name the same way -- so the catalogue must too, or the
+        index quotes and never ticks.
+
+        Before this, one such row raised out of the constructor and no
+        catalogue was built at all: Dhan could carry no data whatsoever.
+        """
+        catalogue = DhanCatalogue(
+            [
+                a_row(
+                    segment="IDX_I",
+                    trading_symbol="NIFTY 50",
+                    is_index=True,
+                    strike=None,
+                    expiry=None,
+                    option_type="",
+                )
+            ]
+        )
+
+        assert catalogue.details_for(InstrumentId("NSE:NIFTY_50")) is not None
+        assert catalogue.is_index(InstrumentId("NSE:NIFTY_50")) is True
+
+    def test_one_unusable_row_does_not_cost_the_master(self) -> None:
+        """Eighty thousand rows arrive; one of them must not take the rest."""
+        catalogue = DhanCatalogue([a_row(trading_symbol="   "), a_row(security_id="7")])
+
+        assert len(catalogue) == 1
+
     def test_a_tradable_is_not_an_index(self) -> None:
         catalogue = DhanCatalogue([a_row()])
 

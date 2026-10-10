@@ -18,6 +18,7 @@ from garuda.domain.enums import ExpiryKind, OptionType
 from garuda.domain.errors import DomainError
 from garuda.domain.instrument import InstrumentId
 from garuda.domain.market import Tick
+from garuda.domain.symbol import SymbolInfo
 from garuda.marketdata.pricing import black_scholes, years_to_expiry
 from garuda.marketdata.synthetics import (
     ImpliedVolatility,
@@ -27,6 +28,7 @@ from garuda.marketdata.synthetics import (
     SyntheticFuture,
     SyntheticPublisher,
     build,
+    for_symbol,
     for_symbols,
 )
 
@@ -347,16 +349,71 @@ def test_a_new_day_starts_the_opening_value_again() -> None:
 # -- what is maintained -----------------------------------------------------
 
 
-def test_every_curated_underlying_gets_its_series() -> None:
-    sources = for_symbols([NIFTY])
+def a_symbol(**flags: object) -> SymbolInfo:
+    return SymbolInfo(symbol="NIFTY", exchange_code="NSE", **flags)  # type: ignore[arg-type]
 
-    assert {source.instrument().value for source in sources} == {
-        "SYNTH:STRADDLE-NIFTY",
-        "SYNTH:PCR-NIFTY",
-        "SYNTH:SYNFUT-NIFTY",
-        "SYNTH:IV-NIFTY",
-        "SYNTH:IVSKEW-NIFTY",
-    }
+
+def series_for(**flags: object) -> set[str]:
+    return {s.instrument().value for s in for_symbol(NIFTY, a_symbol(**flags))}
+
+
+class TestWhichSeriesAreMaintained:
+    def test_an_underlying_with_nothing_switched_on_costs_nothing(self) -> None:
+        """The default. An install that has not asked for any of this must not
+        walk a chain for every listed underlying on every tick."""
+        assert series_for() == set()
+
+    def test_each_flag_brings_only_its_own_series(self) -> None:
+        assert series_for(derives_straddle=True) == {"SYNTH:STRADDLE-NIFTY"}
+        assert series_for(derives_pcr=True) == {"SYNTH:PCR-NIFTY"}
+        assert series_for(derives_synthetic=True) == {"SYNTH:SYNFUT-NIFTY"}
+
+    def test_implied_volatility_brings_the_skew_with_it(self) -> None:
+        """The skew is read off the two at-the-money options IV already
+        fetched, so it is nearly free once IV is on -- and a skew with no IV
+        beside it is not a chart anyone asked for."""
+        assert series_for(derives_iv=True) == {"SYNTH:IV-NIFTY", "SYNTH:IVSKEW-NIFTY"}
+
+    def test_everything_on_is_every_series(self) -> None:
+        assert series_for(
+            derives_straddle=True,
+            derives_pcr=True,
+            derives_synthetic=True,
+            derives_iv=True,
+        ) == {
+            "SYNTH:STRADDLE-NIFTY",
+            "SYNTH:PCR-NIFTY",
+            "SYNTH:SYNFUT-NIFTY",
+            "SYNTH:IV-NIFTY",
+            "SYNTH:IVSKEW-NIFTY",
+        }
+
+    def test_the_ratio_covers_the_strikes_it_was_configured_for(self) -> None:
+        """A put-call ratio over the whole chain is dominated by far strikes
+        nobody trades, which is why the reference added the column."""
+        [pcr] = for_symbol(NIFTY, a_symbol(derives_pcr=True, pcr_strikes_each_side=3))
+
+        assert isinstance(pcr, PutCallRatio)
+        assert pcr.levels == 3
+
+    def test_without_that_column_it_falls_back_to_the_chain_levels(self) -> None:
+        [pcr] = for_symbol(NIFTY, a_symbol(derives_pcr=True), levels=7)
+
+        assert isinstance(pcr, PutCallRatio)
+        assert pcr.levels == 7
+
+
+def test_only_underlyings_that_asked_for_a_series_contribute_one() -> None:
+    """Two curated symbols, one configured. The other must not appear."""
+    banknifty = InstrumentId("NSE:BANKNIFTY")
+    sources = for_symbols(
+        {
+            NIFTY: SymbolInfo(symbol="NIFTY", exchange_code="NSE", derives_straddle=True),
+            banknifty: SymbolInfo(symbol="BANKNIFTY", exchange_code="NSE"),
+        }
+    )
+
+    assert {s.instrument().value for s in sources} == {"SYNTH:STRADDLE-NIFTY"}
 
 
 def test_a_synthetic_builds_from_configuration() -> None:
@@ -492,3 +549,55 @@ def test_the_level_averages_the_two_sides() -> None:
     # The puts are still at 18 and the calls are dearer by the skew, so the
     # mean sits half a skew above 18 — not at either leg's own reading.
     assert abs(level.amount - (Decimal(18) + skew.amount / 2)) < Decimal("0.05")
+
+
+# -- which expiry a series is built for -------------------------------------
+
+
+class TestTheExpiryChosen:
+    def test_an_underlying_with_weeklies_uses_them(self) -> None:
+        [straddle] = for_symbol(
+            NIFTY,
+            SymbolInfo(
+                symbol="NIFTY",
+                exchange_code="NSE",
+                derives_straddle=True,
+                has_weekly_options=True,
+            ),
+        )
+
+        assert straddle.expiry_kind is ExpiryKind.WEEKLY  # type: ignore[attr-defined]
+
+    def test_a_commodity_uses_its_monthly(self) -> None:
+        """MCX lists no weekly options. A series built for a weekly expiry
+        finds no chain and prices to nothing, with no error -- an unpriceable
+        straddle and a quiet one look identical from here."""
+        crude = InstrumentId("MCX:CRUDEOIL")
+        [straddle] = for_symbol(
+            crude,
+            SymbolInfo(
+                symbol="CRUDEOIL",
+                exchange_code="MCX",
+                derives_straddle=True,
+                has_weekly_options=False,
+            ),
+        )
+
+        assert straddle.expiry_kind is ExpiryKind.MONTHLY  # type: ignore[attr-defined]
+
+    def test_every_series_for_an_underlying_agrees_on_the_expiry(self) -> None:
+        """They are read together on one chart; two of them on different
+        expiries would be two different contracts compared as one."""
+        info = SymbolInfo(
+            symbol="CRUDEOIL",
+            exchange_code="MCX",
+            derives_straddle=True,
+            derives_pcr=True,
+            derives_iv=True,
+            derives_synthetic=True,
+            has_weekly_options=False,
+        )
+
+        built = for_symbol(InstrumentId("MCX:CRUDEOIL"), info)
+
+        assert {s.expiry_kind for s in built} == {ExpiryKind.MONTHLY}  # type: ignore[attr-defined]

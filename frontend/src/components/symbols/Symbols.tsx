@@ -179,11 +179,45 @@ const Symbols: React.FC<SymbolsProps> = ({
     {
       key: 'isIndex',
       header: 'Type',
-      render: (s) => (
-        <Badge bg={s.isIndex ? 'info' : 'secondary'}>
-          {s.isIndex ? 'Index' : 'Stock'}
-        </Badge>
-      ),
+      // Three states, not two. "Index" alone is misleading for a commodity:
+      // MCX publishes no CRUDEOIL level, so its price comes from the
+      // current-month future. That is the same rule the engine subscribes by
+      // -- an index symbol means the level is published under that name, and
+      // its absence means there is no level to publish.
+      render: (s) => {
+        if (!s.isIndex) return <Badge bg="secondary">Stock</Badge>;
+        // Both, not one or the other: CRUDEOIL is an index-like underlying --
+        // it gets a card and derived series like NIFTY does -- and it is
+        // priced from the current-month future because MCX publishes no level
+        // for it. Showing only "Futures" would lose the first half.
+        return (
+          <div className="flex items-center gap-1">
+            <Badge bg="info">Index</Badge>
+            {!s.indexSymbol && (
+              <Badge
+                bg="warning"
+                className="text-[0.875em]"
+                title="No published level; priced from the current-month future"
+              >
+                FUT
+              </Badge>
+            )}
+          </div>
+        );
+      },
+    },
+    {
+      key: 'displayOrder',
+      header: 'Order',
+      // The table itself stays alphabetical: in a list this long, finding a
+      // symbol matters more than reading the sequence. The number is what the
+      // Live Feed sorts its cards by.
+      render: (s) =>
+        s.displayOrder === null || s.displayOrder === undefined ? (
+          <small className="text-ink-faint">—</small>
+        ) : (
+          <Badge bg="primary">{s.displayOrder}</Badge>
+        ),
     },
     {
       key: 'strikeGap',
@@ -216,6 +250,20 @@ const Symbols: React.FC<SymbolsProps> = ({
       key: 'maxOptionChainLevels',
       header: 'Max OC Levels',
       render: (s) => <small>{s.maxOptionChainLevels || '-'}</small>,
+    },
+    {
+      key: 'derived',
+      header: 'Derived',
+      // Which series this underlying costs a chain walk for, per tick. Shown
+      // because the flags are otherwise invisible until you open the row.
+      render: (s) => (
+        <div className="flex flex-wrap gap-1">
+          {s.derivesStraddle && <Badge bg="info" className="text-[0.875em]">Straddle</Badge>}
+          {s.derivesIv && <Badge bg="info" className="text-[0.875em]">IV</Badge>}
+          {s.derivesPcr && <Badge bg="info" className="text-[0.875em]">PCR</Badge>}
+          {s.derivesSynthetic && <Badge bg="info" className="text-[0.875em]">Synth</Badge>}
+        </div>
+      ),
     },
     {
       key: 'actions',

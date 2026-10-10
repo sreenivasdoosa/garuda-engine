@@ -12,6 +12,12 @@
   straddle_max_premium_diff: 25
   contract_multiplier: 1
   hedge_strike_rounding_multiple: 0
+  display_order: 3
+  derives_straddle: 0
+  derives_pcr: 0
+  derives_iv: 0
+  derives_synthetic: 0
+  pcr_strikes_each_side: null
 - symbol: CRUDEOIL
   exchange: MCX
   index_symbol: null
@@ -26,6 +32,12 @@
   straddle_max_premium_diff: 25
   contract_multiplier: 100
   hedge_strike_rounding_multiple: 0
+  display_order: 7
+  derives_straddle: 1
+  derives_pcr: 1
+  derives_iv: 1
+  derives_synthetic: 1
+  pcr_strikes_each_side: 10
 - symbol: FINNIFTY
   exchange: NSE
   index_symbol: NIFTY FIN SERVICE
@@ -40,6 +52,12 @@
   straddle_max_premium_diff: 25
   contract_multiplier: 1
   hedge_strike_rounding_multiple: 0
+  display_order: 4
+  derives_straddle: 0
+  derives_pcr: 0
+  derives_iv: 0
+  derives_synthetic: 0
+  pcr_strikes_each_side: null
 - symbol: GOLDM
   exchange: MCX
   index_symbol: null
@@ -54,6 +72,12 @@
   straddle_max_premium_diff: 25
   contract_multiplier: 10
   hedge_strike_rounding_multiple: 0
+  display_order: 9
+  derives_straddle: 0
+  derives_pcr: 0
+  derives_iv: 0
+  derives_synthetic: 0
+  pcr_strikes_each_side: null
 - symbol: NATURALGAS
   exchange: MCX
   index_symbol: null
@@ -68,6 +92,12 @@
   straddle_max_premium_diff: 25
   contract_multiplier: 1250
   hedge_strike_rounding_multiple: 0
+  display_order: 12
+  derives_straddle: 0
+  derives_pcr: 0
+  derives_iv: 0
+  derives_synthetic: 0
+  pcr_strikes_each_side: null
 - symbol: NIFTY
   exchange: NSE
   index_symbol: NIFTY 50
@@ -82,6 +112,12 @@
   straddle_max_premium_diff: 25
   contract_multiplier: 1
   hedge_strike_rounding_multiple: 0
+  display_order: 1
+  derives_straddle: 1
+  derives_pcr: 1
+  derives_iv: 1
+  derives_synthetic: 1
+  pcr_strikes_each_side: 10
 - symbol: SENSEX
   exchange: BSE
   index_symbol: SENSEX
@@ -96,6 +132,12 @@
   straddle_max_premium_diff: 25
   contract_multiplier: 1
   hedge_strike_rounding_multiple: 500
+  display_order: 2
+  derives_straddle: 1
+  derives_pcr: 1
+  derives_iv: 1
+  derives_synthetic: 1
+  pcr_strikes_each_side: 10
 - symbol: SILVER
   exchange: MCX
   index_symbol: null
@@ -110,3 +152,9 @@
   straddle_max_premium_diff: 25
   contract_multiplier: 30
   hedge_strike_rounding_multiple: 0
+  display_order: 10
+  derives_straddle: 0
+  derives_pcr: 0
+  derives_iv: 0
+  derives_synthetic: 0
+  pcr_strikes_each_side: null

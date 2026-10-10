@@ -59,10 +59,18 @@ export interface IndexSymbol {
   exchange: string;
   symbol: string;
   referenceSymbol: string;
+  /** Whichever instrument actually carries this index's price. */
   fullSymbol: string;
   straddleSymbol: string;
   fullStraddleSymbol: string;
+  /** True when the price comes from a future because no level is published. */
   isFutures: boolean;
+  /** Whether a cash index exists at all. False on MCX. */
+  hasSpot: boolean;
+  /** The cash index, when there is one — for a chart overlay. */
+  fullSpotSymbol: string | null;
+  /** The near-month future, when the master lists one. */
+  fullFuturesSymbol: string | null;
 }
 
 export interface IndicesResponse {
@@ -222,11 +230,82 @@ export const mdSignalOutputsApi = {
 
 // ============ History API ============
 
+/**
+ * The engine's wire shape for a candle.
+ *
+ * Prices cross as **strings** and the timestamp as an ISO instant. That is
+ * deliberate on the engine's side: it holds prices as exact decimals and JSON
+ * has only floats, so serialising a number is where 123.45 quietly becomes
+ * 123.44999999999999. A chart can only draw floats, so the conversion happens
+ * here, once, at the boundary -- rather than in every component.
+ */
+interface WireCandle {
+  tradingSymbol: string;
+  timestamp: string;
+  open: string | null;
+  high: string | null;
+  low: string | null;
+  close: string | null;
+  volume: number | null;
+}
+
+/**
+ * Minutes east of UTC that the Console draws its time axes in.
+ *
+ * Every venue garuda supports -- NSE, BSE, MCX -- trades on this clock, so one
+ * number covers them all. It becomes a per-venue lookup the day a venue in
+ * another zone is added; until then a second rule would be untested weight.
+ */
+const DISPLAY_ZONE_MINUTES = 330; // IST
+
+/**
+ * An instant, as the epoch that *reads* as its Indian wall-clock time.
+ *
+ * Lightweight-charts renders its axis in UTC and offers no timezone, so a
+ * chart that should show 09:15 IST has to be handed the epoch that is 09:15
+ * in UTC.
+ *
+ * **One fixed zone, not each string's own offset.** The engine stamps candles
+ * in the venue's zone (`+05:30`) and ticks in UTC (`+00:00`) -- the same
+ * instant, written two ways. Shifting each by the offset it happens to carry
+ * puts them five and a half hours apart, which is exactly far enough that the
+ * live price matches no candle on the chart and silently never appears.
+ */
+export function wallClockEpochMs(iso: string): number {
+  return new Date(iso).getTime() + DISPLAY_ZONE_MINUTES * 60_000;
+}
+
+/** One wire candle as the chart wants it, or null when it is incomplete. */
+function toCandle(wire: WireCandle): OHLCCandle | null {
+  const values = [wire.open, wire.high, wire.low, wire.close].map((v) =>
+    v === null ? NaN : Number(v),
+  );
+  if (!values.every(Number.isFinite)) return null;
+  const [open, high, low, close] = values;
+  return {
+    tradingSymbol: wire.tradingSymbol,
+    timestamp: wallClockEpochMs(wire.timestamp),
+    open,
+    high,
+    low,
+    close,
+    volume: wire.volume ?? 0,
+  };
+}
+
+function toCandles(wire: WireCandle[]): OHLCCandle[] {
+  return wire.map(toCandle).filter((c): c is OHLCCandle => c !== null);
+}
+
 export const mdHistoryApi = {
   getHistory: (params: HistoryParams) =>
-    api.get<OHLCCandle[]>(MD.HISTORY, params as unknown as Record<string, unknown>),
+    api
+      .get<WireCandle[]>(MD.HISTORY, params as unknown as Record<string, unknown>)
+      .then(toCandles),
   getStraddleHistory: (params: HistoryParams) =>
-    api.get<OHLCCandle[]>(MD.STRADDLE_HISTORY, params as unknown as Record<string, unknown>),
+    api
+      .get<WireCandle[]>(MD.STRADDLE_HISTORY, params as unknown as Record<string, unknown>)
+      .then(toCandles),
 };
 
 // ============ Helper ============
