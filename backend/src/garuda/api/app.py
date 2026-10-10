@@ -34,6 +34,7 @@ from garuda.api.routers import (
     special_trading_days,
     symbols,
     ticker,
+    trading_clients,
     universes,
 )
 from garuda.api.tokens import issue, read
@@ -63,6 +64,7 @@ def create_app(
     settings: Settings | None = None,
     engine: Any = None,
     reload_symbols: Any = None,
+    reload_sessions: Any = None,
 ) -> FastAPI:
     """The application, and the one identity that signs in to it.
 
@@ -100,6 +102,9 @@ def create_app(
     # asking whether the attribute exists.
     app.state.engine = engine
     app.state.reload_symbols = reload_symbols
+    # Same idea as ``reload_symbols``: a login writes a session row, and the
+    # engine's resolver re-reads it rather than learning of it at restart.
+    app.state.reload_sessions = reload_sessions
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(DEV_ORIGINS),
@@ -193,9 +198,9 @@ def create_app(
     app.include_router(event_days.build(sessions))
     app.include_router(symbols.build(sessions))
     app.include_router(universes.build(sessions, LiveClock()))
-    app.include_router(
-        data_providers.build(sessions, SecretBox(config.secret_key.get_secret_value()), LiveClock())
-    )
+    secrets = SecretBox(config.secret_key.get_secret_value())
+    app.include_router(trading_clients.build(sessions, secrets, LiveClock()))
+    app.include_router(data_providers.build(sessions, secrets, LiveClock()))
     # One socket for everything the Console streams. Registered whether or not
     # an engine is attached: without one it accepts, says there are no prices
     # and closes, which is a far clearer answer than a route that is not there.

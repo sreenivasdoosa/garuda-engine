@@ -21,6 +21,7 @@ import {
   BsGraphUp,
   BsLightning,
   BsListUl,
+  BsPersonBadge,
   BsPlayCircle,
   BsPlug,
   BsShieldCheck,
@@ -77,9 +78,10 @@ export const NAV_SECTIONS: NavSection[] = [
   {
     title: 'Accounts',
     items: [
+      { path: '/console/trading-clients', label: 'Trading Clients', icon: BsPersonBadge },
+      { path: '/console/brokers', label: 'Brokers', icon: BsBank },
       { path: '/console/broker-config', label: 'Broker Config', icon: BsGear },
       { path: '/console/broker-instruments', label: 'Broker Instruments', icon: BsFileEarmarkText },
-      { path: '/console/brokers', label: 'Trading Clients', icon: BsBank },
     ],
   },
   {

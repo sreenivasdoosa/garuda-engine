@@ -26,6 +26,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from garuda.api.envelope import ok
 from garuda.api.routers.ticker import renew_after_login
+from garuda.api.routers.trading_clients import complete_login
+from garuda.domain.errors import DomainError
 from garuda.marketdata.providers.auth import (
     REDIRECT_PROVIDERS,
     ProviderLoginError,
@@ -121,6 +123,7 @@ def build(
     clock: Clock,
     *,
     console_url: str = "/console/data-providers",
+    trading_clients_url: str = "/console/trading-clients",
     xts_base_url: str = "",
 ) -> APIRouter:
     router = APIRouter(tags=["data-providers"])
@@ -540,6 +543,8 @@ def build(
         """
         name = provider.strip().lower()
         supplied = request_token or auth_code or tokenId or code or ""
+        if owner != "provider":
+            return await _trading_client_callback(request, db, name, owner, supplied)
         row = await DataProvidersRepository(db).get(name)
         if row is None:
             return RedirectResponse(f"{console_url}?login={name}&error=not+configured")
@@ -553,7 +558,6 @@ def build(
             detail = getattr(error, "detail", None) or str(error)
             return RedirectResponse(f"{console_url}?login={name}&error={detail}")
 
-        del owner  # the path segment identifies the app; the row is the record
         await _store(db, name, session_out.access_token, session_out.client_id)
         await db.commit()
         # Before the redirect, so the Console reloads onto a feed that is
@@ -561,5 +565,30 @@ def build(
         # nothing on the old.
         await _renew_feed(request, name, "completed its login")
         return RedirectResponse(f"{console_url}?login={name}&ok=1")
+
+    async def _trading_client_callback(
+        request: Request, db: AsyncSession, broker: str, trading_client_id: str, code: str
+    ) -> RedirectResponse:
+        """The owner is a trading client: the session is its, not a provider's.
+
+        A provider that borrows this account's credentials reads this very
+        session, which is why the login is stored once, against the account.
+        Storing it as a provider session instead -- which is what this did --
+        left the Data Providers page reporting the account logged out while
+        a token nothing read sat in the other table.
+        """
+        row = await TradingClientsRepository(db).get(trading_client_id)
+        where = f"{trading_clients_url}?login={broker}"
+        if row is None:
+            return RedirectResponse(f"{where}&error={trading_client_id}+is+not+a+trading+client")
+        try:
+            await complete_login(db, row, code, clock=clock, secrets=secrets)
+        except (ProviderLoginError, DomainError, HTTPException) as error:
+            detail = getattr(error, "detail", None) or str(error)
+            return RedirectResponse(f"{where}&error={detail}")
+        # The engine re-reads its sessions and replaces the feed, in the
+        # background; the page polls and sees it come up.
+        await _renew_feed(request, broker, f"({row.display_name}) completed its login")
+        return RedirectResponse(f"{where}&ok=1&client={row.id}")
 
     return router

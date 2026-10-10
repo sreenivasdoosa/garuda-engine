@@ -602,6 +602,14 @@ export const API_ENDPOINTS = {
   },
 
   // Data providers: who supplies ticks, quotes and candles.
+  // Trading clients: the accounts orders go to. Served.
+  TRADING_CLIENTS: {
+    LIST: '/api/trading-clients',
+    DETAILS: (id: string) => `/api/trading-clients/${encodeURIComponent(id)}`,
+    LOGIN: (id: string) => `/api/trading-clients/${encodeURIComponent(id)}/login`,
+    LOGOUT: (id: string) => `/api/trading-clients/${encodeURIComponent(id)}/logout`,
+  },
+
   DATA_PROVIDERS: {
     BASE: '/api/data-providers',
     LIST: '/api/data-providers',

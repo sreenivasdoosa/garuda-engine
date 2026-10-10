@@ -31,9 +31,14 @@ from garuda.persistence.uow import UnitOfWork
 logger = logging.getLogger(__name__)
 
 
-@dataclass(frozen=True)
+@dataclass
 class DataProviders:
-    """Every configured provider, with its credentials and session resolved."""
+    """Every configured provider, with its credentials and session resolved.
+
+    Mutable in one way only: :meth:`replace` takes a fresh reading whole, so
+    a login made in the Console reaches the adapters that read this without
+    a restart.
+    """
 
     configured: Mapping[str, ProviderCredentials]
     sessions: Mapping[str, ProviderSession]
@@ -41,6 +46,11 @@ class DataProviders:
     #: dropped so the Console can show the reason instead of the provider
     #: merely being absent.
     unusable: Mapping[str, str]
+
+    def replace(self, fresh: DataProviders) -> None:
+        self.configured = dict(fresh.configured)
+        self.sessions = dict(fresh.sessions)
+        self.unusable = dict(fresh.unusable)
 
     def credentials_for(self, provider: str) -> ProviderCredentials:
         found = self.configured.get(provider)

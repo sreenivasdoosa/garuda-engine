@@ -22,6 +22,7 @@ from garuda.composition.data_providers import DataProviders
 from garuda.composition.engine import Engine, build_engine
 from garuda.composition.venues import Venues
 from garuda.core.clock import ReplayClock
+from garuda.domain.session import BrokerSession
 from garuda.marketdata.providers.catalogues import CatalogueHolder
 from garuda.marketdata.providers.credentials import ProviderCredentials, ProviderSession
 from garuda.marketdata.providers.registry import ADAPTERS, ProviderAdapters, register
@@ -316,3 +317,110 @@ def test_a_borrowed_providers_whitelisted_address_is_honoured(
 
     [history] = built
     assert history["static_ip"] == "10.1.2.3"
+
+
+class TestTheSessionFollowsTheLogin:
+    """A token written by the Console reaches the feed without a restart."""
+
+    async def test_a_re_login_reaches_the_next_connect(
+        self,
+        built: Built,
+        sessions: async_sessionmaker[AsyncSession],
+        venues: Venues,
+        clock: ReplayClock,
+        connector: Connector,
+    ) -> None:
+        resolver = resolver_for(
+            [account(APPA, "AB1234", market_data=True)], {APPA: session("AB1234")}
+        )
+        engine = build_engine(
+            sessions=sessions,
+            resolver=resolver,
+            venues=venues,
+            clock=clock,
+            now=NOW,
+            connector=connector,
+            catalogues=CatalogueHolder(),
+        )
+        service = engine.parts.market_data
+        assert service is not None
+        await service.start()
+        assert [entry["access_token"] for entry in built if entry["provider"] == "zerodha"][
+            -1:
+        ] == ["tok"]
+
+        # The operator logs in again from the Console, and the engine re-reads.
+        resolver.replace(
+            {APPA: account(APPA, "AB1234", market_data=True)},
+            {APPA: BrokerSession(client_id="AB1234", access_token="fresh", created_at=NOW)},
+        )
+        await service.reconnect("logged in again")
+        await service.stop()
+
+        # The monitor may have retried in between; what matters is that every
+        # connect before the re-login carried the old token and the one after
+        # it carries the new.
+        tokens = [entry["access_token"] for entry in built if "connector" in entry]
+        assert tokens[-1] == "fresh"
+        assert set(tokens[:-1]) == {"tok"}
+
+    async def test_a_nominated_provider_that_has_not_logged_in_falls_back_to_the_accounts_broker(
+        self,
+        built: Built,
+        sessions: async_sessionmaker[AsyncSession],
+        venues: Venues,
+        clock: ReplayClock,
+        connector: Connector,
+    ) -> None:
+        """A Dhan row that has not logged in falls back to a Zerodha account,
+        and that account's token must open a Zerodha socket -- not a Dhan one
+        handed a token it cannot use."""
+        engine = build(
+            sessions=sessions,
+            venues=venues,
+            clock=clock,
+            connector=connector,
+            active_ticker="dhan",
+            data_providers=provider_row("dhan", logged_in=False),
+        )
+        service = engine.parts.market_data
+        assert service is not None
+        await service.start()
+        await service.stop()
+
+        feeds = [entry for entry in built if "connector" in entry]
+        assert feeds, "a connect was attempted"
+        assert {entry["provider"] for entry in feeds} == {"zerodha"}
+        assert {entry["access_token"] for entry in feeds} == {"tok"}
+
+    async def test_nobody_logged_in_at_build_still_leaves_a_feed_to_log_in_to(
+        self,
+        built: Built,
+        sessions: async_sessionmaker[AsyncSession],
+        venues: Venues,
+        clock: ReplayClock,
+        connector: Connector,
+    ) -> None:
+        """The service exists; connecting fails cleanly until a login lands."""
+        resolver = resolver_for([account(APPA, "AB1234", market_data=True)], {})
+        engine = build_engine(
+            sessions=sessions,
+            resolver=resolver,
+            venues=venues,
+            clock=clock,
+            now=NOW,
+            connector=connector,
+            catalogues=CatalogueHolder(),
+        )
+        service = engine.parts.market_data
+        assert service is not None
+        assert await service.start() is False
+        assert [entry for entry in built if "connector" in entry] == []
+
+        resolver.replace(
+            {APPA: account(APPA, "AB1234", market_data=True)},
+            {APPA: BrokerSession(client_id="AB1234", access_token="fresh", created_at=NOW)},
+        )
+        await service.reconnect("logged in")
+        await service.stop()
+        assert [entry["access_token"] for entry in built if "connector" in entry] == ["fresh"]

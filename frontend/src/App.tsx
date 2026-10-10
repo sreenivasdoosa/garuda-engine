@@ -55,6 +55,7 @@ import TradeAnalytics from '@/features/shared/analytics/TradeAnalytics';
 
 // Market data and terminal
 import { DataProvidersPage } from '@/features/market-data/data-providers';
+import { TradingClientsPage } from '@/features/shared/trading-clients';
 import { LiveFeedPage } from '@/features/market-data/live-feed';
 import TerminalPage from '@/features/terminal/TerminalPage';
 
@@ -100,6 +101,7 @@ function App() {
         <Route path="/console" element={<SetupGuide />} />
 
         {/* Accounts */}
+        <Route path="/console/trading-clients" element={<TradingClientsPage />} />
         <Route path="/console/brokers" element={<BrokersPage />} />
         <Route path="/console/broker-config" element={<BrokerConfigPage />} />
         <Route path="/console/broker-instruments" element={<BrokerInstrumentsPage />} />

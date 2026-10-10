@@ -16,7 +16,9 @@ button exists for the day the day model would not start the feed by itself.
 is wrong in a way no staleness rule can see, and a button that re-reads the
 cache on such a morning is a button that does nothing.
 
-**A login refreshes the masters before replacing the feed.** The reference
+**A login re-reads the sessions, refreshes the masters, then replaces the
+feed.** The engine keeps its own copy of every broker session, so a token
+written by the Console reaches it only when told to look. The reference
 calls this "login first": a session coming alive is the moment to make sure
 today's file is loaded, because a login after the open is exactly the case
 where DAY_INIT could not load it. It runs in the background, so the browser
@@ -163,10 +165,18 @@ def renew_after_login(app: Starlette, provider: str, why: str) -> asyncio.Task[N
         return None
     downloads: InstrumentDownloads | None = getattr(parts, "downloads", None)
     service: MarketDataService | None = getattr(parts, "market_data", None)
-    if downloads is None and service is None:
+    reload_sessions = getattr(app.state, "reload_sessions", None)
+    if downloads is None and service is None and reload_sessions is None:
         return None
 
     async def renew() -> None:
+        # The sessions first: the feed about to be built reads its token from
+        # the engine's own copy of them, not from the database.
+        if reload_sessions is not None:
+            try:
+                await reload_sessions()
+            except Exception:
+                logger.exception("could not re-read the broker sessions after %s %s", provider, why)
         if downloads is not None:
             try:
                 for status in await downloads.refresh_all():

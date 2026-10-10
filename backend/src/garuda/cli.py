@@ -29,7 +29,7 @@ from garuda.brokers.sessions import Credentials, SessionResolver, SessionUnavail
 from garuda.brokers.websocket import websocket_connector
 from garuda.capital import CapitalLotAllocator, Sizer
 from garuda.capital.event_days import EventDays
-from garuda.composition.accounts import build_resolver
+from garuda.composition.accounts import build_resolver, load_accounts, load_sessions
 from garuda.composition.catalogues import CatalogueLoad, build_catalogue_loads
 from garuda.composition.data_providers import (
     DataProviders,
@@ -192,6 +192,21 @@ async def _serve_with_engine(settings: Settings, host: str | None, port: int | N
             catalogue_loads=assembled.catalogue_loads,
         )
 
+        async def reload_sessions() -> None:
+            """Re-read the trading clients, their sessions and the providers.
+
+            A login in the Console writes rows; the engine's resolver and
+            provider table are copies read at build. Swapping their contents
+            is what lets the next feed connect carry the token issued a
+            moment ago rather than the one the engine started with.
+            """
+            accounts = await load_accounts(assembled.sessions)
+            broker_sessions = await load_sessions(assembled.sessions, assembled.secrets)
+            assembled.resolver.replace(accounts, broker_sessions)
+            assembled.providers.replace(
+                await load_data_providers(assembled.sessions, assembled.secrets, assembled.resolver)
+            )
+
         async def reload_symbols() -> None:
             """Re-read the Symbols page into the engine's book.
 
@@ -209,6 +224,7 @@ async def _serve_with_engine(settings: Settings, host: str | None, port: int | N
                     settings,
                     engine=assembled.engine,
                     reload_symbols=reload_symbols,
+                    reload_sessions=reload_sessions,
                 ),
                 host=host or settings.host,
                 port=port or settings.port,
@@ -300,6 +316,7 @@ async def _build(settings: Settings, clock: Clock) -> _Assembled:
         venues=venues,
         loader=loader,
         resolver=resolver,
+        secrets=secrets,
         symbols=symbols,
         strategies=strategies,
         market_data=market_data,
@@ -319,6 +336,9 @@ class _Assembled:
     venues: Venues
     loader: InstrumentLoader
     resolver: SessionResolver
+    #: What opens every stored credential, kept so a login made while the
+    #: engine runs can be read the same way the ones at startup were.
+    secrets: SecretBox
     symbols: SymbolBook
     strategies: Loaded
     #: Whose session fetches history, when one is nominated.

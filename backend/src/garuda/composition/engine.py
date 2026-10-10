@@ -51,11 +51,11 @@ from garuda.domain.alert import Alert
 from garuda.domain.client import TradingClientId
 from garuda.domain.exchange import Exchange
 from garuda.domain.instrument import Instrument, InstrumentId
-from garuda.domain.market import PriceBand, Tick
+from garuda.domain.market import Bar, BarInterval, PriceBand, Tick
 from garuda.domain.order import BrokerOrderId, ClientOrderId
 from garuda.domain.trade import Trade
 from garuda.marketdata.downloads import InstrumentDownloads
-from garuda.marketdata.history import CandleCache
+from garuda.marketdata.history import CandleCache, HistorySource
 from garuda.marketdata.hub import TickHub
 from garuda.marketdata.loader import InstrumentRegistryHolder
 from garuda.marketdata.providers.catalogues import CatalogueHolder
@@ -335,7 +335,7 @@ def _build_market_data(
     catalogues: CatalogueHolder,
     hub: TickHub,
     clock: Clock,
-    now: datetime,
+    _now: datetime,
     connector: Connector,
     active_ticker: str | None,
     data_providers: DataProviders | None,
@@ -344,28 +344,37 @@ def _build_market_data(
 ) -> MarketDataService | None:
     """The feed, from whichever provider the operator nominated for ticks.
 
-    None when nothing is nominated or the nominated one has not logged in.
-    That is a real state rather than a failure to build: the engine still
-    starts, and the operator is told plainly that nothing has prices.
+    None when nothing is nominated at all, or the nominated provider has no
+    feed adapter. That is a real state rather than a failure to build: the
+    engine still starts, and the operator is told plainly that nothing has
+    prices.
+
+    **Who is logged in is decided when the socket is opened, not here.** The
+    resolver and the provider table are re-read after every login the Console
+    makes, and the supervisor calls ``open_feed`` on every connect, so a
+    token issued at ten reaches the feed at ten. Resolving once at build --
+    which is what this did -- meant a feed that carried the token the engine
+    started with, forever, and a login that changed nothing until a restart.
     """
-    resolved = _provider_for(
-        resolver,
-        instruments,
-        catalogues,
-        clock,
-        connector,
-        now,
-        active_ticker,
-        data_providers,
-        master_broker,
-        "ticks",
-    )
-    if resolved is None:
+    nominated = active_ticker
+    if not nominated:
+        chosen = resolver.market_data_client()
+        if chosen is not None and resolver.account(chosen).enabled:
+            # Disabled means disabled for everything, prices included. That
+            # is a configuration the operator made, not a morning state, so
+            # it is honoured here rather than retried at every connect.
+            nominated = resolver.account(chosen).broker.lower()
+        elif chosen is not None:
+            logger.warning("no ticks: %s is disabled", resolver.account(chosen).label)
+    if not nominated:
+        logger.warning(
+            "no ticks: nothing is nominated for market data; choose a provider on the Data "
+            "Providers page or mark a trading client as the market data source"
+        )
         return None
-    provider, context = resolved
 
     try:
-        build_feed = feed_factory(provider)
+        feed_factory(nominated)
     except ProviderUnsupportedError as error:
         # Configured, possibly logged in, and unable to carry ticks. Saying so
         # by name is the difference between a fixable setting and what would
@@ -374,7 +383,25 @@ def _build_market_data(
         return None
 
     async def open_feed() -> MarketDataFeed:
-        return build_feed(**context.as_kwargs())
+        resolved = _provider_for(
+            resolver,
+            instruments,
+            catalogues,
+            clock,
+            connector,
+            clock.now(),
+            active_ticker,
+            data_providers,
+            master_broker,
+            "ticks",
+        )
+        if resolved is None:
+            raise SessionUnavailableError(
+                "no provider is logged in for ticks; log in on the Data Providers or the "
+                "Trading Clients page"
+            )
+        provider, context = resolved
+        return feed_factory(provider)(**context.as_kwargs())
 
     def any_market_open(at: datetime) -> bool:
         """Whether anything is meant to be quoting right now.
@@ -390,7 +417,7 @@ def _build_market_data(
         hub,
         FeedSupervisor(hub, open_feed, clock, market_is_open=any_market_open),
         clock,
-        provider=provider,
+        provider=nominated,
     )
 
 
@@ -458,7 +485,10 @@ def _provider_for(
         logger.warning("no %s: %s", purpose, error)
         return None
 
-    provider = active or credentials.broker.lower()
+    # The account's own broker, never the nominated name: a Dhan row that has
+    # not logged in falls back to a Zerodha account, and that account's token
+    # opens a Zerodha socket, not a Dhan one.
+    provider = credentials.broker.lower()
     quote_gate, history_gate = gates(0, 0, clock)
     return provider, ProviderContext(
         provider=provider,
@@ -505,6 +535,21 @@ def _build_candles(
     Built here rather than above the engine because it needs the instrument
     registry, which the engine holds and replaces whole every morning.
     """
+
+    def resolve() -> tuple[str, ProviderContext] | None:
+        return _provider_for(
+            resolver,
+            instruments,
+            catalogues,
+            clock,
+            connector,
+            clock.now(),
+            active_history,
+            data_providers,
+            master_broker,
+            "candle history",
+        )
+
     resolved = _provider_for(
         resolver,
         instruments,
@@ -518,16 +563,61 @@ def _build_candles(
         "candle history",
     )
     if resolved is None:
+        # Not built: a history source that raises on every sweep until a
+        # login would fill the log at the sweep's cadence. The cost is that
+        # candles need a restart after a login on an engine that started with
+        # no session at all; the feed does not, and that is the one that
+        # matters at the open.
         return None
-    provider, context = resolved
+    provider, _ = resolved
 
     try:
-        build_history = history_factory(provider)
+        history_factory(provider)
     except ProviderUnsupportedError as error:
         logger.error("no candle history and no indicators: %s", error)
         return None
 
-    return CandleCache(source=build_history(**context.as_kwargs()), clock=clock)
+    return CandleCache(source=_RefreshingHistory(resolve), clock=clock)
+
+
+class _RefreshingHistory:
+    """A history source that follows the session.
+
+    Built eagerly, so a built engine already holds its adapter, and rebuilt
+    on a fetch whenever the resolved token or provider has changed since --
+    which is what a re-login in the Console does. An adapter holding the
+    token it was built with would answer every candle request with "session
+    expired" from the moment the operator fixed exactly that.
+    """
+
+    def __init__(self, resolve: Callable[[], tuple[str, ProviderContext] | None]) -> None:
+        self._resolve = resolve
+        self._built: tuple[str, str, HistorySource] | None = None
+        self.current()
+
+    def current(self) -> HistorySource | None:
+        resolved = self._resolve()
+        if resolved is None:
+            return self._built[2] if self._built else None
+        provider, context = resolved
+        if (
+            self._built is not None
+            and self._built[0] == provider
+            and self._built[1] == context.access_token
+        ):
+            return self._built[2]
+        adapter: HistorySource = history_factory(provider)(**context.as_kwargs())
+        self._built = (provider, context.access_token, adapter)
+        logger.info("candle history now answered by %s", provider)
+        return adapter
+
+    async def fetch(
+        self, instrument: InstrumentId, interval: BarInterval, start: datetime, end: datetime
+    ) -> Sequence[Bar]:
+        adapter = self.current()
+        if adapter is None:
+            raise SessionUnavailableError("no provider is logged in for candle history")
+        return await adapter.fetch(instrument, interval, start, end)
 
 
 def _build_client(

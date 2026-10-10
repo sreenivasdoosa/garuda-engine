@@ -106,6 +106,21 @@ class SessionResolver:
     def accounts(self) -> Sequence[Account]:
         return list(self._accounts.values())
 
+    def replace(
+        self,
+        accounts: Mapping[TradingClientId, Account],
+        sessions: Mapping[TradingClientId, BrokerSession],
+    ) -> None:
+        """Take a fresh reading of the tables, whole.
+
+        Whole rather than merged: an account deleted in the Console has to
+        disappear, and a session the operator logged out of has to stop
+        answering. Everything holding this resolver sees the change at once,
+        which is the point of swapping contents rather than instances.
+        """
+        self._accounts = dict(accounts)
+        self._sessions = dict(sessions)
+
     def configured(self, trading_client: TradingClientId) -> Account | None:
         """The account, or None. For callers that treat absence as an answer
         rather than as a failure -- a data provider naming a deleted client
