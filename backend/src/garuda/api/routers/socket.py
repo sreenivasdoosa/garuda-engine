@@ -14,6 +14,10 @@ when it wakes, not a queue of ten thousand stale ones. The reference engine
 froze its entire summary broadcaster on one half-dead client, which is the
 failure this shape exists to avoid.
 
+**The Terminal channel is summaries and alerts.** Every account's standing
+is recomputed from the engine's book every few seconds and only the rows
+that changed are sent; an alert is sent the moment it is raised.
+
 **Reading and writing are separate tasks.** A client that never sends another
 frame must still receive; a client that floods must not block the sender. They
 meet only at the socket closing, which cancels both.
@@ -26,12 +30,15 @@ import contextlib
 import json
 import logging
 from collections.abc import Iterable
+from datetime import timedelta
 from decimal import Decimal
 from typing import Any
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect, status
 
+from garuda.api.routers.terminal import alert_wire, summary_wire
 from garuda.api.tokens import read
+from garuda.domain.alert import Alert
 from garuda.domain.market import Tick
 from garuda.protocols.topics import Topic
 
@@ -46,6 +53,25 @@ CHANNELS = frozenset({TICKS, TERMINAL})
 #: How long to wait for the engine before answering that there are no prices.
 #: Nothing is retried: the Console reconnects on its own schedule.
 _SEND_TIMEOUT_SECONDS = 5.0
+
+#: How often the Terminal's summaries are recomputed and compared. The
+#: reference's broadcaster ran at this cadence.
+SUMMARY_INTERVAL = timedelta(seconds=2.5)
+
+
+def _summaries(view: Any) -> list[dict[str, Any]]:
+    try:
+        return [summary_wire(row) for row in view.summaries()]
+    except Exception:
+        logger.exception("the terminal summaries could not be computed")
+        return []
+
+
+def _without_time(row: dict[str, Any] | None) -> dict[str, Any] | None:
+    """A row minus its timestamp, for telling a change from a tick of the clock."""
+    if row is None:
+        return None
+    return {key: value for key, value in row.items() if key != "asOf"}
 
 
 def tick_payload(tick: Tick) -> dict[str, Any]:
@@ -161,7 +187,57 @@ def build(secret: str) -> APIRouter:
                         continue
                     await websocket.send_json(tick_payload(tick))
 
-        await _until_either_ends(listen(), stream(), who=clientId)
+        view = getattr(websocket.app.state, "terminal", None)
+
+        async def summaries() -> None:
+            """Push the Terminal's summaries: all of them first, then what changed.
+
+            On the reference's cadence. Computed from the engine's book, which
+            is in this process, so a pass costs a walk over the trades and
+            nothing else; sending only the rows that changed keeps a quiet
+            afternoon quiet.
+            """
+            sent: dict[str, Any] = {}
+            while True:
+                if TERMINAL in channels:
+                    rows = {row["tradingClientId"]: row for row in _summaries(view)}
+                    if not sent:
+                        await websocket.send_json(
+                            {"type": "full", "terminalSummaries": list(rows.values())}
+                        )
+                    else:
+                        changed = [
+                            row
+                            for key, row in rows.items()
+                            if _without_time(sent.get(key)) != _without_time(row)
+                        ]
+                        if changed:
+                            await websocket.send_json(
+                                {"type": "delta", "terminalSummaries": changed}
+                            )
+                    sent = rows
+                else:
+                    # Unsubscribed: the next subscribe starts with a full set.
+                    sent = {}
+                await engine.parts.clock.sleep(SUMMARY_INTERVAL)
+
+        async def alerts() -> None:
+            """Push every alert as it is raised, while the Terminal listens."""
+            async with engine.parts.bus.subscribe(
+                Topic.ALERTS, name=f"socket-alerts:{clientId}"
+            ) as raised:
+                async for alert in raised:
+                    if TERMINAL not in channels or not isinstance(alert, Alert):
+                        continue
+                    await websocket.send_json({"type": "alert", "alert": alert_wire(alert)})
+
+        # The Terminal's two tasks only when there is a view to read. A task
+        # that returned at once would end the whole socket: the joiner cancels
+        # the rest when the first finishes.
+        halves = [listen(), stream()]
+        if view is not None:
+            halves += [summaries(), alerts()]
+        await _until_either_ends(*halves, who=clientId)
         logger.info("socket: %s disconnected", clientId or "a console")
 
     return router

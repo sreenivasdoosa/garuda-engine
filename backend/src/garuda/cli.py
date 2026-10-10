@@ -47,6 +47,7 @@ from garuda.composition.runtime import Runtime, start
 from garuda.composition.strategies import Loaded, load_strategies
 from garuda.composition.strategy_context import MarketView
 from garuda.composition.strategy_loop import StrategyLoop, deliver_for
+from garuda.composition.terminal import TerminalView
 from garuda.composition.venues import Venues, load_venues
 from garuda.composition.watchlist import Watchlist
 from garuda.config.settings import Settings, load_settings
@@ -243,6 +244,7 @@ async def _serve_with_engine(settings: Settings, host: str | None, port: int | N
                     reload_symbols=reload_symbols,
                     reload_sessions=reload_sessions,
                     reload_protection=reload_protection,
+                    terminal_view=TerminalView(assembled.engine, clock),
                 ),
                 host=host or settings.host,
                 port=port or settings.port,

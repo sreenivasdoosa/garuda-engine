@@ -35,6 +35,7 @@ from garuda.api.routers import (
     socket,
     special_trading_days,
     symbols,
+    terminal,
     ticker,
     trading_clients,
     universes,
@@ -68,6 +69,7 @@ def create_app(
     reload_symbols: Any = None,
     reload_sessions: Any = None,
     reload_protection: Any = None,
+    terminal_view: Any = None,
 ) -> FastAPI:
     """The application, and the one identity that signs in to it.
 
@@ -111,6 +113,9 @@ def create_app(
     # And the Broker Config page: a row written there is read by the next
     # order, not the next restart.
     app.state.reload_protection = reload_protection
+    # The Terminal reads the engine's book through this; built above the API
+    # because it knows the engine's parts, which this layer may not.
+    app.state.terminal = terminal_view
     app.add_middleware(
         CORSMiddleware,
         allow_origins=list(DEV_ORIGINS),
@@ -214,6 +219,7 @@ def create_app(
     # and closes, which is a far clearer answer than a route that is not there.
     app.include_router(market_data.build(sessions, LiveClock()))
     app.include_router(ticker.build())
+    app.include_router(terminal.build())
     app.include_router(socket.build(secret))
 
     return app

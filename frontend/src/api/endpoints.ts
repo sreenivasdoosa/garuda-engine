@@ -602,6 +602,19 @@ export const API_ENDPOINTS = {
   },
 
   // Data providers: who supplies ticks, quotes and candles.
+  // The Terminal as garuda serves it: per trading client. Served.
+  LIVE_TERMINAL: {
+    SUMMARIES: '/api/terminal/summaries',
+    ALERTS: '/api/terminal/alerts',
+    DETAILS: (id: string) => `/api/terminal/clients/${encodeURIComponent(id)}`,
+    BROKER_POSITIONS: (id: string) =>
+      `/api/terminal/clients/${encodeURIComponent(id)}/broker-positions`,
+    MARGINS: (id: string) => `/api/terminal/clients/${encodeURIComponent(id)}/margins`,
+    SQUARE_OFF: (id: string) => `/api/terminal/clients/${encodeURIComponent(id)}/square-off`,
+    SQUARE_OFF_TRADE: (id: string, tradeId: string) =>
+      `/api/terminal/clients/${encodeURIComponent(id)}/trades/${encodeURIComponent(tradeId)}/square-off`,
+  },
+
   // Trading clients: the accounts orders go to. Served.
   TRADING_CLIENTS: {
     LIST: '/api/trading-clients',
