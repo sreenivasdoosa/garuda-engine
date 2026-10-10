@@ -38,7 +38,7 @@ import RecomputePositionalMtmPage from '@/features/admin/recompute-positional-mt
 import RunEodJobPage from '@/features/admin/run-eod-job/RunEodJobPage';
 import SpecialTradingDaysPage from '@/features/shared/exchanges/SpecialTradingDaysPage';
 import StockUniversesPage from '@/features/shared/equity-universe/StockUniversesPage';
-import StrategyConfigTreePage from '@/features/shared/strategy-config/StrategyConfigTreePage';
+import StrategyConfigPage from '@/features/shared/strategy-config/StrategyConfigPage';
 import StrategyEnginePage from '@/features/shared/strategy-engine/StrategyEnginePage';
 import StrategyPoliciesPage from '@/features/shared/strategy-config/StrategyPoliciesPage';
 import SymbolsPage from '@/features/shared/symbols/SymbolsPage';
@@ -108,7 +108,7 @@ function App() {
 
         {/* Strategy */}
         <Route path="/console/strategy-engine" element={<StrategyEnginePage />} />
-        <Route path="/console/strategy-config" element={<StrategyConfigTreePage />} />
+        <Route path="/console/strategy-config" element={<StrategyConfigPage />} />
         <Route path="/console/strategy-policies" element={<StrategyPoliciesPage />} />
         <Route path="/console/allocation-models" element={<AllocationModelsPage />} />
 

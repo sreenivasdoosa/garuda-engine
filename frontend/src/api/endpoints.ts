@@ -463,6 +463,7 @@ export const API_ENDPOINTS = {
     BASE_CONFIGS: '/api/strategy-config-tree/base',
     STRATEGY_NAMES: '/api/strategy-config-tree/strategy-names',
     EXISTS: '/api/strategy-config-tree/exists',
+    CATALOG: '/api/strategy-config-tree/catalog',
   },
 
   // V2 Strategy Policies (reusable configuration policies)
