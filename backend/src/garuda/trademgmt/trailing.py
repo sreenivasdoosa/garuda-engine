@@ -41,6 +41,7 @@ from garuda.protocols.broker import OrderChanges
 from garuda.protocols.clock import Clock
 from garuda.trademgmt.client import TradingClientManager
 from garuda.trademgmt.protective_rules import stop_order_shape, trigger_to_limit_gap
+from garuda.trademgmt.tradelog import TradeLogger
 from garuda.trademgmt.trailing_rules import (
     candle_stop,
     improves,
@@ -137,6 +138,7 @@ class TrailingService:
         *,
         market: CandleView | None = None,
         max_modifications: int = MAX_ORDER_MODIFICATIONS,
+        log: TradeLogger | None = None,
     ) -> None:
         self._book = book
         self._modify = modify_order
@@ -145,6 +147,7 @@ class TrailingService:
         self._instruments = instruments
         self._alerts = alerts
         self._clock = clock
+        self._log = log or TradeLogger(None, instruments, clock)
         self._market = market
         self._max_modifications = max_modifications
         #: When each trade's candle mode was last recomputed. See `_too_soon`.
@@ -325,6 +328,7 @@ class TrailingService:
                     TrailOutcome.HELD, trade, current, detail="no stop order to move"
                 )
             self._book.replace_trade(moved)
+            await self._log.stop_trailed(moved, current)
             logger.info(
                 "%s: %s tracked stop moved %s -> %s",
                 self._book.label,
@@ -357,6 +361,7 @@ class TrailingService:
 
         self._modifications[order_id] = sent + 1
         self._book.replace_trade(moved)
+        await self._log.stop_trailed(moved, current, order_id)
         logger.info(
             "%s: %s stop moved %s -> %s", self._book.label, trade.instrument, current, proposed
         )
@@ -407,6 +412,7 @@ class TrailingService:
                 TrailOutcome.HELD, moved, current, proposed, "the replacement did not place"
             )
 
+        await self._log.stop_trailed(moved, current, placed)
         logger.info(
             "%s: %s stop replaced at %s after %d modifications",
             self._book.label,

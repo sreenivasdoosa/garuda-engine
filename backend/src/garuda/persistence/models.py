@@ -1248,6 +1248,17 @@ class TradeLogRow(Base):
     """
 
     __tablename__ = "trade_log"
+    __table_args__ = (
+        # The reference's indexes, for the queries the page makes: one trade's
+        # timeline, the freshest events, and the log by account, strategy and
+        # category -- each ordered by time.
+        Index("ix_trade_log_trade_time", "trade_id", "event_timestamp"),
+        Index("ix_trade_log_client_time", "trading_client_id", "event_timestamp"),
+        Index("ix_trade_log_strategy_time", "strategy", "event_timestamp"),
+        Index("ix_trade_log_category_time", "event_category", "event_timestamp"),
+        Index("ix_trade_log_event_time", "event_timestamp"),
+        Index("ix_trade_log_hedge", "hedge_correlation_id"),
+    )
     trading_client_id: Mapped[str] = mapped_column(
         String(64),
         ForeignKey("trading_clients.id", ondelete="CASCADE"),

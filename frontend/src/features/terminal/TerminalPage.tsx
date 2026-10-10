@@ -27,6 +27,7 @@ import {
   BsStopCircle,
   BsTerminal,
 } from 'react-icons/bs';
+import { Link } from 'react-router-dom';
 import { Alert, Badge, Button, Card, Container, Nav, Spinner } from '@/components/ui/rbShim';
 import { BottomSlidePanel, ConfirmModal, PageHeader } from '@/components/common';
 import { useWebSocket } from '@/hooks/useWebSocket';
@@ -630,7 +631,13 @@ const TradesTable: React.FC<{ rows: TerminalTrade[]; onExit?: (tradeId: string) 
         {rows.map((t) => (
           <tr key={t.tradeId} className="border-t border-hairline">
             <td className="py-1 pr-3 font-mono text-xs">
-              {t.tradeId}
+              <Link
+                to={`/console/trade-log/${encodeURIComponent(t.tradeId)}`}
+                className="text-primary-500"
+                title="What the engine did with this trade, in order"
+              >
+                {t.tradeId}
+              </Link>
               {t.isHedge && <Badge bg="secondary" className="ms-1">hedge</Badge>}
             </td>
             <td className="py-1 pr-3 font-mono">{t.tradingSymbol}</td>

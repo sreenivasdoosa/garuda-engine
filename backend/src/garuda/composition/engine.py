@@ -76,6 +76,7 @@ from garuda.marketdata.service import MarketDataService
 from garuda.marketdata.supervisor import FeedSupervisor
 from garuda.ordermgmt.protection import MarketProtection
 from garuda.persistence.breach_store import BreachStore
+from garuda.persistence.trade_log_store import TradeLogStore
 from garuda.persistence.trade_store import TradeStore
 from garuda.persistence.uow import UnitOfWork
 from garuda.protocols.account import AccountStream
@@ -96,6 +97,7 @@ from garuda.trademgmt.protective_rules import closing_direction, opening_directi
 from garuda.trademgmt.squareoff import SquareOffService
 from garuda.trademgmt.squareoff_rules import ExitWindow
 from garuda.trademgmt.tracking import TradeTracker
+from garuda.trademgmt.tradelog import TradeLogger
 from garuda.trademgmt.trailing import TrailingService
 
 logger = logging.getLogger(__name__)
@@ -803,7 +805,12 @@ def _build_client(
         return None
 
     book = TradingClientManager(account.id, account.label, instrument, alerts)
-    tracker = TradeTracker(book, broker.cancel, clock, alerts)
+    # Every service that moves a trade writes to the same timeline, so a
+    # trade reads back in one order whichever of them acted on it.
+    trade_log = TradeLogger(
+        TradeLogStore(sessions, label=account.label), instrument, clock, label=account.label
+    )
+    tracker = TradeTracker(book, broker.cancel, clock, alerts, log=trade_log)
 
     gate = RiskGate(default_checks())
     # One tracker for the account, shared by the entry and exit placements:
@@ -854,6 +861,7 @@ def _build_client(
         segment_gap,
         clock,
         alerts,
+        log=trade_log,
     )
     square_off = SquareOffService(
         book,
@@ -865,6 +873,7 @@ def _build_client(
         is_expiry_day,
         clock,
         alerts,
+        log=trade_log,
     )
 
     async def place_replacement_stop(trade: Trade) -> BrokerOrderId | None:
@@ -885,6 +894,7 @@ def _build_client(
         alerts,
         clock,
         market=CachedCandles(candles) if candles is not None else None,
+        log=trade_log,
     )
     coordinator = LegCoordinator(book, square_off.request, alerts)
     return ClientParts(
@@ -899,6 +909,7 @@ def _build_client(
             instrument,
             clock,
             alerts,
+            log=trade_log,
         ),
         protection=protection,
         trailing=trailing,

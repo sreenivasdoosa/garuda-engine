@@ -50,6 +50,7 @@ from garuda.trademgmt.protective_rules import (
     target_defer_reason,
     trigger_to_limit_gap,
 )
+from garuda.trademgmt.tradelog import TradeLogger
 
 logger = logging.getLogger(__name__)
 
@@ -109,10 +110,12 @@ class ProtectiveOrderService:
         replacement_interval: timedelta = REPLACEMENT_INTERVAL,
         stop_alert_threshold: int = STOP_ALERT_THRESHOLD,
         max_target_attempts: int = MAX_TARGET_ATTEMPTS,
+        log: TradeLogger | None = None,
     ) -> None:
         self._book = book
         self._place = place_order
         self._instruments = instruments
+        self._log = log or TradeLogger(None, instruments, clock)
         self._last_tick = last_tick
         self._price_band = price_band
         self._segment_gap = segment_gap
@@ -194,6 +197,7 @@ class ProtectiveOrderService:
         )
         self._book.replace_trade(covered)
         self._book.link_order(order_id, trade.id)
+        await self._log.stop_placed(covered, order_id, request)
         logger.info("%s: %s covered by a stop at %s", self._book.label, trade.instrument, stop)
         return ProtectionResult(ProtectionOutcome.PLACED, covered, order_id)
 
@@ -208,6 +212,7 @@ class ProtectiveOrderService:
         attempts = trade.attempts.stop_loss_order_attempts + 1
         failed = replace(trade, attempts=replace(trade.attempts, stop_loss_order_attempts=attempts))
         self._book.replace_trade(failed)
+        await self._log.stop_rejected(failed, str(error))
 
         message = (
             f"{trade.instrument} has no stop at the broker after {attempts} attempts "
@@ -313,6 +318,12 @@ class ProtectiveOrderService:
         placed = replace(trade, attempts=replace(trade.attempts, target_order_attempts=0))
         self._book.replace_trade(placed)
         self._book.link_order(order_id, trade.id)
+        # The reference's own split: the same order is a target while the
+        # trade is held, and an exit once it is on its way out.
+        if is_exiting:
+            await self._log.exit_order_placed(placed, order_id, request)
+        else:
+            await self._log.target_placed(placed, order_id, request)
         return ProtectionResult(ProtectionOutcome.PLACED, placed, order_id)
 
     async def _target_failed(
@@ -327,6 +338,10 @@ class ProtectiveOrderService:
         attempts = trade.attempts.target_order_attempts + 1
         failed = replace(trade, attempts=replace(trade.attempts, target_order_attempts=attempts))
         self._book.replace_trade(failed)
+        if must_get_out:
+            await self._log.exit_failed(failed, str(error))
+        else:
+            await self._log.target_rejected(failed, str(error))
 
         if attempts >= self._max_target_attempts and not must_get_out:
             await self._alerts.critical(

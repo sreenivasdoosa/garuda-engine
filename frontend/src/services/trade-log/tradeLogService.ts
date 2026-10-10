@@ -7,41 +7,19 @@ import type {
   TradeLogPageResponse,
 } from '@/types/tradeLog';
 
+const E = API_ENDPOINTS.TRADE_LOG;
+
 export const tradeLogService = {
-  /**
-   * Paginated cross-trade log query with filters.
-   */
-  async getPaginated(params: TradeLogFilterParams = {}): Promise<TradeLogPageResponse> {
-    const qp = new URLSearchParams();
-    if (params.page) qp.append('page', String(params.page));
-    if (params.pageSize) qp.append('pageSize', String(params.pageSize));
-    if (params.tradeId) qp.append('tradeId', params.tradeId);
-    if (params.username) qp.append('username', params.username);
-    if (params.broker) qp.append('broker', params.broker);
-    if (params.strategy) qp.append('strategy', params.strategy);
-    if (params.tradingSymbol) qp.append('tradingSymbol', params.tradingSymbol);
-    if (params.eventCategory) qp.append('eventCategory', params.eventCategory);
-    if (params.eventType) qp.append('eventType', params.eventType);
-    if (params.startTime) qp.append('startTime', params.startTime);
-    if (params.endTime) qp.append('endTime', params.endTime);
-    if (params.search) qp.append('search', params.search);
+  /** The log across trades, freshest first, filtered and paged in SQL. */
+  getPaginated: (params: TradeLogFilterParams = {}) =>
+    api.get<TradeLogPageResponse>(
+      E.BASE,
+      Object.fromEntries(Object.entries(params).filter(([, v]) => v !== undefined && v !== '')),
+    ),
 
-    const qs = qp.toString();
-    const url = qs ? `${API_ENDPOINTS.TRADE_LOG.BASE}?${qs}` : API_ENDPOINTS.TRADE_LOG.BASE;
-    return api.get<TradeLogPageResponse>(url);
-  },
+  /** One trade's events, oldest first. */
+  getByTradeId: (tradeId: string) => api.get<TradeLogEntry[]>(E.BY_TRADE(tradeId)),
 
-  /**
-   * Full event timeline for one trade, oldest-first.
-   */
-  async getByTradeId(tradeId: string): Promise<TradeLogEntry[]> {
-    return api.get<TradeLogEntry[]>(API_ENDPOINTS.TRADE_LOG.BY_TRADE(tradeId));
-  },
-
-  /**
-   * Distinct filter option values for the dropdowns.
-   */
-  async getFilters(): Promise<TradeLogFilters> {
-    return api.get<TradeLogFilters>(API_ENDPOINTS.TRADE_LOG.FILTERS);
-  },
+  /** What the dropdowns offer. */
+  getFilters: () => api.get<TradeLogFilters>(E.FILTERS),
 };

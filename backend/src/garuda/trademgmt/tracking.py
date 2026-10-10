@@ -36,6 +36,7 @@ from garuda.protocols.account import OrderUpdate
 from garuda.protocols.broker import BrokerOrder
 from garuda.protocols.clock import Clock
 from garuda.trademgmt.client import TradingClientManager
+from garuda.trademgmt.tradelog import TradeLogger
 
 logger = logging.getLogger(__name__)
 
@@ -72,11 +73,14 @@ class TradeTracker:
         cancel_order: CancelOrder,
         clock: Clock,
         alerts: AlertManager,
+        *,
+        log: TradeLogger | None = None,
     ) -> None:
         self._book = book
         self._cancel = cancel_order
         self._clock = clock
         self._alerts = alerts
+        self._log = log or TradeLogger(None, lambda _instrument: None, clock)
 
     async def on_order_update(self, update: OrderUpdate) -> TrackResult | None:
         """Fold one order update into the trade it belongs to.
@@ -113,6 +117,7 @@ class TradeTracker:
                 filled - trade.filled_quantity, price, self._now(update)
             )
             self._book.replace_trade(entered)
+            await self._log.entry_filled(entered, update)
             logger.info(
                 "%s: %s filled %d of %d at %s",
                 self._book.label,
@@ -154,6 +159,7 @@ class TradeTracker:
             TradeExitReason.ENTRY_FAILED, self._now(update), failure_reason=reason
         )
         self._book.replace_trade(cancelled)
+        await self._log.entry_rejected(cancelled, reason, update)
 
         await self._alerts.critical(
             EntityType.ORDER,
@@ -181,6 +187,9 @@ class TradeTracker:
                     f"({update.message or 'no reason given'}). The position is UNPROTECTED.",
                     key=f"stop-rejected:{trade.id}",
                 )
+                await self._log.stop_rejected(
+                    trade, update.message or "no reason given", update.broker_order_id
+                )
             return TrackResult(TrackOutcome.UNCHANGED, trade)
 
         price = update.average_price
@@ -192,6 +201,7 @@ class TradeTracker:
         reason = self._exit_reason_for(trade, role)
         exited = trade.closed(price, reason, self._now(update))
         self._book.replace_trade(exited)
+        await self._log.trade_completed(exited, update)
 
         await self._cancel_other_protective_orders(exited, role)
         logger.info("%s: %s exited at %s on %s", self._book.label, trade.instrument, price, reason)
@@ -295,6 +305,7 @@ class TradeTracker:
             reason = "the entry order was not filled before its cut-off and was cancelled"
             cancelled = trade.cancelled(TradeExitReason.ENTRY_FAILED, now, failure_reason=reason)
             self._book.replace_trade(cancelled)
+            await self._log.entry_rejected(cancelled, reason)
             await self._orphan_the_hedge(cancelled, reason)
             results.append(TrackResult(TrackOutcome.ENTRY_FAILED, cancelled, reason))
         return results

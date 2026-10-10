@@ -5,8 +5,9 @@ import { tradeLogService } from '@/services/trade-log/tradeLogService';
 import type { TradeLogFilterParams } from '@/types/tradeLog';
 
 /**
- * Paginated trade log hook — mirrors useAlertsPage so the UI wiring is
- * familiar. Returns data + filter setters + pagination controls.
+ * The paginated trade log: data, the filter setters, and the page controls.
+ * Every filter change goes back to page one, because the page you were on
+ * is a page of a different list.
  */
 export const useTradeLogPage = (initialParams: TradeLogFilterParams = {}) => {
   const queryClient = useQueryClient();
@@ -20,6 +21,7 @@ export const useTradeLogPage = (initialParams: TradeLogFilterParams = {}) => {
     queryKey: ['trade-log', 'page', params],
     queryFn: () => tradeLogService.getPaginated(params),
     staleTime: 5000,
+    refetchInterval: 30000,
   });
 
   const filtersQuery = useQuery({
@@ -36,12 +38,9 @@ export const useTradeLogPage = (initialParams: TradeLogFilterParams = {}) => {
     setParams((prev) => ({ ...prev, pageSize, page: 1 }));
   }, []);
 
-  const setFilter = useCallback(
-    (key: keyof TradeLogFilterParams, value: string | undefined) => {
-      setParams((prev) => ({ ...prev, [key]: value, page: 1 }));
-    },
-    []
-  );
+  const setFilter = useCallback((key: keyof TradeLogFilterParams, value: string | undefined) => {
+    setParams((prev) => ({ ...prev, [key]: value || undefined, page: 1 }));
+  }, []);
 
   const setSearch = useCallback((search: string) => {
     setParams((prev) => ({ ...prev, search: search || undefined, page: 1 }));

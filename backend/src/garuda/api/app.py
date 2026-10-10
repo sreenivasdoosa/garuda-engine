@@ -40,6 +40,7 @@ from garuda.api.routers import (
     symbols,
     terminal,
     ticker,
+    trade_log,
     trading_clients,
     universes,
 )
@@ -239,6 +240,7 @@ def create_app(
     app.include_router(strategies.build(sessions, LiveClock()))
     app.include_router(strategy_config.build(sessions, LiveClock()))
     app.include_router(rms.build(sessions, LiveClock()))
+    app.include_router(trade_log.build(sessions, LiveClock()))
     app.include_router(socket.build(secret))
 
     return app

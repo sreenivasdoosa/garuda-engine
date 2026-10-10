@@ -47,6 +47,7 @@ from garuda.trademgmt.entry_rules import (
     should_place_trade,
     side_for,
 )
+from garuda.trademgmt.tradelog import TradeLogger
 
 logger = logging.getLogger(__name__)
 
@@ -121,6 +122,7 @@ class EntryService:
         *,
         is_subscribed: SubscriptionCheck | None = None,
         max_attempts: int = MAX_ENTRY_ATTEMPTS,
+        log: TradeLogger | None = None,
     ) -> None:
         self._book = book
         self._place = place_order
@@ -128,6 +130,7 @@ class EntryService:
         self._instruments = instruments
         self._clock = clock
         self._alerts = alerts
+        self._log = log or TradeLogger(None, instruments, clock)
         self._is_subscribed = is_subscribed or _always_subscribed
         self._max_attempts = max_attempts
         #: The last placement attempted per signal, so a retry can look for it.
@@ -270,6 +273,7 @@ class EntryService:
         self._book.link_order(broker_order_id, trade.id)
         self._book.replace_signal(signal.triggered())
         del self._attempts[signal.id]
+        await self._log.entry_placed(trade, broker_order_id, request)
 
         logger.info(
             "%s: entered %s %s x%d for %s as order %s",
@@ -312,6 +316,7 @@ class EntryService:
             self._book.link_order(found, trade.id)
             self._book.replace_signal(signal.triggered())
             del self._attempts[signal.id]
+            await self._log.entry_placed(trade, found, adopted=True)
             await self._alerts.warning(
                 EntityType.ORDER,
                 self._book.label,
@@ -355,6 +360,7 @@ class EntryService:
         )
         self._book.add_trade(trade)
         self._attempts.pop(signal.id, None)
+        await self._log.entry_failed(trade, reason)
 
         await self._flag_orphaned_hedge(signal, reason)
         await self._alerts.critical(

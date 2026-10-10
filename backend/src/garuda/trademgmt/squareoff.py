@@ -50,6 +50,7 @@ from garuda.trademgmt.squareoff_rules import (
     is_retry_window_closed,
     is_worthless_option_at_expiry,
 )
+from garuda.trademgmt.tradelog import TradeLogger
 
 logger = logging.getLogger(__name__)
 
@@ -131,11 +132,13 @@ class SquareOffService:
         *,
         recheck: timedelta = RECHECK_INTERVAL,
         max_placements: int = MAX_EXIT_PLACEMENTS,
+        log: TradeLogger | None = None,
     ) -> None:
         self._book = book
         self._protection = protection
         self._cancel = cancel_order
         self._instruments = instruments
+        self._log = log or TradeLogger(None, instruments, clock)
         self._last_tick = last_tick
         self._window = exit_window
         self._is_expiry_day = is_expiry_day
@@ -197,7 +200,9 @@ class SquareOffService:
         self._queue[trade.id] = SquareOffRequest(
             trade_id=trade.id, reason=reason, requested_at=now, next_eligible_at=now
         )
-        self._book.replace_trade(trade.exiting(reason))
+        leaving = trade.exiting(reason)
+        self._book.replace_trade(leaving)
+        await self._log.exit_triggered(leaving, reason)
         logger.info("%s: %s queued to exit on %s", self._book.label, trade.instrument, reason)
         return True
 
@@ -319,6 +324,7 @@ class SquareOffService:
         if trade.id in self._given_up.window_closed:
             return SquareOffResult(SquareOffOutcome.GAVE_UP, trade, request.reason)
         self._given_up.window_closed.add(trade.id)
+        await self._log.exit_failed(trade, "the window for squaring it off has closed")
 
         benign = self._will_expire_worthless(trade)
         await self._alerts.raise_alert(
@@ -346,6 +352,9 @@ class SquareOffService:
         if trade.id in self._given_up.placements_exhausted:
             return SquareOffResult(SquareOffOutcome.GAVE_UP, trade, request.reason)
         self._given_up.placements_exhausted.add(trade.id)
+        await self._log.exit_failed(
+            trade, f"{self._max_placements} exit orders were placed and none was accepted"
+        )
 
         benign = self._will_expire_worthless(trade)
         await self._alerts.raise_alert(
