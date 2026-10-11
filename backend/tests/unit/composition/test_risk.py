@@ -1104,3 +1104,105 @@ async def test_a_limit_written_after_wiring_applies_to_the_next_order(stock: Ins
         await place(an_order(quantity=100))
     await place(an_order(quantity=50))
     assert [request.quantity for request in placed] == [100, 50]
+
+
+# -- the day's row ------------------------------------------------------------
+
+
+class RememberingStats:
+    """A stand-in for the daily stats store that keeps what it was told."""
+
+    def __init__(self, *, down: bool = False) -> None:
+        self.told: list[dict[str, object]] = []
+        self.down = down
+
+    async def increment(
+        self,
+        trading_client: TradingClientId,
+        trading_symbol: str,
+        stat_date: object,
+        *,
+        is_buy: bool,
+        quantity: int,
+    ) -> bool:
+        self.told.append(
+            {
+                "client": trading_client.value,
+                "symbol": trading_symbol,
+                "day": stat_date,
+                "buy": is_buy,
+                "qty": quantity,
+            }
+        )
+        return not self.down
+
+
+def wrap_with_stats(
+    stock: Instrument, stats: RememberingStats, placed: list[OrderRequest]
+) -> PlaceOrder:
+    async def place(request: OrderRequest) -> BrokerOrderId:
+        placed.append(request)
+        return BrokerOrderId("250831000001")
+
+    return gated(
+        place,
+        gate=RiskGate(default_checks()),
+        limits=everywhere(RiskLimits()),
+        instruments=lambda instrument: stock if instrument == STOCK else None,
+        quotes=lambda instrument: a_quote(),
+        clock=ReplayClock(NOW),
+        label="Appa (zerodha:AB1234)",
+        daily_stats=stats,  # type: ignore[arg-type]
+    )
+
+
+async def test_an_order_sent_is_written_to_the_days_row(stock: Instrument) -> None:
+    stats = RememberingStats()
+    placed: list[OrderRequest] = []
+
+    await wrap_with_stats(stock, stats, placed)(an_order(quantity=25, side=Side.BUY))
+
+    assert len(placed) == 1
+    assert stats.told == [
+        {
+            "client": "appa",
+            "symbol": "RELIANCE",
+            "day": NOW.date(),
+            "buy": True,
+            "qty": 25,
+        }
+    ]
+
+
+async def test_a_refused_order_is_not_counted(stock: Instrument) -> None:
+    """Nothing left the engine, so nothing was sent."""
+    stats = RememberingStats()
+    placed: list[OrderRequest] = []
+    gate = gated(
+        _accepting(placed),
+        gate=RiskGate(default_checks()),
+        limits=everywhere(RiskLimits()),
+        instruments=lambda instrument: stock if instrument == STOCK else None,
+        quotes=lambda instrument: None,  # no price: refused
+        clock=ReplayClock(NOW),
+        label="Appa (zerodha:AB1234)",
+        daily_stats=stats,  # type: ignore[arg-type]
+    )
+
+    with pytest.raises(OrderRejectedError):
+        await gate(an_order())
+
+    assert stats.told == []
+    assert placed == []
+
+
+async def test_a_row_that_cannot_be_written_does_not_stop_the_order(
+    stock: Instrument,
+) -> None:
+    stats = RememberingStats(down=True)
+    placed: list[OrderRequest] = []
+
+    await wrap_with_stats(stock, stats, placed)(an_order())
+
+    assert len(placed) == 1
+    assert len(stats.told) == 1

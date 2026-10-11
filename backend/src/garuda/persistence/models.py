@@ -1666,6 +1666,13 @@ class RmsDailyStatsRow(Base):
     buy_qty: Mapped[int | None] = mapped_column(Integer, nullable=True)
     sell_qty: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
+    # The reference's index on (user, broker, date), as (account, date); and
+    # the day alone, which is how the page reads it.
+    __table_args__ = (
+        Index("ix_rms_daily_stats_client_date", "trading_client_id", "stat_date"),
+        Index("ix_rms_daily_stats_date", "stat_date"),
+    )
+
 
 class KillSwitchesRow(Base):
     """KILL_SWITCHES in the reference engine.

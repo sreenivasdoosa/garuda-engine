@@ -1109,6 +1109,77 @@ def build(sessions: async_sessionmaker[AsyncSession], clock: Clock) -> APIRouter
         )
 
     # Last, so a literal path above is never read as a row id.
+    # -- the day's order counts ----------------------------------------------
+
+    @router.get("/daily-stats")
+    async def daily_stats(
+        request: Request,
+        date: str | None = None,
+        tradingClientId: str | None = None,  # noqa: N803
+        db: AsyncSession = Depends(session),
+    ) -> dict[str, Any]:
+        """What each account sent on a day, per symbol, as the engine wrote it.
+
+        The reference's route: one day at a time, every account or one. Today
+        is the venue's trading day as the engine reckons it.
+        """
+        if date:
+            try:
+                day = dt.date.fromisoformat(date)
+            except ValueError:
+                raise HTTPException(
+                    status_code=400, detail=f"{date!r} is not a date (YYYY-MM-DD)"
+                ) from None
+        else:
+            day = await _today(request, db)
+        labels = await _labels(db)
+        statement = (
+            select(models.RmsDailyStatsRow)
+            .where(models.RmsDailyStatsRow.stat_date == day)
+            .order_by(
+                models.RmsDailyStatsRow.trading_client_id,
+                models.RmsDailyStatsRow.trading_symbol,
+            )
+        )
+        if tradingClientId:
+            statement = statement.where(
+                models.RmsDailyStatsRow.trading_client_id == tradingClientId
+            )
+        rows = list((await db.execute(statement)).scalars())
+        stats = []
+        for row in rows:
+            name, broker = labels.get(row.trading_client_id, (None, None))
+            stats.append(
+                {
+                    "tradingClientId": row.trading_client_id,
+                    "tradingClient": name,
+                    "broker": broker,
+                    "tradingSymbol": row.trading_symbol,
+                    "statDate": row.stat_date.isoformat(),
+                    "orderCount": row.order_count or 0,
+                    "buyOrderCount": row.buy_order_count or 0,
+                    "sellOrderCount": row.sell_order_count or 0,
+                    "buyQty": row.buy_qty or 0,
+                    "sellQty": row.sell_qty or 0,
+                }
+            )
+        return ok(
+            {
+                "date": day.isoformat(),
+                "stats": stats,
+                "totalOrders": sum(s["orderCount"] for s in stats),
+                "totalBuyOrders": sum(s["buyOrderCount"] for s in stats),
+                "totalSellOrders": sum(s["sellOrderCount"] for s in stats),
+                "uniqueSymbols": len({s["tradingSymbol"] for s in stats}),
+                "tradingClients": [
+                    {"id": client_id, "displayName": name, "broker": broker}
+                    for client_id, (name, broker) in sorted(
+                        labels.items(), key=lambda item: item[1][0].lower()
+                    )
+                ],
+            }
+        )
+
     @router.get("/{config_id}")
     async def get_row(config_id: int, db: AsyncSession = Depends(session)) -> dict[str, Any]:
         return ok(row_wire(await _row(db, config_id), await _labels(db)))

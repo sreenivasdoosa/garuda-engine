@@ -6,7 +6,6 @@
 import { useState, useMemo } from 'react';
 import { BsArrowClockwise, BsCardChecklist, BsXCircle } from 'react-icons/bs';
 import { PageHeader } from '@/components/common';
-import UserSelect from '@/components/common/UserSelect';
 import { useQuery } from '@tanstack/react-query';
 import { rmsConfigService } from '@/services/admin/v2AdminService';
 import { Button, Spinner } from '@/components/ui';
@@ -19,11 +18,11 @@ const cell = 'px-2 py-1.5 text-[0.8rem]';
 
 const RMSDailyStatsPage: React.FC = () => {
   const [date, setDate] = useState(getToday());
-  const [usernameFilter, setUsernameFilter] = useState('');
+  const [clientFilter, setClientFilter] = useState('');
 
   const { data, isLoading, isFetching, error, refetch } = useQuery({
-    queryKey: ['rms-daily-stats', date, usernameFilter],
-    queryFn: () => rmsConfigService.getDailyStats({ date: date || undefined, username: usernameFilter || undefined }),
+    queryKey: ['rms-daily-stats', date, clientFilter],
+    queryFn: () => rmsConfigService.getDailyStats({ date: date || undefined, tradingClientId: clientFilter || undefined }),
     refetchInterval: 30000,
   });
 
@@ -33,18 +32,18 @@ const RMSDailyStatsPage: React.FC = () => {
   const totalSellOrders = data?.totalSellOrders || 0;
   const uniqueSymbols = data?.uniqueSymbols || 0;
 
-  const hasActiveFilters = useMemo(() => !!(usernameFilter || date !== getToday()), [usernameFilter, date]);
+  const hasActiveFilters = useMemo(() => !!(clientFilter || date !== getToday()), [clientFilter, date]);
 
   const resetFilters = () => {
-    setUsernameFilter('');
+    setClientFilter('');
     setDate(getToday());
   };
 
   if (error) {
     return (
       <>
-        <PageHeader title="RMS Daily Stats" subtitle="Daily order statistics per user/broker/symbol" icon={<BsCardChecklist size={24} />} />
-        <div className="rounded-card border border-hairline bg-card py-4 text-center text-danger-600 dark:text-danger-400">Failed to load daily stats</div>
+        <PageHeader title="RMS Daily Stats" subtitle="What each account sent today, per symbol, as the engine counted it" icon={<BsCardChecklist size={24} />} />
+        <div className="rounded-card border border-hairline bg-card py-4 text-center text-danger-600 dark:text-danger-400">{(error as Error).message || 'Failed to load daily stats'}</div>
       </>
     );
   }
@@ -58,7 +57,7 @@ const RMSDailyStatsPage: React.FC = () => {
 
   return (
     <div>
-      <PageHeader title="RMS Daily Stats" subtitle="Daily order statistics per user/broker/symbol" icon={<BsCardChecklist size={24} />} />
+      <PageHeader title="RMS Daily Stats" subtitle="What each account sent today, per symbol, as the engine counted it" icon={<BsCardChecklist size={24} />} />
 
       <div className="mb-3 grid grid-cols-2 gap-3 md:grid-cols-4">
         {statCards.map((c) => (
@@ -90,8 +89,15 @@ const RMSDailyStatsPage: React.FC = () => {
               <input type="date" className={ctrl} value={date} onChange={(e) => setDate(e.target.value)} />
             </div>
             <div>
-              <label className={label}>Username</label>
-              <UserSelect value={usernameFilter} onChange={setUsernameFilter} allOptionLabel="All Users" />
+              <label className={label}>Trading client</label>
+              <select className={ctrl} value={clientFilter} onChange={(e) => setClientFilter(e.target.value)}>
+                <option value="">All accounts</option>
+                {(data?.tradingClients ?? []).map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.displayName} ({c.broker.toLowerCase()})
+                  </option>
+                ))}
+              </select>
             </div>
             <div className="flex items-end gap-2">
               <Button variant="secondary" size="sm" onClick={() => setDate(getToday())}>
@@ -106,15 +112,15 @@ const RMSDailyStatsPage: React.FC = () => {
           </div>
 
           <div className="mb-2 text-xs text-ink-soft">
-            Showing {stats.length} record(s) for {date} &bull; Auto-refreshes every 30s
+            {stats.length} row(s) for {data?.date ?? date} &bull; counted where each order leaves for the broker &bull; refreshes every 30s
           </div>
 
           <div className="overflow-x-auto">
             <table className="w-full text-sm [&_tbody_tr]:border-b [&_tbody_tr]:border-hairline">
               <thead className="bg-raised text-xs uppercase text-ink-faint">
                 <tr>
-                  <th className={`${cell} text-left`} style={{ width: '120px' }}>Username</th>
-                  <th className={`${cell} text-left`} style={{ width: '120px' }}>Broker</th>
+                  <th className={`${cell} text-left`} style={{ width: '140px' }}>Account</th>
+                  <th className={`${cell} text-left`} style={{ width: '100px' }}>Broker</th>
                   <th className={`${cell} text-left`}>Trading Symbol</th>
                   <th className={`${cell} text-right`} style={{ width: '100px' }}>Orders</th>
                   <th className={`${cell} text-right`} style={{ width: '100px' }}>Buy Orders</th>
@@ -138,11 +144,11 @@ const RMSDailyStatsPage: React.FC = () => {
                   </tr>
                 ) : (
                   stats.map((stat, idx) => (
-                    <tr key={`${stat.username}-${stat.broker}-${stat.tradingSymbol}-${idx}`} className="hover:bg-raised/50">
+                    <tr key={`${stat.tradingClientId}-${stat.tradingSymbol}-${idx}`} className="hover:bg-raised/50">
                       <td className={cell}>
-                        <span className="font-medium text-ink">{stat.username}</span>
+                        <span className="font-medium text-ink">{stat.tradingClient ?? stat.tradingClientId}</span>
                       </td>
-                      <td className={`${cell} text-ink`}>{stat.broker}</td>
+                      <td className={`${cell} text-ink`}>{stat.broker?.toLowerCase() ?? '—'}</td>
                       <td className={cell}>
                         <code className="text-ink">{stat.tradingSymbol}</code>
                       </td>

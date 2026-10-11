@@ -489,8 +489,9 @@ export interface RMSServiceStatus {
 }
 
 export interface RMSDailyStat {
-  username: string;
-  broker: string;
+  tradingClientId: string;
+  tradingClient: string | null;
+  broker: string | null;
   tradingSymbol: string;
   statDate: string;
   orderCount: number;
@@ -507,6 +508,8 @@ export interface RMSDailyStatsResponse {
   totalSellOrders: number;
   uniqueSymbols: number;
   date: string;
+  /** Every trading client, for the page's filter. */
+  tradingClients: { id: string; displayName: string; broker: string }[];
 }
 
 export interface EffectiveRMSConfigResponse {
@@ -682,7 +685,7 @@ export const rmsConfigService = {
   },
 
   // Get daily stats
-  async getDailyStats(params?: { date?: string; username?: string; broker?: string }): Promise<RMSDailyStatsResponse> {
+  async getDailyStats(params?: { date?: string; tradingClientId?: string }): Promise<RMSDailyStatsResponse> {
     return api.get<RMSDailyStatsResponse>(API_ENDPOINTS.RMS_CONFIG.DAILY_STATS, params);
   },
 

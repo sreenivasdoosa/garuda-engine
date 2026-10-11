@@ -69,6 +69,16 @@ class OrderRates:
             today_on_instrument=self._instrument_days[(who, instrument.value, now.date())],
         )
 
+    def preload(self, trading_client: TradingClientId, day: date, sent: int) -> None:
+        """What an account had already sent today before this process started.
+
+        Read from the day's rows at startup, as the reference rebuilds its
+        counter, so a restart at eleven does not hand an account at its daily
+        cap a fresh allowance. Only the account's total: the per-instrument
+        counts start again, as the reference's do.
+        """
+        self._days[(trading_client.value, day)] = max(self._days[(trading_client.value, day)], sent)
+
     def record(
         self, trading_client: TradingClientId, instrument: InstrumentId, now: datetime
     ) -> None:

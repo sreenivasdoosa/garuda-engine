@@ -22,13 +22,14 @@ from garuda.brokers.sessions import Credentials, SessionResolver
 from garuda.brokers.streams import AccountStreamManager, UpdateHandler
 from garuda.brokers.websocket import Connector
 from garuda.composition.brokers import BrokerState
-from garuda.composition.engine import Engine, build_account_stream
+from garuda.composition.engine import ClientParts, Engine, build_account_stream
 from garuda.composition.persistence import TradePersistence
 from garuda.composition.strategy_loop import StrategyLoop
 from garuda.core.runner import EngineRunner, InMemoryPhaseRecorder
 from garuda.core.timeline import InitTimeline
 from garuda.domain.alert import EntityType
 from garuda.domain.client import TradingClientId
+from garuda.domain.exchange import Exchange
 from garuda.domain.market import Tick
 from garuda.marketdata.downloads import InstrumentDownloads
 from garuda.marketdata.loader import InstrumentLoader
@@ -80,6 +81,7 @@ class Runtime:
             logger.info(
                 "%s: restored %d trades and %d signals", client.account.label, trades, signals
             )
+            await _restore_order_count(client, parts.exchanges, now)
             self.persistence[client_id] = keeper
             self._tasks.append(
                 asyncio.create_task(keeper.run_forever(), name=f"persist:{client_id.value}")
@@ -154,6 +156,7 @@ async def start(
         trades, signals = await keeper.restore()
         restored_trades += trades
         restored_signals += signals
+        await _restore_order_count(parts.clients[client_id], parts.exchanges, now)
         logger.info(
             "%s: restored %d trades and %d signals",
             parts.clients[client_id].account.label,
@@ -221,6 +224,29 @@ async def start(
         )
     logger.info("engine started: %s", engine.describe())
     return runtime
+
+
+async def _restore_order_count(
+    client: ClientParts, exchanges: Sequence[Exchange], now: datetime
+) -> None:
+    """Hand the gate's counter what the account already sent today.
+
+    The reference rebuilds its daily counter from the table on start, so a
+    restart at eleven does not give an account at its daily cap a fresh
+    allowance. The day is the venue's trading day, which is what the store
+    was written under; the counter's own key is the clock's date.
+    """
+    if not exchanges:
+        return
+    trading_day = exchanges[0].trading_day_for(now)
+    sent = await client.daily_stats.total_today(client.account.id, trading_day)
+    if sent:
+        client.rates.preload(client.account.id, now.date(), sent)
+        logger.info(
+            "%s: %d order(s) already sent today, counted towards the daily caps",
+            client.account.label,
+            sent,
+        )
 
 
 async def _quietly(what: str, work: Awaitable[object]) -> None:

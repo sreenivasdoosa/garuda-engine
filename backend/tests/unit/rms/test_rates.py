@@ -108,3 +108,26 @@ def test_the_day_is_kept_while_it_lasts() -> None:
         rates.record(APPA, CALL, T0 + timedelta(seconds=second))
 
     assert rates.counted(APPA, CALL, T0 + timedelta(seconds=49)).today == 50
+
+
+def test_a_restart_is_handed_what_the_account_already_sent_today() -> None:
+    """The reference rebuilds its daily counter from the table on start."""
+    rates = OrderRates()
+    rates.preload(APPA, T0.date(), 7)
+    rates.record(APPA, CALL, T0)
+
+    counts = rates.counted(APPA, CALL, T0)
+
+    assert counts.today == 8
+    assert counts.today_on_instrument == 1, "only the account's total is restored"
+    assert counts.this_second == 1
+    assert rates.counted(AMMA, CALL, T0).today == 0
+
+
+def test_a_preload_never_lowers_a_count_already_made() -> None:
+    rates = OrderRates()
+    rates.record(APPA, CALL, T0)
+    rates.record(APPA, PUT, T0)
+    rates.preload(APPA, T0.date(), 1)
+
+    assert rates.counted(APPA, CALL, T0).today == 2

@@ -76,6 +76,7 @@ from garuda.marketdata.service import MarketDataService
 from garuda.marketdata.supervisor import FeedSupervisor
 from garuda.ordermgmt.protection import MarketProtection
 from garuda.persistence.breach_store import BreachStore
+from garuda.persistence.daily_stats_store import DailyStatsStore
 from garuda.persistence.trade_log_store import TradeLogStore
 from garuda.persistence.trade_store import TradeStore
 from garuda.persistence.uow import UnitOfWork
@@ -119,6 +120,10 @@ class ClientParts:
     coordinator: LegCoordinator
     loop: TradeLoop
     store: TradeStore
+    #: The gate's order counter and the table it is written to, so the
+    #: runtime can hand the counter today's total back after a restart.
+    rates: OrderRates
+    daily_stats: DailyStatsStore
 
 
 @dataclass
@@ -817,6 +822,7 @@ def _build_client(
     # a broker's rate limit is on the connection, not on what the order was
     # for, and two counters would let an account send twice the limit.
     rates = OrderRates()
+    daily_stats = DailyStatsStore(sessions, clock, label=account.label, alerts=alerts)
     watching = partial(
         gated,
         gate=gate,
@@ -829,6 +835,7 @@ def _build_client(
         breaches=BreachStore(sessions, label=account.label),
         kill_switch=kill_switch,
         rates=rates,
+        daily_stats=daily_stats,
     )
     # Both are gated; they differ in which checks have any business stopping
     # them. A stop-loss must go out on the day a loss limit was reached, and a
@@ -926,6 +933,8 @@ def _build_client(
             clock,
             alerts,
         ),
+        rates=rates,
+        daily_stats=daily_stats,
         store=TradeStore(sessions, alerts, label=account.label),
     )
 

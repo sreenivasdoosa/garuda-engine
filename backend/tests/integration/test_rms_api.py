@@ -603,3 +603,73 @@ class TestWhichDayASwitchBelongsTo:
         assert len(await load_kill_switches(session_factory, today=dt.date(2026, 10, 12))) == 1
         assert len(await load_kill_switches(session_factory, today=TODAY)) == 0
         assert reloads.switches == 1
+
+
+# -- the day's order counts ---------------------------------------------------
+
+
+class TestDailyStats:
+    async def seed(self, sessions: async_sessionmaker[AsyncSession]) -> None:
+        from garuda.domain.client import TradingClientId
+        from garuda.persistence.daily_stats_store import DailyStatsStore
+
+        store = DailyStatsStore(sessions, ReplayClock(NOW))
+        day = dt.date(2026, 10, 10)
+        appa, amma = TradingClientId(APPA), TradingClientId(AMMA)
+        await store.increment(appa, "RELIANCE", day, is_buy=True, quantity=10)
+        await store.increment(appa, "RELIANCE", day, is_buy=False, quantity=10)
+        await store.increment(appa, "NIFTY26OCT25000CE", day, is_buy=False, quantity=65)
+        await store.increment(amma, "NIFTY26OCT25000CE", day, is_buy=True, quantity=130)
+        await store.increment(
+            amma, "NIFTY26OCT25000CE", day - dt.timedelta(days=1), is_buy=True, quantity=65
+        )
+
+    async def test_the_day_is_read_back_with_its_totals(
+        self, client: httpx.AsyncClient, session_factory: async_sessionmaker[AsyncSession]
+    ) -> None:
+        await self.seed(session_factory)
+        response = await client.get("/api/rms-config/daily-stats", params={"date": "2026-10-10"})
+        assert response.status_code == 200, response.text
+        body = response.json()["data"]
+        assert body["date"] == "2026-10-10"
+        assert body["totalOrders"] == 4
+        assert body["totalBuyOrders"] == 2
+        assert body["totalSellOrders"] == 2
+        assert body["uniqueSymbols"] == 2
+        [amma_row, appa_option, appa_share] = body["stats"]
+        assert appa_share == {
+            "tradingClientId": APPA,
+            "tradingClient": "Appa",
+            "broker": "ZERODHA",
+            "tradingSymbol": "RELIANCE",
+            "statDate": "2026-10-10",
+            "orderCount": 2,
+            "buyOrderCount": 1,
+            "sellOrderCount": 1,
+            "buyQty": 10,
+            "sellQty": 10,
+        }
+        assert amma_row["tradingClient"] == "Amma"
+        assert amma_row["buyQty"] == 130
+        assert appa_option["sellQty"] == 65
+        assert [c["id"] for c in body["tradingClients"]] == [AMMA, APPA]
+
+    async def test_one_account_and_the_default_day(
+        self, client: httpx.AsyncClient, session_factory: async_sessionmaker[AsyncSession]
+    ) -> None:
+        await self.seed(session_factory)
+        mine = (
+            await client.get(
+                "/api/rms-config/daily-stats",
+                params={"date": "2026-10-10", "tradingClientId": AMMA},
+            )
+        ).json()["data"]
+        assert [s["tradingClientId"] for s in mine["stats"]] == [AMMA]
+        assert mine["totalOrders"] == 1
+
+        today = (await client.get("/api/rms-config/daily-stats")).json()["data"]
+        assert today["date"] == "2026-10-10", "the venue's day for the clock's instant"
+
+    async def test_a_bad_date_is_refused(self, client: httpx.AsyncClient) -> None:
+        response = await client.get("/api/rms-config/daily-stats", params={"date": "yesterday"})
+        assert response.status_code == 400

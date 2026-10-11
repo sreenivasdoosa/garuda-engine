@@ -43,6 +43,7 @@ from garuda.domain.money import Currency, Money
 from garuda.domain.order import BrokerOrderId, OrderRequest, Side
 from garuda.domain.trade import Trade
 from garuda.persistence.breach_store import BreachStore
+from garuda.persistence.daily_stats_store import DailyStatsStore
 from garuda.persistence.models import RmsConfigRow
 from garuda.persistence.uow import UnitOfWork
 from garuda.protocols.broker import OrderRejectedError
@@ -103,6 +104,7 @@ def gated(
     breaches: BreachStore | None = None,
     kill_switch: KillSwitch = NOTHING_STOPPED,
     rates: OrderRates | None = None,
+    daily_stats: DailyStatsStore | None = None,
     is_exit: bool = False,
 ) -> PlaceOrder:
     """Wrap a placement so the risk gate sees it first.
@@ -183,6 +185,16 @@ def gated(
             # no rate. Before the call rather than after, because an order the
             # broker rejects was still sent and still cost a slot.
             rates.record(request.trading_client, request.instrument, now)
+        if daily_stats is not None:
+            # The same count, written where a restart can read it back. Never
+            # raises, and never changes whether the order goes.
+            await daily_stats.increment(
+                request.trading_client,
+                instrument.trading_symbol,
+                instrument.exchange.trading_day_for(now),
+                is_buy=request.side is Side.BUY,
+                quantity=request.quantity,
+            )
         return await place(request)
 
     return place_if_allowed

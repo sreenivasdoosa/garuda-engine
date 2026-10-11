@@ -165,7 +165,7 @@ class TestRejections:
 class TestSegmentHours:
     """A segment with hours of its own trades by them; the rest trade the venue's."""
 
-    def test_a_segments_own_close_and_the_venues(self, nse_calendar) -> None:
+    def test_a_segments_own_close_and_the_venues(self, nse_calendar: TradingCalendar) -> None:
         calendar = replace(
             nse_calendar,
             segment_sessions={"EQUITY": (Session(opens=time(9, 15), closes=time(15, 20)),)},
@@ -179,7 +179,7 @@ class TestSegmentHours:
         assert calendar.is_open(at_1525, "FNO") is True, "no hours of its own: the venue's"
         assert calendar.is_open(at_1525) is True
 
-    def test_a_holiday_closes_every_segment(self, nse_calendar) -> None:
+    def test_a_holiday_closes_every_segment(self, nse_calendar: TradingCalendar) -> None:
         calendar = replace(
             nse_calendar,
             segment_sessions={"EQUITY": (Session(opens=time(9, 15), closes=time(15, 20)),)},
