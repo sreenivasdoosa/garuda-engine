@@ -283,6 +283,28 @@ class ExchangesRow(Base):
     )
 
 
+class ExchangeSegmentTimingsRow(Base):
+    """A segment's own hours, where they differ from its exchange's.
+
+    Not in the reference engine, which has one open and one close per venue.
+    Garuda's own, at the owner's request: NSE's cash segment closes at 15:30
+    while NFO trades to 15:40, and a square-off timed off the wrong close is
+    a position the broker closes for you. Either side left null inherits the
+    exchange's, so a row says only what differs.
+    """
+
+    __tablename__ = "exchange_segment_timings"
+
+    exchange_code: Mapped[str] = mapped_column(
+        String(10), ForeignKey("exchanges.exchange_code", ondelete="CASCADE"), primary_key=True
+    )
+    segment: Mapped[str] = mapped_column(String(20), primary_key=True)
+    market_open: Mapped[dt.time | None] = mapped_column(Time, nullable=True)
+    market_close: Mapped[dt.time | None] = mapped_column(Time, nullable=True)
+    created_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    updated_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class HolidaysRow(Base):
     """HOLIDAYS in the reference engine."""
 

@@ -954,7 +954,7 @@ def _venue_window(
     exchange = venues.exchanges.get(held.exchange.code)
     if exchange is None:
         return None
-    return venues.exit_window(exchange, exchange.trading_day_for(now))
+    return venues.exit_window(exchange, exchange.trading_day_for(now), held.segment)
 
 
 def _venue_cutoff(
@@ -966,7 +966,7 @@ def _venue_cutoff(
     exchange = venues.exchanges.get(held.exchange.code)
     if exchange is None:
         return None
-    return venues.intraday_cutoff(exchange, exchange.trading_day_for(now))
+    return venues.intraday_cutoff(exchange, exchange.trading_day_for(now), held.segment)
 
 
 def build_account_stream(

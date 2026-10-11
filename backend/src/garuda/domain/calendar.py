@@ -106,24 +106,38 @@ class TradingCalendar:
     #: distinct window rather than an early part of the session. Venues without
     #: one leave it None.
     pre_open: Session | None = None
+    #: A segment's own hours, where they differ from the venue's: NSE's cash
+    #: segment closes at 15:30 while its derivatives trade to 15:40. Keyed
+    #: by the segment's name. A segment not listed trades the venue's hours,
+    #: which is the rule the owner set: configured when it matters, inherited
+    #: otherwise. A special session overrides every segment alike.
+    segment_sessions: Mapping[str, tuple[Session, ...]] = field(default_factory=dict)
 
     # -- schedule -----------------------------------------------------------
 
-    def sessions_on(self, day: date) -> tuple[Session, ...]:
-        """The sessions belonging to ``day`` as a trading day. Empty if closed."""
+    def sessions_on(self, day: date, segment: str | None = None) -> tuple[Session, ...]:
+        """The sessions belonging to ``day`` as a trading day. Empty if closed.
+
+        With a ``segment``, that segment's hours when it has its own, else
+        the venue's.
+        """
         special = self.special_sessions.get(day)
         if special is not None:
             return special
         if day in self.holidays:
             return ()
+        if segment is not None:
+            own = self.segment_sessions.get(segment)
+            if own is not None and day.weekday() in self.weekly:
+                return own
         return tuple(self.weekly.get(day.weekday(), ()))
 
     def is_trading_day(self, day: date) -> bool:
         return bool(self.sessions_on(day))
 
-    def windows_on(self, day: date) -> tuple[SessionWindow, ...]:
+    def windows_on(self, day: date, segment: str | None = None) -> tuple[SessionWindow, ...]:
         """``day``'s sessions resolved to instants, in chronological order."""
-        windows = [s.window_for(day, self.timezone) for s in self.sessions_on(day)]
+        windows = [s.window_for(day, self.timezone) for s in self.sessions_on(day, segment)]
         return tuple(sorted(windows, key=lambda w: w.start))
 
     def pre_open_window_on(self, day: date) -> SessionWindow | None:
@@ -132,12 +146,13 @@ class TradingCalendar:
             return None
         return self.pre_open.window_for(day, self.timezone)
 
-    def is_open(self, instant: datetime) -> bool:
+    def is_open(self, instant: datetime, segment: str | None = None) -> bool:
+        """Whether the venue -- or one segment of it -- is trading at ``instant``."""
         require_aware(instant)
         return any(
             window.contains(instant)
             for day in self._candidate_days(instant)
-            for window in self.windows_on(day)
+            for window in self.windows_on(day, segment)
         )
 
     # -- the trading day ----------------------------------------------------

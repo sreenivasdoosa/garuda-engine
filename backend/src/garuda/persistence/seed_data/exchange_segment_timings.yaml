@@ -1,0 +1,15 @@
+# A segment's own hours, where they differ from its exchange's. Either side
+# left out inherits the exchange's. Since SEBI's closing auction session
+# (effective 2026-08-03) the cash segment stops continuous trading at 15:30
+# while NSE's and BSE's derivatives trade to 15:40, which is the close the
+# exchange rows carry; the currency segments run 09:00 to 17:00.
+- exchange_code: NSE
+  segment: EQUITY
+  market_close: '15:30:00'
+- exchange_code: NSE
+  segment: CURRENCY
+  market_open: '09:00:00'
+  market_close: '17:00:00'
+- exchange_code: BSE
+  segment: EQUITY
+  market_close: '15:30:00'

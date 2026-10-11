@@ -12,6 +12,7 @@ from garuda.domain.calendar import TradingCalendar
 from garuda.domain.enums import ProductType, Segment
 from garuda.domain.money import Currency
 from garuda.persistence.models import (
+    ExchangeSegmentTimingsRow,
     ExchangesRow,
     HolidaysRow,
     SpecialTradingDaysRow,
@@ -483,3 +484,84 @@ class TestTheSeededSpecialDays:
         # the whole reason the holiday row on MCX has to be there too.
         assert mcx.is_open(datetime(2025, 3, 14, 10, 0, tzinfo=IST)) is False
         assert mcx.is_open(datetime(2025, 3, 14, 19, 0, tzinfo=IST)) is True
+
+
+class TestSegmentHours:
+    """A segment trades the venue's hours unless it has its own; a side left
+    null inherits the venue's side."""
+
+    def venues(self, *timings: ExchangeSegmentTimingsRow) -> Venues:
+        return venues_from(
+            [exchange_row(segments="EQUITY,FNO,CURRENCY", market_close=time(15, 40))],
+            [],
+            [],
+            list(timings),
+        )
+
+    def test_a_segment_with_no_row_trades_the_venues_hours(self) -> None:
+        nse = self.venues().exchanges["NSE"]
+        [window] = nse.calendar.windows_on(MONDAY, "FNO")
+        assert window.end == datetime(2026, 8, 31, 15, 40, tzinfo=IST)
+
+    def test_a_side_left_null_inherits_the_venues_side(self) -> None:
+        nse = self.venues(
+            ExchangeSegmentTimingsRow(
+                exchange_code="NSE", segment="EQUITY", market_close=time(15, 30)
+            )
+        ).exchanges["NSE"]
+        [cash] = nse.calendar.windows_on(MONDAY, "EQUITY")
+        [derivatives] = nse.calendar.windows_on(MONDAY, "FNO")
+        assert cash.start == datetime(2026, 8, 31, 9, 15, tzinfo=IST), "the venue's open"
+        assert cash.end == datetime(2026, 8, 31, 15, 30, tzinfo=IST), "its own close"
+        assert derivatives.end == datetime(2026, 8, 31, 15, 40, tzinfo=IST)
+        at_1535 = datetime(2026, 8, 31, 15, 35, tzinfo=IST)
+        assert nse.is_open(at_1535, Segment.FNO) is True
+        assert nse.is_open(at_1535, Segment.EQUITY) is False
+        assert nse.is_open(at_1535) is True, "the venue as a whole"
+
+    def test_a_segment_the_venue_does_not_list_is_ignored(self) -> None:
+        nse = self.venues(
+            ExchangeSegmentTimingsRow(
+                exchange_code="NSE", segment="COMMODITY", market_close=time(23, 30)
+            )
+        ).exchanges["NSE"]
+        assert nse.calendar.segment_sessions == {}
+
+    def test_the_square_off_is_timed_off_the_segments_close(self) -> None:
+        venues = self.venues(
+            ExchangeSegmentTimingsRow(
+                exchange_code="NSE", segment="EQUITY", market_close=time(15, 30)
+            )
+        )
+        nse = venues.exchanges["NSE"]
+        cash = venues.exit_window(nse, MONDAY, Segment.EQUITY)
+        derivatives = venues.exit_window(nse, MONDAY, Segment.FNO)
+        assert cash is not None
+        assert derivatives is not None
+        assert cash.market_close == datetime(2026, 8, 31, 15, 30, tzinfo=IST)
+        assert derivatives.market_close == datetime(2026, 8, 31, 15, 40, tzinfo=IST)
+        assert venues.intraday_cutoff(nse, MONDAY, Segment.EQUITY) == datetime(
+            2026, 8, 31, 15, 10, tzinfo=IST
+        )
+
+    def test_a_special_session_overrides_every_segment(self) -> None:
+        budget_day = date(2026, 9, 5)  # a Saturday
+        venues = venues_from(
+            [exchange_row(segments="EQUITY,FNO", market_close=time(15, 40))],
+            [],
+            [
+                SpecialTradingDaysRow(
+                    exchange="NSE",
+                    trading_date=budget_day.isoformat(),
+                    market_open=time(10, 0),
+                    market_close=time(12, 0),
+                )
+            ],
+            [
+                ExchangeSegmentTimingsRow(
+                    exchange_code="NSE", segment="EQUITY", market_close=time(15, 30)
+                )
+            ],
+        )
+        [cash] = venues.exchanges["NSE"].calendar.windows_on(budget_day, "EQUITY")
+        assert cash.end == datetime(2026, 9, 5, 12, 0, tzinfo=IST)

@@ -10,6 +10,8 @@ export interface Exchange {
   exchangeName: string;        // Full name
   /** Which segments the venue lists: "EQUITY", "FNO", "COMMODITY", "CURRENCY". */
   segments?: string[];
+  /** What the market calls those segments, as every broker files instruments: NSE, NFO, CDS. */
+  segmentCodes?: string[];
   /** What the venue settles in. A P&L figure needs a unit. */
   currency?: string;
   timezone?: string;
@@ -69,6 +71,20 @@ export interface UpdateExchangeRequest extends Partial<CreateExchangeRequest> {}
  * the moment one gains a member — with the symptom being a venue the engine
  * then refuses to load.
  */
+/**
+ * One segment's hours as the engine will trade by them: its own where set,
+ * the venue's otherwise. `inherited` says which.
+ */
+export interface ExchangeSegmentHours {
+  segment: string;
+  code: string;
+  marketOpen: string | null;
+  marketClose: string | null;
+  ownMarketOpen: string | null;
+  ownMarketClose: string | null;
+  inherited: boolean;
+}
+
 export interface ExchangeOptions {
   currencies: string[];
   segments: string[];

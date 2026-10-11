@@ -15,6 +15,7 @@ import type {
   EventDay,
   CreateEventDayRequest,
   ExchangeOptions,
+  ExchangeSegmentHours,
 } from '@/types/exchange';
 
 // ==================== EXCHANGES ====================
@@ -48,6 +49,21 @@ export const exchangeService = {
   // Delete exchange
   async delete(code: string): Promise<void> {
     return api.delete(API_ENDPOINTS.EXCHANGES.DETAILS(code));
+  },
+
+  // Each segment the venue lists, with the hours it trades by.
+  async getSegments(code: string): Promise<ExchangeSegmentHours[]> {
+    return api.get<ExchangeSegmentHours[]>(API_ENDPOINTS.EXCHANGES.SEGMENTS(code));
+  },
+
+  // Give a segment hours of its own; a side left null inherits the venue's.
+  async setSegmentHours(code: string, segment: string, hours: { marketOpen: string | null; marketClose: string | null }): Promise<ExchangeSegmentHours> {
+    return api.put<ExchangeSegmentHours>(API_ENDPOINTS.EXCHANGES.SEGMENT(code, segment), hours);
+  },
+
+  // Back to the venue's hours.
+  async clearSegmentHours(code: string, segment: string): Promise<ExchangeSegmentHours> {
+    return api.delete<ExchangeSegmentHours>(API_ENDPOINTS.EXCHANGES.SEGMENT(code, segment));
   },
 
 

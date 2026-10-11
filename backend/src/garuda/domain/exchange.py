@@ -46,8 +46,9 @@ class Exchange:
     def trading_day_for(self, instant: datetime) -> date:
         return self.calendar.trading_day_for(instant)
 
-    def is_open(self, instant: datetime) -> bool:
-        return self.calendar.is_open(instant)
+    def is_open(self, instant: datetime, segment: Segment | None = None) -> bool:
+        """Trading now -- the venue, or one of its segments by its own hours."""
+        return self.calendar.is_open(instant, segment.value if segment is not None else None)
 
     def settlement_day(self, trade_day: date) -> date:
         """The day a trade on ``trade_day`` settles, counted in trading days."""

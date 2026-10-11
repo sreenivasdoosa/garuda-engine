@@ -14,6 +14,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { exchangeService } from '@/services/admin/v2AdminService';
 import type { Exchange as ExchangeType, CreateExchangeRequest } from '@/types/exchange';
 import Exchange from './Exchange';
+import SegmentHours from './SegmentHours';
 import { currencySymbol } from '@/utils/currency';
 
 export interface ExchangesProps {
@@ -157,13 +158,13 @@ const Exchanges: React.FC<ExchangesProps> = ({
       header: 'Segments',
       render: (e: ExchangeType) =>
         e.segments?.length ? (
-          <span className="flex flex-wrap gap-1">
-            {e.segments.map((segment) => (
+          <span className="flex flex-wrap gap-1" title={e.segments.join(', ')}>
+            {(e.segmentCodes?.length ? e.segmentCodes : e.segments).map((code) => (
               <span
-                key={segment}
+                key={code}
                 className="rounded bg-raised px-1.5 py-0.5 text-[0.72em] text-ink-soft"
               >
-                {segment}
+                {code}
               </span>
             ))}
           </span>
@@ -289,6 +290,8 @@ const Exchanges: React.FC<ExchangesProps> = ({
           Total: {exchangesList.length} exchange(s)
         </Card.Footer>
       </Card>
+
+      {exchangesList.length > 0 && <SegmentHours exchanges={exchangesList} readOnly={readOnly} />}
 
       <Exchange
         exchange={selectedExchange}

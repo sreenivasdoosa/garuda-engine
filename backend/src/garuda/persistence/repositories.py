@@ -183,6 +183,13 @@ class EventJournalRepository(Repository[models.EventJournalRow]):
     model = models.EventJournalRow
 
 
+class ExchangeSegmentTimingsRepository(Repository[models.ExchangeSegmentTimingsRow]):
+    model = models.ExchangeSegmentTimingsRow
+
+    async def for_exchange(self, exchange_code: str) -> Sequence[models.ExchangeSegmentTimingsRow]:
+        return await self.find(exchange_code=exchange_code, order_by="segment")
+
+
 class ExchangesRepository(Repository[models.ExchangesRow]):
     model = models.ExchangesRow
 
@@ -682,6 +689,10 @@ class Repositories:
     @property
     def exchanges(self) -> ExchangesRepository:
         return self.of(ExchangesRepository)
+
+    @property
+    def exchange_segment_timings(self) -> ExchangeSegmentTimingsRepository:
+        return self.of(ExchangeSegmentTimingsRepository)
 
     @property
     def exit_policy(self) -> ExitPolicyRepository:

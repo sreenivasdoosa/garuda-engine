@@ -384,3 +384,66 @@ async def test_a_blank_timezone_clears_it_rather_than_being_refused(
     await client.put("/api/exchanges/NSE", json={"timezone": ""})
 
     assert (await client.get("/api/exchanges/NSE")).json()["data"]["timezone"] is None
+
+
+class TestSegmentHours:
+    """A segment's own hours, where they differ from the venue's."""
+
+    async def test_every_listed_segment_inherits_until_set(
+        self, client: httpx.AsyncClient, nse: None
+    ) -> None:
+        response = await client.get("/api/exchanges/NSE/segments")
+        assert response.status_code == 200
+        rows = {row["segment"]: row for row in response.json()["data"]}
+        assert set(rows) == {"EQUITY", "FNO"}
+        assert rows["FNO"]["code"] == "NFO"
+        assert rows["EQUITY"]["code"] == "NSE"
+        assert rows["FNO"] == {
+            "segment": "FNO",
+            "code": "NFO",
+            "marketOpen": "09:15",
+            "marketClose": "15:30",
+            "ownMarketOpen": None,
+            "ownMarketClose": None,
+            "inherited": True,
+        }
+        listed = (await client.get("/api/exchanges/NSE")).json()["data"]
+        assert listed["segmentCodes"] == ["NSE", "NFO"]
+
+    async def test_setting_one_side_keeps_the_venues_other_side(
+        self, client: httpx.AsyncClient, nse: None
+    ) -> None:
+        response = await client.put(
+            "/api/exchanges/NSE/segments/equity", json={"marketClose": "15:20"}
+        )
+        assert response.status_code == 200, response.text
+        row = response.json()["data"]
+        assert row["marketOpen"] == "09:15", "the venue's open"
+        assert row["marketClose"] == "15:20", "its own close"
+        assert row["ownMarketOpen"] is None
+        assert row["inherited"] is False
+
+        cleared = await client.delete("/api/exchanges/NSE/segments/EQUITY")
+        assert cleared.status_code == 200
+        assert cleared.json()["data"]["inherited"] is True
+        rows = (await client.get("/api/exchanges/NSE/segments")).json()["data"]
+        assert all(row["inherited"] for row in rows)
+
+    async def test_hours_that_close_before_they_open_are_refused(
+        self, client: httpx.AsyncClient, nse: None
+    ) -> None:
+        response = await client.put(
+            "/api/exchanges/NSE/segments/FNO", json={"marketClose": "09:00"}
+        )
+        assert response.status_code == 400
+        assert "before it opens" in response.json()["message"]
+
+    async def test_a_segment_the_venue_does_not_list_is_refused(
+        self, client: httpx.AsyncClient, nse: None
+    ) -> None:
+        response = await client.put(
+            "/api/exchanges/NSE/segments/COMMODITY", json={"marketClose": "23:30"}
+        )
+        assert response.status_code == 400
+        assert "does not list COMMODITY" in response.json()["message"]
+        assert (await client.put("/api/exchanges/NSE/segments/PLASMA", json={})).status_code == 400

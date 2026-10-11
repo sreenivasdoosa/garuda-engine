@@ -133,7 +133,7 @@ def gated(
                 # From the venue's own calendar. Left to its default it reads
                 # as "always open", which is how a check can look configured
                 # and never once fire.
-                market_open=instrument.exchange.is_open(now),
+                market_open=instrument.exchange.is_open(now, instrument.segment),
                 kill_switch_reason=kill_switch.reason_for(instrument, request.trading_client),
                 quote=quotes(request.instrument),
                 realized_pnl_today=realized_today() if realized_today is not None else None,

@@ -27,7 +27,12 @@ from garuda.domain.errors import DomainError
 from garuda.domain.exchange import Exchange
 from garuda.domain.money import Currency
 from garuda.domain.phases import DayOffsets
-from garuda.persistence.models import ExchangesRow, HolidaysRow, SpecialTradingDaysRow
+from garuda.persistence.models import (
+    ExchangeSegmentTimingsRow,
+    ExchangesRow,
+    HolidaysRow,
+    SpecialTradingDaysRow,
+)
 from garuda.persistence.uow import UnitOfWork
 from garuda.trademgmt.squareoff_rules import ExitWindow
 
@@ -56,13 +61,19 @@ class Venues:
         """In a stable order, so a log line reads the same on every restart."""
         return [self.exchanges[code] for code in sorted(self.exchanges)]
 
-    def exit_window(self, exchange: Exchange, trading_day: date) -> ExitWindow | None:
+    def exit_window(
+        self, exchange: Exchange, trading_day: date, segment: Segment | None = None
+    ) -> ExitWindow | None:
         """When square-offs may still be attempted on a venue's trading day.
 
-        None on a day the venue does not trade -- there is no close to measure
-        from, and inventing one would make every retry window look open.
+        By the segment's own close when it has one: a cash position is
+        measured against the cash close, not the derivatives'. None on a day
+        the venue does not trade -- there is no close to measure from, and
+        inventing one would make every retry window look open.
         """
-        windows = exchange.calendar.windows_on(trading_day)
+        windows = exchange.calendar.windows_on(
+            trading_day, segment.value if segment is not None else None
+        )
         if not windows:
             return None
         close = windows[-1].end
@@ -72,14 +83,16 @@ class Venues:
             intraday_block=close - block if block is not None else None,
         )
 
-    def intraday_cutoff(self, exchange: Exchange, trading_day: date) -> datetime | None:
+    def intraday_cutoff(
+        self, exchange: Exchange, trading_day: date, segment: Segment | None = None
+    ) -> datetime | None:
         """When the engine squares off intraday positions of its own accord.
 
         Earlier than the broker's own forced closure, which is what
         ``intraday_block`` marks: being closed out by the broker is a worse
         price and a worse audit trail than closing out deliberately.
         """
-        window = self.exit_window(exchange, trading_day)
+        window = self.exit_window(exchange, trading_day, segment)
         if window is None:
             return None
         lead = self.offsets.get(exchange.code, DayOffsets()).intraday_square_off_lead
@@ -92,15 +105,21 @@ async def load_venues(sessions: async_sessionmaker[AsyncSession]) -> Venues:
         rows = await uow.repositories.exchanges.all()
         holiday_rows = await uow.repositories.holidays.all()
         special_rows = await uow.repositories.special_trading_days.all()
-    return venues_from(rows, holiday_rows, special_rows)
+        segment_rows = await uow.repositories.exchange_segment_timings.all()
+    return venues_from(rows, holiday_rows, special_rows, segment_rows)
 
 
 def venues_from(
     rows: Sequence[ExchangesRow],
     holiday_rows: Sequence[HolidaysRow],
     special_rows: Sequence[SpecialTradingDaysRow] = (),
+    segment_rows: Sequence[ExchangeSegmentTimingsRow] = (),
 ) -> Venues:
     """Turn configuration rows into venues. The whole mapping, and nothing else."""
+    timings: dict[str, list[ExchangeSegmentTimingsRow]] = {}
+    for timing in segment_rows:
+        timings.setdefault(timing.exchange_code, []).append(timing)
+
     holidays: dict[str, set[date]] = {}
     for holiday in holiday_rows:
         parsed = _parse_day(holiday.date)
@@ -132,7 +151,10 @@ def venues_from(
         code = row.exchange_code
         try:
             exchanges[code] = _exchange_from(
-                row, frozenset(holidays.get(code, ())), specials.get(code, {})
+                row,
+                frozenset(holidays.get(code, ())),
+                specials.get(code, {}),
+                timings.get(code, ()),
             )
         except DomainError as error:
             # One misconfigured venue is not a reason for the others to stop
@@ -155,11 +177,13 @@ def _exchange_from(
     row: ExchangesRow,
     holidays: frozenset[date],
     specials: Mapping[date, SpecialTradingDaysRow] | None = None,
+    timings: Sequence[ExchangeSegmentTimingsRow] = (),
 ) -> Exchange:
     code = row.exchange_code
     tz = ZoneInfo(row.timezone or "Asia/Kolkata")
     session = Session(opens=row.market_open, closes=row.market_close)
     weekend = _parse_weekend(row.weekend_days)
+    segments = _segments(row)
     calendar = TradingCalendar(
         name=row.exchange_name or code,
         timezone=tz,
@@ -167,6 +191,7 @@ def _exchange_from(
         holidays=holidays,
         special_sessions=_special_sessions(specials or {}, session),
         pre_open=_pre_open(row),
+        segment_sessions=_segment_sessions(code, timings, segments, session),
     )
     return Exchange(
         code=code,
@@ -174,8 +199,36 @@ def _exchange_from(
         currency=_currency(row),
         calendar=calendar,
         settlement=DEFAULT_SETTLEMENT,
-        segments=_segments(row),
+        segments=segments,
     )
+
+
+def _segment_sessions(
+    code: str,
+    timings: Sequence[ExchangeSegmentTimingsRow],
+    segments: frozenset[Segment],
+    usual: Session,
+) -> dict[str, tuple[Session, ...]]:
+    """Each segment's own hours, where a row gives them.
+
+    Either side left null takes the venue's -- the owner's rule: a segment
+    says only what differs. A row for a segment the venue does not list, or
+    hours that do not make a session, is reported and left out rather than
+    allowed to shape a day nothing trades.
+    """
+    own: dict[str, tuple[Session, ...]] = {}
+    for timing in timings:
+        name = (timing.segment or "").strip().upper()
+        if name not in {segment.value for segment in segments}:
+            logger.warning("%s has hours for segment %r, which it does not list", code, name)
+            continue
+        opens = timing.market_open if timing.market_open is not None else usual.opens
+        closes = timing.market_close if timing.market_close is not None else usual.closes
+        try:
+            own[name] = (Session(opens=opens, closes=closes),)
+        except DomainError as error:
+            logger.error("%s %s hours are unusable and are ignored: %s", code, name, error)
+    return own
 
 
 def _currency(row: ExchangesRow) -> Currency:

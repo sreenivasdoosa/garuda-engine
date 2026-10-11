@@ -6,6 +6,7 @@ date: MCX running past 23:00, and CME opening the previous evening.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
@@ -159,3 +160,28 @@ class TestRejections:
         empty = TradingCalendar(name="Nowhere", timezone=IST, weekly={})
         with pytest.raises(DomainError, match="misconfigured"):
             empty.trading_day_for(datetime(2026, 8, 27, 12, 0, tzinfo=IST))
+
+
+class TestSegmentHours:
+    """A segment with hours of its own trades by them; the rest trade the venue's."""
+
+    def test_a_segments_own_close_and_the_venues(self, nse_calendar) -> None:
+        calendar = replace(
+            nse_calendar,
+            segment_sessions={"EQUITY": (Session(opens=time(9, 15), closes=time(15, 20)),)},
+        )
+        monday = date(2026, 8, 31)
+        [cash] = calendar.windows_on(monday, "EQUITY")
+        [venue] = calendar.windows_on(monday)
+        assert cash.end < venue.end
+        at_1525 = datetime(2026, 8, 31, 15, 25, tzinfo=IST)
+        assert calendar.is_open(at_1525, "EQUITY") is False, "the cash segment has closed"
+        assert calendar.is_open(at_1525, "FNO") is True, "no hours of its own: the venue's"
+        assert calendar.is_open(at_1525) is True
+
+    def test_a_holiday_closes_every_segment(self, nse_calendar) -> None:
+        calendar = replace(
+            nse_calendar,
+            segment_sessions={"EQUITY": (Session(opens=time(9, 15), closes=time(15, 20)),)},
+        )
+        assert calendar.sessions_on(NSE_HOLIDAY, "EQUITY") == ()

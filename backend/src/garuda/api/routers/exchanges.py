@@ -24,10 +24,16 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from garuda.api.envelope import ok
+from garuda.core.clock import LiveClock
 from garuda.domain.enums import Segment
+from garuda.domain.instrument import segment_exchange_code
 from garuda.domain.money import Currency
 from garuda.persistence import models
-from garuda.persistence.repositories import ExchangesRepository
+from garuda.persistence.repositories import (
+    ExchangeSegmentTimingsRepository,
+    ExchangesRepository,
+)
+from garuda.protocols.clock import Clock
 
 #: Every zone this machine's tz database knows, which is exactly the set
 #: `ZoneInfo` will accept when the venue loader builds the calendar. Sorted
@@ -79,11 +85,27 @@ def _parse_time(value: str | None) -> dt.time | None:
         ) from None
 
 
+def _segment_codes(row: models.ExchangesRow) -> list[str]:
+    """What the market calls each segment of the venue: NSE, NFO, CDS."""
+    codes: list[str] = []
+    for name in _split(row.segments) or []:
+        try:
+            code = segment_exchange_code(row.exchange_code, Segment(name.strip().upper()))
+        except ValueError:
+            continue
+        if code not in codes:
+            codes.append(code)
+    return codes
+
+
 def _wire(row: models.ExchangesRow) -> dict[str, Any]:
     return {
         "exchange": row.exchange_code,
         "exchangeName": row.exchange_name,
         "segments": _split(row.segments),
+        # The segment codes every broker files instruments under -- NSE,
+        # NFO, CDS for the one venue -- derived, never stored twice.
+        "segmentCodes": _segment_codes(row),
         "currency": row.currency,
         "timezone": row.timezone,
         "preMarketStart": _time(row.pre_market_start),
@@ -199,6 +221,30 @@ _COLUMNS: dict[str, tuple[str, Any]] = {
 }
 
 
+def _segment_wire(
+    exchange: models.ExchangesRow, segment: Segment, own: models.ExchangeSegmentTimingsRow | None
+) -> dict[str, Any]:
+    """One segment's hours as they stand: its own where set, else the venue's."""
+    opens = own.market_open if own is not None and own.market_open is not None else None
+    closes = own.market_close if own is not None and own.market_close is not None else None
+    return {
+        "segment": segment.value,
+        "code": segment_exchange_code(exchange.exchange_code, segment),
+        "marketOpen": _time(opens if opens is not None else exchange.market_open),
+        "marketClose": _time(closes if closes is not None else exchange.market_close),
+        "ownMarketOpen": _time(opens),
+        "ownMarketClose": _time(closes),
+        "inherited": opens is None and closes is None,
+    }
+
+
+class SegmentHoursBody(BaseModel):
+    """Either side null means "the exchange's"."""
+
+    marketOpen: str | None = None  # noqa: N815
+    marketClose: str | None = None  # noqa: N815
+
+
 def _values(body: ExchangeBody) -> dict[str, Any]:
     """Only what was sent. `exclude_unset` is the point: `None` sent
     deliberately clears a column, `None` because the field was absent does
@@ -209,8 +255,9 @@ def _values(body: ExchangeBody) -> dict[str, Any]:
     }
 
 
-def build(sessions: async_sessionmaker[AsyncSession]) -> APIRouter:
+def build(sessions: async_sessionmaker[AsyncSession], clock: Clock | None = None) -> APIRouter:
     router = APIRouter(prefix="/api/exchanges", tags=["exchanges"])
+    clock = clock or LiveClock()
 
     async def session() -> Any:
         async with sessions() as open_session:
@@ -244,6 +291,111 @@ def build(sessions: async_sessionmaker[AsyncSession]) -> APIRouter:
         if row is None:
             raise HTTPException(status_code=404, detail=f"no exchange {code!r}")
         return ok(_wire(row))
+
+    # -- a segment's own hours ------------------------------------------------
+    #
+    # Not in the reference, which has one open and one close per venue. A
+    # segment left unset trades the venue's hours; one set says only what
+    # differs. Read by the engine at startup, like the venue's own hours.
+
+    async def _exchange(db: AsyncSession, code: str) -> models.ExchangesRow:
+        row = await ExchangesRepository(db).get(code.upper())
+        if row is None:
+            raise HTTPException(status_code=404, detail=f"no exchange {code!r}")
+        return row
+
+    def _listed_segment(row: models.ExchangesRow, name: str) -> Segment:
+        try:
+            segment = Segment(name.strip().upper())
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"{name!r} is not a segment") from None
+        listed = [v.strip().upper() for v in _split(row.segments) or []]
+        if segment.value not in listed:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{row.exchange_code} does not list {segment.value}; "
+                f"its segments are {', '.join(listed) or 'none'}",
+            )
+        return segment
+
+    async def _segments_wire(db: AsyncSession, row: models.ExchangesRow) -> list[dict[str, Any]]:
+        own = {
+            t.segment.upper(): t
+            for t in await ExchangeSegmentTimingsRepository(db).for_exchange(row.exchange_code)
+        }
+        listed = [v.strip().upper() for v in _split(row.segments) or []]
+        out: list[dict[str, Any]] = []
+        for name in listed:
+            try:
+                segment = Segment(name)
+            except ValueError:
+                continue
+            out.append(_segment_wire(row, segment, own.get(name)))
+        return out
+
+    @router.get("/{code}/segments")
+    async def segments(code: str, db: AsyncSession = Depends(session)) -> dict[str, Any]:
+        """Every segment the venue lists, with the hours it trades by."""
+        row = await _exchange(db, code)
+        return ok(await _segments_wire(db, row))
+
+    @router.put("/{code}/segments/{segment_name}")
+    async def set_segment_hours(
+        code: str,
+        segment_name: str,
+        body: SegmentHoursBody,
+        db: AsyncSession = Depends(session),
+    ) -> dict[str, Any]:
+        """Give a segment hours of its own. A side left null inherits the venue's."""
+        row = await _exchange(db, code)
+        segment = _listed_segment(row, segment_name)
+        opens = _parse_time(body.marketOpen)
+        closes = _parse_time(body.marketClose)
+        effective_open = opens if opens is not None else row.market_open
+        effective_close = closes if closes is not None else row.market_close
+        if effective_close <= effective_open:
+            raise HTTPException(
+                status_code=400,
+                detail=f"{segment.value} would close at {_time(effective_close)}, "
+                f"before it opens at {_time(effective_open)}",
+            )
+        repository = ExchangeSegmentTimingsRepository(db)
+        now = clock.now()
+        if opens is None and closes is None:
+            await repository.delete(row.exchange_code, segment.value)
+        else:
+            await repository.upsert(
+                {
+                    "exchange_code": row.exchange_code,
+                    "segment": segment.value,
+                    "market_open": opens,
+                    "market_close": closes,
+                    "created_at": now,
+                    "updated_at": now,
+                },
+                conflict_on=["exchange_code", "segment"],
+            )
+        await db.commit()
+        own = await repository.get(row.exchange_code, segment.value)
+        return ok(
+            _segment_wire(row, segment, own),
+            message=f"{row.exchange_code} {segment.value} hours saved; "
+            "the engine reads them at its next start",
+        )
+
+    @router.delete("/{code}/segments/{segment_name}")
+    async def clear_segment_hours(
+        code: str, segment_name: str, db: AsyncSession = Depends(session)
+    ) -> dict[str, Any]:
+        """Back to the venue's hours."""
+        row = await _exchange(db, code)
+        segment = _listed_segment(row, segment_name)
+        await ExchangeSegmentTimingsRepository(db).delete(row.exchange_code, segment.value)
+        await db.commit()
+        return ok(
+            _segment_wire(row, segment, None),
+            message=f"{row.exchange_code} {segment.value} trades the venue's hours again",
+        )
 
     @router.post("")
     async def create_exchange(

@@ -257,6 +257,8 @@ export const API_ENDPOINTS = {
     MARKET_STATUS: '/api/exchanges/market-status',
     OPTIONS: '/api/exchanges/options',
     DETAILS: (code: string) => `/api/exchanges/${code}`,
+    SEGMENTS: (code: string) => `/api/exchanges/${code}/segments`,
+    SEGMENT: (code: string, segment: string) => `/api/exchanges/${code}/segments/${segment}`,
   },
 
   // V2 Holidays
