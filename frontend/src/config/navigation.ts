@@ -12,14 +12,12 @@ import {
   BsClockHistory,
   BsCollection,
   BsCpu,
-  BsCurrencyRupee,
   BsDiagram3,
   BsExclamationTriangle,
   BsFileEarmarkBarGraph,
   BsFileEarmarkText,
   BsGear,
   BsGraphUp,
-  BsLightning,
   BsListUl,
   BsPersonBadge,
   BsPlayCircle,
@@ -105,10 +103,7 @@ export const NAV_SECTIONS: NavSection[] = [
   {
     title: 'Analytics',
     items: [
-      { path: '/console/analytics/trades', label: 'Trade Analytics', icon: BsGraphUp },
-      { path: '/console/analytics/strategies', label: 'Strategy Performance', icon: BsLightning },
-      { path: '/console/analytics/capital', label: 'Capital & Margin', icon: BsCurrencyRupee },
-      { path: '/console/analytics/broker-performance', label: 'Broker Performance', icon: BsBank },
+      { path: '/console/analytics', label: 'Analytics', icon: BsGraphUp },
     ],
   },
   {

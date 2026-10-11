@@ -48,10 +48,7 @@ import TradeLogPage from '@/features/shared/trade-log/TradeLogPage';
 import TradeTimelinePage from '@/features/shared/trade-log/TradeTimelinePage';
 
 // Analytics
-import BrokerPerformanceAnalytics from '@/features/shared/analytics/BrokerPerformance';
-import CapitalMarginAnalytics from '@/features/shared/analytics/CapitalMarginAnalytics';
-import StrategyAnalytics from '@/features/shared/analytics/StrategyAnalytics';
-import TradeAnalytics from '@/features/shared/analytics/TradeAnalytics';
+import AnalyticsPage from '@/features/shared/analytics/AnalyticsPage';
 
 // Market data and terminal
 import { DataProvidersPage } from '@/features/market-data/data-providers';
@@ -143,14 +140,9 @@ function App() {
         />
         <Route path="/console/run-eod-job" element={<RunEodJobPage />} />
 
-        {/* Analytics */}
-        <Route path="/console/analytics/trades" element={<TradeAnalytics />} />
-        <Route path="/console/analytics/strategies" element={<StrategyAnalytics />} />
-        <Route path="/console/analytics/capital" element={<CapitalMarginAnalytics />} />
-        <Route
-          path="/console/analytics/broker-performance"
-          element={<BrokerPerformanceAnalytics />}
-        />
+        {/* Analytics: one page, one Submit */}
+        <Route path="/console/analytics" element={<AnalyticsPage />} />
+        <Route path="/console/analytics/*" element={<AnalyticsPage />} />
       </Route>
 
       <Route

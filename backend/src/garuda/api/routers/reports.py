@@ -18,6 +18,7 @@ from __future__ import annotations
 import datetime as dt
 import logging
 from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -145,6 +146,108 @@ def _flag(value: str | None, *, name: str) -> bool | None:
     raise HTTPException(status_code=400, detail=f"{name}: {value!r} is not paper, live or all")
 
 
+def _split(value: str | None) -> list[str]:
+    """A comma-separated list, or nothing. ``all`` is nothing too."""
+    if value is None:
+        return []
+    parts = [part.strip() for part in value.split(",") if part.strip()]
+    return [] if any(part.lower() == "all" for part in parts) else parts
+
+
+@dataclass(frozen=True, slots=True)
+class TradeSelection:
+    """What the filters chose, and the range they cover."""
+
+    rows: list[TradeRow]
+    zone: dt.tzinfo
+    start: dt.date
+    end: dt.date
+
+
+async def venue_zone(db: AsyncSession) -> dt.tzinfo:
+    for row in await ExchangesRepository(db).all(order_by="exchange_code"):
+        if row.timezone:
+            try:
+                return ZoneInfo(row.timezone)
+            except ZoneInfoNotFoundError:
+                continue
+    return dt.UTC
+
+
+async def select_trades(
+    db: AsyncSession,
+    clock: Clock,
+    *,
+    from_date: str | None = None,
+    to_date: str | None = None,
+    trading_client_ids: Sequence[str] = (),
+    strategies: Sequence[str] = (),
+    products: Sequence[str] = (),
+    paper: str | None = None,
+    state: str | None = None,
+) -> TradeSelection:
+    """The trades the filters select, as rows, with the range they cover.
+
+    A trade is placed in the range by the day it ended, or started if it
+    has not ended -- the day it counts on. Every list filter is "any of";
+    an empty list is no filter.
+    """
+    zone = await venue_zone(db)
+    today = clock.now().astimezone(zone).date()
+    end = _day(to_date, name="toDate") or today
+    start = _day(from_date, name="fromDate") or (end - DEFAULT_SPAN)
+    if end < start:
+        raise HTTPException(status_code=400, detail="toDate is before fromDate")
+    lower = dt.datetime.combine(start, dt.time.min, tzinfo=zone)
+    upper = dt.datetime.combine(end + dt.timedelta(days=1), dt.time.min, tzinfo=zone)
+    table = models.LiveTradesRow
+    counted_on = func.coalesce(table.end_timestamp, table.start_timestamp)
+    statement = (
+        select(table)
+        .where(counted_on >= lower)
+        .where(counted_on < upper)
+        .order_by(counted_on.desc())
+        .limit(MAX_TRADES)
+    )
+    if trading_client_ids:
+        statement = statement.where(table.trading_client_id.in_(list(trading_client_ids)))
+    if strategies:
+        statement = statement.where(table.strategy_name.in_(list(strategies)))
+    if products:
+        wanted = [p.strip().upper() for p in products]
+        known = {p.value for p in ProductType}
+        for product in wanted:
+            if product not in known:
+                raise HTTPException(status_code=400, detail=f"{product!r} is not a product")
+        statement = statement.where(table.product.in_(wanted))
+    is_paper = _flag(paper, name="paper")
+    if is_paper is not None:
+        statement = statement.where(table.is_paper_trading.is_(is_paper))
+    if state and state.strip().lower() != "all":
+        wanted_state = state.strip().upper()
+        if wanted_state == "CLOSED":
+            statement = statement.where(or_(table.state == "COMPLETED", table.state == "CANCELLED"))
+        elif wanted_state in {s.value for s in TradeState}:
+            statement = statement.where(table.state == wanted_state)
+        else:
+            raise HTTPException(status_code=400, detail=f"{state!r} is not a trade state")
+    rows: list[TradeRow] = []
+    for stored in (await db.execute(statement)).scalars():
+        try:
+            trade: Trade = decode_trade(stored.payload)
+        except Exception:
+            logger.exception("trade %s could not be read for the report", stored.trade_id)
+            continue
+        rows.append(trade_row(trade, zone))
+    return TradeSelection(rows=rows, zone=zone, start=start, end=end)
+
+
+async def account_labels(db: AsyncSession) -> Labels:
+    return {
+        row.id: (row.display_name, row.broker) for row in await TradingClientsRepository(db).all()
+    }
+
+
 def build(sessions: async_sessionmaker[AsyncSession], clock: Clock) -> APIRouter:
     router = APIRouter(prefix="/api/reports", tags=["reports"])
 
@@ -152,20 +255,8 @@ def build(sessions: async_sessionmaker[AsyncSession], clock: Clock) -> APIRouter
         async with sessions() as db:
             yield db
 
-    async def _zone(db: AsyncSession) -> dt.tzinfo:
-        for row in await ExchangesRepository(db).all(order_by="exchange_code"):
-            if row.timezone:
-                try:
-                    return ZoneInfo(row.timezone)
-                except ZoneInfoNotFoundError:
-                    continue
-        return dt.UTC
-
     async def _labels(db: AsyncSession) -> Labels:
-        return {
-            row.id: (row.display_name, row.broker)
-            for row in await TradingClientsRepository(db).all()
-        }
+        return await account_labels(db)
 
     async def _trades(
         db: AsyncSession,
@@ -178,59 +269,18 @@ def build(sessions: async_sessionmaker[AsyncSession], clock: Clock) -> APIRouter
         paper: str | None,
         state: str | None,
     ) -> tuple[list[TradeRow], dt.tzinfo, dt.date, dt.date]:
-        """The trades the filters select, as rows, with the range they cover.
-
-        A trade is placed in the range by the day it ended, or started if it
-        has not ended -- the day it counts on.
-        """
-        zone = await _zone(db)
-        today = clock.now().astimezone(zone).date()
-        end = _day(to_date, name="toDate") or today
-        start = _day(from_date, name="fromDate") or (end - DEFAULT_SPAN)
-        if end < start:
-            raise HTTPException(status_code=400, detail="toDate is before fromDate")
-        lower = dt.datetime.combine(start, dt.time.min, tzinfo=zone)
-        upper = dt.datetime.combine(end + dt.timedelta(days=1), dt.time.min, tzinfo=zone)
-        table = models.LiveTradesRow
-        counted_on = func.coalesce(table.end_timestamp, table.start_timestamp)
-        statement = (
-            select(table)
-            .where(counted_on >= lower)
-            .where(counted_on < upper)
-            .order_by(counted_on.desc())
-            .limit(MAX_TRADES)
+        chosen = await select_trades(
+            db,
+            clock,
+            from_date=from_date,
+            to_date=to_date,
+            trading_client_ids=_split(trading_client_id),
+            strategies=_split(strategy),
+            products=_split(product),
+            paper=paper,
+            state=state,
         )
-        if trading_client_id:
-            statement = statement.where(table.trading_client_id == trading_client_id)
-        if strategy and strategy.strip().lower() != "all":
-            statement = statement.where(table.strategy_name == strategy.strip())
-        if product and product.strip().lower() != "all":
-            wanted = product.strip().upper()
-            if wanted not in {p.value for p in ProductType}:
-                raise HTTPException(status_code=400, detail=f"{product!r} is not a product")
-            statement = statement.where(table.product == wanted)
-        is_paper = _flag(paper, name="paper")
-        if is_paper is not None:
-            statement = statement.where(table.is_paper_trading.is_(is_paper))
-        if state and state.strip().lower() != "all":
-            wanted_state = state.strip().upper()
-            if wanted_state == "CLOSED":
-                statement = statement.where(
-                    or_(table.state == "COMPLETED", table.state == "CANCELLED")
-                )
-            elif wanted_state in {s.value for s in TradeState}:
-                statement = statement.where(table.state == wanted_state)
-            else:
-                raise HTTPException(status_code=400, detail=f"{state!r} is not a trade state")
-        rows: list[TradeRow] = []
-        for stored in (await db.execute(statement)).scalars():
-            try:
-                trade: Trade = decode_trade(stored.payload)
-            except Exception:
-                logger.exception("trade %s could not be read for the report", stored.trade_id)
-                continue
-            rows.append(trade_row(trade, zone))
-        return rows, zone, start, end
+        return chosen.rows, chosen.zone, chosen.start, chosen.end
 
     @router.get("/filters")
     async def filters(db: AsyncSession = Depends(session)) -> dict[str, Any]:

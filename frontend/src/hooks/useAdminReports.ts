@@ -15,7 +15,6 @@ import {
   billingPlanService,
   brokeragePlanService,
   v2BrokerService,
-  analyticsService,
 } from '@/services/admin/v2AdminService';
 import { strategyDefinitionService } from '@/services/admin/strategyEngineService';
 import type { TradeFilter, EODPnlFilter } from '@/types/reports';
@@ -378,12 +377,3 @@ export const useStrategyDefinitionMutations = () => {
   };
 };
 
-// ==================== ANALYTICS ====================
-
-export const useAdminAnalytics = (params?: { fromDate?: string; toDate?: string }) => {
-  return useQuery({
-    queryKey: ['admin', 'analytics', params],
-    queryFn: () => analyticsService.getAnalytics(params),
-    staleTime: 5 * 60 * 1000,
-  });
-};

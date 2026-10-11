@@ -14,7 +14,7 @@ import type {
   CreateUserBrokerRequest,
   UpdateUserBrokerRequest,
 } from '@/types/user_mgmt';
-import type { AuditLog, AuditLogFilter, FAQ, CreateFAQRequest, AdminAnalytics } from '@/types/system';
+import type { AuditLog, AuditLogFilter, FAQ, CreateFAQRequest } from '@/types/system';
 import type {
   Exchange,
   CreateExchangeRequest,
@@ -1960,16 +1960,6 @@ export const unAccountedPnlService = {
   },
 };
 
-// ==================== ANALYTICS ====================
-
-export const analyticsService = {
-  // Get admin analytics
-  async getAnalytics(params?: { fromDate?: string; toDate?: string }): Promise<AdminAnalytics> {
-    // This might need a custom endpoint or aggregate from multiple sources
-    return api.get('/api/analytics', params);
-  },
-};
-
 // ==================== SYSTEM CONFIG ====================
 
 export interface SystemConfigEntry {
@@ -2692,7 +2682,6 @@ export const v2AdminService = {
   brokerLoginStatus: brokerLoginStatusService,
   brokerApiStats: brokerApiStatsService,
   brokers: v2BrokerService,
-  analytics: analyticsService,
   systemConfig: systemConfigService,
   symbols: symbolService,
   symbolBrokerConfigs: symbolBrokerConfigService,
