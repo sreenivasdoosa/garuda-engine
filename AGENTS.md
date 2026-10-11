@@ -37,6 +37,7 @@ Read the relevant one before proposing anything. They win over your priors.
 | `docs/SCOPE_DECISIONS.md` | Is this feature in or out, and why |
 | `docs/DESIGN.md` | How is it built |
 | `docs/PROGRESS.md` | What exists today, what is named but not built, what is next |
+| `docs/TODO.md` | What is decided but parked, and what unblocks each item |
 | `docs/IMPLEMENTATION_PLAN.md` | What we intend to build, and in what order |
 | `ARCHITECTURE.md` | The principles the design holds to |
 

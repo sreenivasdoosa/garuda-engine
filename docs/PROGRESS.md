@@ -232,7 +232,8 @@ In value order. **Ask before starting anything with a Console page.**
    Logs, Broker Instruments, RMS Daily Stats, Broker Config in full, and
    Reports, Analytics and Alerts, and a phase can be run by hand from
    System Status. Still unserved, by decision: System Config (nothing reads
-   a setting yet) and Corporate Actions (with the equity phase).
+   a setting yet) and Corporate Actions (with the equity phase) -- both
+   parked in [`TODO.md`](TODO.md).
    See [`API_AND_CONSOLE.md`](API_AND_CONSOLE.md).
 
 2. **Read the stock universe in the strategy engine.** Both tables and
