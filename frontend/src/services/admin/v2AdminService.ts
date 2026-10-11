@@ -1897,56 +1897,6 @@ export const userBillsService = {
   },
 };
 
-// ==================== BROKER STRATEGY CONFIG ====================
-
-export interface BrokerStrategyConfig {
-  broker: string;
-  strategyName: string;
-  productType: string; // MIS, NRML, CO, BO, CNC
-  intradaySquareOffMinutesBeforeClose: number;
-  positionalSquareOffMinutesBeforeClose: number;
-}
-
-export interface CreateBrokerStrategyConfigRequest {
-  broker: string;
-  strategyName: string;
-  orderType: string; // MIS, NRML, CO, BO, CNC
-  intradaySquareOffMinutesBeforeClose: number;
-  positionalSquareOffMinutesBeforeClose: number;
-}
-
-export const brokerStrategyConfigService = {
-  // Get all configs
-  async getAll(): Promise<BrokerStrategyConfig[]> {
-    return api.get<BrokerStrategyConfig[]>(API_ENDPOINTS.BROKER_STRATEGY_CONFIGS.BASE);
-  },
-
-  // Get configs by broker
-  async getByBroker(broker: string): Promise<BrokerStrategyConfig[]> {
-    return api.get<BrokerStrategyConfig[]>(`${API_ENDPOINTS.BROKER_STRATEGY_CONFIGS.BASE}/${broker}`);
-  },
-
-  // Get config by broker and strategy
-  async get(broker: string, strategy: string): Promise<BrokerStrategyConfig> {
-    return api.get<BrokerStrategyConfig>(API_ENDPOINTS.BROKER_STRATEGY_CONFIGS.DETAILS(broker, strategy));
-  },
-
-  // Create config
-  async create(data: CreateBrokerStrategyConfigRequest): Promise<BrokerStrategyConfig> {
-    return api.post<BrokerStrategyConfig>(API_ENDPOINTS.BROKER_STRATEGY_CONFIGS.BASE, data);
-  },
-
-  // Update config
-  async update(broker: string, strategy: string, data: Partial<CreateBrokerStrategyConfigRequest>): Promise<BrokerStrategyConfig> {
-    return api.put<BrokerStrategyConfig>(API_ENDPOINTS.BROKER_STRATEGY_CONFIGS.DETAILS(broker, strategy), data);
-  },
-
-  // Delete config
-  async delete(broker: string, strategy: string): Promise<{ success: boolean }> {
-    return api.delete(API_ENDPOINTS.BROKER_STRATEGY_CONFIGS.DETAILS(broker, strategy));
-  },
-};
-
 // ==================== STRATEGY DAYS ALLOCATION ====================
 
 export interface StrategyDaysAllocationConfig {
@@ -2727,7 +2677,6 @@ export const v2AdminService = {
   specialTradingDays: specialTradingDayService,
   mockTradingDays: mockTradingDayService,
   brokerExchangeConfigs: brokerExchangeConfigService,
-  brokerStrategyConfigs: brokerStrategyConfigService,
   strategyDaysAllocation: strategyDaysAllocationService,
   billingPlans: billingPlanService,
   brokeragePlans: brokeragePlanService,

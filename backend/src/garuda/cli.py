@@ -70,6 +70,7 @@ from garuda.marketdata.synthetics import (
     for_symbol,
     for_symbols,
 )
+from garuda.persistence.api_stats_store import ApiStatsStore
 from garuda.persistence.derived_bars import DerivedBarStore
 from garuda.persistence.engine import create_engine, create_session_factory
 from garuda.persistence.secrets import SecretBox
@@ -81,6 +82,9 @@ from garuda.rms.killswitch import KillSwitch
 from garuda.rms.scope import LimitBook
 
 logger = logging.getLogger(__name__)
+
+#: How long a timed broker call is kept. The reference's five days.
+API_STATS_RETENTION = timedelta(days=5)
 
 #: The only broker with an adapter today. When there is a second, this comes
 #: from each account's own ``broker`` column instead.
@@ -207,6 +211,13 @@ async def _serve_with_engine(settings: Settings, host: str | None, port: int | N
             timeline=timeline,
         )
         timeline.end(starting, f"-- {assembled.engine.describe()}")
+        # The reference's startup sweep: broker API stat rows older than
+        # five days go, so the table stays the size of a working week.
+        sweeping = timeline.begin("broker API stats sweep")
+        purged = await ApiStatsStore(assembled.sessions).purge_before(
+            clock.now() - API_STATS_RETENTION
+        )
+        timeline.end(sweeping, f"-- {purged} row(s) older than five days removed")
 
         async def reload_sessions() -> None:
             """Re-read the trading clients, their sessions and the providers.

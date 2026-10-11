@@ -27,6 +27,7 @@ from functools import partial
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from garuda.alerts.manager import AlertManager
+from garuda.brokers.metered import MeteredBroker
 from garuda.brokers.routing import trading_client_factory
 from garuda.brokers.sessions import (
     Account,
@@ -75,12 +76,14 @@ from garuda.marketdata.registry import InstrumentRegistry
 from garuda.marketdata.service import MarketDataService
 from garuda.marketdata.supervisor import FeedSupervisor
 from garuda.ordermgmt.protection import MarketProtection
+from garuda.persistence.api_stats_store import ApiStatsStore
 from garuda.persistence.breach_store import BreachStore
 from garuda.persistence.daily_stats_store import DailyStatsStore
 from garuda.persistence.trade_log_store import TradeLogStore
 from garuda.persistence.trade_store import TradeStore
 from garuda.persistence.uow import UnitOfWork
 from garuda.protocols.account import AccountStream
+from garuda.protocols.broker import BrokerAdapter
 from garuda.protocols.clock import Clock
 from garuda.protocols.feed import MarketDataFeed
 from garuda.rms.checks import default_checks
@@ -109,7 +112,8 @@ class ClientParts:
     """Everything built for one trading client."""
 
     account: Account
-    broker: ZerodhaBroker
+    #: Metered: every call is timed for the Broker API Stats page.
+    broker: BrokerAdapter
     book: TradingClientManager
     tracker: TradeTracker
     entry: EntryService
@@ -747,8 +751,15 @@ def _build_client(
     http = trading_client_factory(credentials.static_ip)
     kite = KiteClient(credentials.api_key, credentials.access_token, http)
     registry = _registry_for(instruments, account.broker)
-    broker = ZerodhaBroker(account.id, kite, registry)
     broker_name = account.broker.lower()
+    # Every call timed, as the reference times its order managers, and
+    # written where the Broker API Stats page reads it.
+    broker: BrokerAdapter = MeteredBroker(
+        ZerodhaBroker(account.id, kite, registry),
+        ApiStatsStore(sessions),
+        clock,
+        broker=broker_name,
+    )
 
     def instrument(instrument_id: InstrumentId) -> Instrument | None:
         return registry().get(instrument_id)

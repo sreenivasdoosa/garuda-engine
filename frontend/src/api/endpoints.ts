@@ -240,11 +240,6 @@ export const API_ENDPOINTS = {
   },
 
   // V2 Broker Strategy Configs
-  BROKER_STRATEGY_CONFIGS: {
-    BASE: '/api/broker-strategy-configs',
-    DETAILS: (broker: string, strategy: string) => `/api/broker-strategy-configs/${broker}/${strategy}`,
-  },
-
   // V2 Broker API Stats
   BROKER_API_STATS: {
     BASE: '/api/broker-api-stats',

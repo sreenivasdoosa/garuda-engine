@@ -9,11 +9,8 @@ import { BsGear, BsPencil, BsTrash, BsPlus, BsGraphUp, BsEye } from 'react-icons
 import { toast } from 'react-toastify';
 import { PageHeader, BrokerSetupRequired, MissingBrokerExchangeConfigAlert } from '@/components/common';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { brokerExchangeConfigService, brokerStrategyConfigService, brokerApiStatsService, v2BrokerService, exchangeService } from '@/services/admin/v2AdminService';
-import { strategyDefinitionService } from '@/services/admin/strategyEngineService';
+import { brokerExchangeConfigService, brokerApiStatsService, v2BrokerService, exchangeService } from '@/services/admin/v2AdminService';
 import type { BrokerExchangeConfig, CreateBrokerExchangeConfigRequest } from '@/types/exchange';
-import type { BrokerStrategyConfig, CreateBrokerStrategyConfigRequest } from '@/services/admin/v2AdminService';
-import type { StrategyDefinition } from '@/types/strategy-engine';
 import HelpIcon from '@/components/common/HelpIcon';
 import { brokerConfigHelpContent } from '@/data/help/broker-config-help';
 import { Badge, Button, Spinner, Modal, Toggle } from '@/components/ui';
@@ -29,6 +26,9 @@ const thRow = 'bg-raised text-xs uppercase text-ink-faint';
 const info = 'rounded border border-accent-500/30 bg-accent-500/10 px-3 py-2 text-sm text-ink';
 const warn = 'rounded border border-warning-500/30 bg-warning-500/10 px-3 py-2 text-sm text-ink';
 const danger = 'rounded border border-danger-500/30 bg-danger-500/10 px-3 py-2 text-sm text-danger-600 dark:text-danger-400';
+
+/** How a call's duration reads: under half a second is fine, over a second and a half is not. */
+const latencyTone = (ms: number): Tone => (ms < 500 ? 'success' : ms < 1500 ? 'warning' : 'danger');
 
 const tabBtn = (active: boolean) =>
   clsx(
@@ -73,7 +73,6 @@ const Triplet: React.FC<{ values: [number, number, number]; defaults: [number, n
 
 const TABS = [
   { key: 'exchange', label: 'Broker Exchange Configs' },
-  { key: 'strategy', label: 'Broker Strategy Configs' },
   { key: 'stats', label: 'Broker API Stats' },
 ];
 
@@ -83,7 +82,7 @@ const BrokerConfigPage: React.FC = () => {
   return (
     <BrokerSetupRequired>
       <div>
-        <PageHeader title="Broker Configuration" subtitle="Manage broker exchange configs, strategy configs, and view API stats" icon={<BsGear size={24} />} />
+        <PageHeader title="Broker Configuration" subtitle="Each broker's order protection per venue, and how long its API takes" icon={<BsGear size={24} />} />
 
         <MissingBrokerExchangeConfigAlert />
 
@@ -93,7 +92,6 @@ const BrokerConfigPage: React.FC = () => {
           ))}
         </div>
         {activeTab === 'exchange' && <BrokerExchangeConfigPanel hideCreate={!true} hideDelete={!true} readOnly={!true} />}
-        {activeTab === 'strategy' && <BrokerStrategyConfigPanel hideCreate={!true} hideDelete={!true} readOnly={!true} />}
         {activeTab === 'stats' && <BrokerApiStatsPanel />}
       </div>
     </BrokerSetupRequired>
@@ -452,216 +450,6 @@ const BrokerExchangeConfigPanel: React.FC<BrokerConfigPanelProps> = ({ hideCreat
 };
 
 // ==================== BROKER STRATEGY CONFIG PANEL ====================
-const BrokerStrategyConfigPanel: React.FC<BrokerConfigPanelProps> = ({ hideCreate, hideDelete, readOnly = false }) => {
-  const [selectedBroker, setSelectedBroker] = useState<string>('');
-  const [selectedStrategy, setSelectedStrategy] = useState<string>('');
-  const [showModal, setShowModal] = useState(false);
-  const [modalMode, setModalMode] = useState<'view' | 'edit' | 'create'>('create');
-  const [selectedConfig, setSelectedConfig] = useState<BrokerStrategyConfig | null>(null);
-  const queryClient = useQueryClient();
-
-  const { data: brokers } = useQuery({ queryKey: ['admin', 'brokers'], queryFn: () => v2BrokerService.getAll() });
-
-  useEffect(() => {
-    if (brokers && brokers.length === 1 && !selectedBroker) setSelectedBroker(brokers[0].name);
-  }, [brokers]);
-
-  const { data: strategies } = useQuery({ queryKey: ['strategyDefinitions'], queryFn: () => strategyDefinitionService.getAll() });
-
-  const { data: allConfigs, isLoading, error } = useQuery({ queryKey: ['admin', 'brokerStrategyConfigs'], queryFn: () => brokerStrategyConfigService.getAll() });
-
-  const configs = useMemo(() => {
-    if (!allConfigs) return [];
-    return allConfigs.filter((c) => {
-      if (selectedBroker && c.broker !== selectedBroker) return false;
-      if (selectedStrategy && c.strategyName !== selectedStrategy) return false;
-      return true;
-    });
-  }, [allConfigs, selectedBroker, selectedStrategy]);
-
-  const [formData, setFormData] = useState({ broker: '', strategyName: '', intradaySquareOffMinutesBeforeClose: 15, positionalSquareOffMinutesBeforeClose: 15 });
-
-  const createMutation = useMutation({
-    mutationFn: (data: CreateBrokerStrategyConfigRequest) => brokerStrategyConfigService.create(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin', 'brokerStrategyConfigs'] });
-      setShowModal(false);
-      toast.success('Broker strategy config created successfully');
-    },
-    onError: (error: { message?: string }) => toast.error(error.message || 'Failed to create config'),
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: (data: { broker: string; strategyName: string; updates: Partial<CreateBrokerStrategyConfigRequest> }) => brokerStrategyConfigService.update(data.broker, data.strategyName, data.updates),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin', 'brokerStrategyConfigs'] });
-      setShowModal(false);
-      toast.success('Broker strategy config updated successfully');
-    },
-    onError: (error: { message?: string }) => toast.error(error.message || 'Failed to update config'),
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: (config: BrokerStrategyConfig) => brokerStrategyConfigService.delete(config.broker, config.strategyName),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin', 'brokerStrategyConfigs'] });
-      toast.success('Config deleted successfully');
-    },
-    onError: (error: { message?: string }) => toast.error(error.message || 'Failed to delete config'),
-  });
-
-  const handleSave = () => {
-    const payload: CreateBrokerStrategyConfigRequest = { ...formData, orderType: 'MIS' };
-    if (selectedConfig) {
-      updateMutation.mutate({ broker: selectedConfig.broker, strategyName: selectedConfig.strategyName, updates: payload });
-    } else {
-      createMutation.mutate(payload);
-    }
-  };
-
-  const openAddModal = () => {
-    setSelectedConfig(null);
-    setModalMode('create');
-    setFormData({ broker: selectedBroker || '', strategyName: '', intradaySquareOffMinutesBeforeClose: 15, positionalSquareOffMinutesBeforeClose: 15 });
-    setShowModal(true);
-  };
-
-  const openEditModal = (config: BrokerStrategyConfig, isViewMode: boolean = false) => {
-    setSelectedConfig(config);
-    setModalMode(isViewMode ? 'view' : 'edit');
-    setFormData({
-      broker: config.broker,
-      strategyName: config.strategyName,
-      intradaySquareOffMinutesBeforeClose: config.intradaySquareOffMinutesBeforeClose,
-      positionalSquareOffMinutesBeforeClose: config.positionalSquareOffMinutesBeforeClose,
-    });
-    setShowModal(true);
-  };
-
-  const disabled = modalMode === 'view';
-  const lockKeys = !!selectedConfig || disabled;
-
-  if (error) {
-    const errorMessage = (error as { message?: string })?.message || 'Failed to load broker strategy configs';
-    return <div className={danger}>{errorMessage}</div>;
-  }
-
-  return (
-    <>
-      <div className={card}>
-        <div className="flex flex-wrap items-center gap-3 border-b border-hairline p-3">
-          <select className={`${ctrl} md:w-56`} value={selectedBroker} onChange={(e) => setSelectedBroker(e.target.value)}>
-            <option value="">All Brokers</option>
-            {brokers?.map((b) => (
-              <option key={b.name} value={b.name}>{b.displayName || b.name}</option>
-            ))}
-          </select>
-          <select className={`${ctrl} md:w-64`} value={selectedStrategy} onChange={(e) => setSelectedStrategy(e.target.value)}>
-            <option value="">All Strategies</option>
-            {strategies?.map((s: StrategyDefinition) => (
-              <option key={s.strategyName} value={s.strategyName}>{s.displayName || s.strategyName}</option>
-            ))}
-          </select>
-          {!hideCreate && (
-            <Button variant="primary" className="ml-auto" onClick={openAddModal}>
-              <BsPlus /> Add Config
-            </Button>
-          )}
-        </div>
-        <div>
-          {isLoading ? (
-            <div className="py-10 text-center text-primary-500"><Spinner /></div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm [&_tbody_tr]:border-b [&_tbody_tr]:border-hairline">
-                <thead className={thRow}>
-                  <tr>
-                    <th className={`${cell} text-left`}>Broker</th>
-                    <th className={`${cell} text-left`}>Strategy</th>
-                    <th className={`${cell} text-left`}>Intraday SqOff (mins)</th>
-                    <th className={`${cell} text-left`}>Positional SqOff (mins)</th>
-                    <th className={`${cell} text-left`}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {!configs || configs.length === 0 ? (
-                    <tr><td colSpan={5} className="py-4 text-center text-ink-soft">No configs found</td></tr>
-                  ) : (
-                    configs.map((config) => (
-                      <tr key={`${config.broker}-${config.strategyName}`} className="hover:bg-raised/50">
-                        <td className={`${cell} font-medium text-ink`}>{config.broker}</td>
-                        <td className={`${cell} text-ink`}>{strategies?.find((s: StrategyDefinition) => s.strategyName === config.strategyName)?.displayName || config.strategyName}</td>
-                        <td className={`${cell} text-ink`}>{config.intradaySquareOffMinutesBeforeClose}</td>
-                        <td className={`${cell} text-ink`}>{config.positionalSquareOffMinutesBeforeClose}</td>
-                        <td className={cell}>
-                          <div className="flex gap-1">
-                            <Button variant="secondary" size="sm" onClick={() => openEditModal(config, readOnly)} title={readOnly ? 'View' : 'Edit'}>{readOnly ? <BsEye /> : <BsPencil />}</Button>
-                            {!hideDelete && <Button variant="danger" size="sm" onClick={() => deleteMutation.mutate(config)} disabled={deleteMutation.isPending}><BsTrash /></Button>}
-                          </div>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      </div>
-
-      <Modal
-        open={showModal}
-        onClose={() => setShowModal(false)}
-        title={modalTitle(modalMode, 'Broker Strategy Config')}
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setShowModal(false)}>{disabled ? 'Close' : 'Cancel'}</Button>
-            {!disabled && (
-              <Button variant="primary" onClick={handleSave} disabled={createMutation.isPending || updateMutation.isPending || !formData.broker || !formData.strategyName}>
-                {createMutation.isPending || updateMutation.isPending ? <Spinner size="sm" /> : 'Save'}
-              </Button>
-            )}
-          </>
-        }
-      >
-        <fieldset disabled={disabled} className="border-0 p-0">
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            <div>
-              <label className={flabel}>Broker <HelpIcon article={brokerConfigHelpContent['brokerStrategyConfig.broker']} /></label>
-              <select className={ctrl} value={formData.broker} disabled={lockKeys} onChange={(e) => setFormData({ ...formData, broker: e.target.value })}>
-                <option value="">Select Broker...</option>
-                {brokers?.map((b) => (
-                  <option key={b.name} value={b.name}>{b.displayName || b.name}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className={flabel}>Strategy <HelpIcon article={brokerConfigHelpContent['brokerStrategyConfig.strategy']} /></label>
-              <select className={ctrl} value={formData.strategyName} disabled={lockKeys} onChange={(e) => setFormData({ ...formData, strategyName: e.target.value })}>
-                <option value="">Select Strategy...</option>
-                {strategies?.map((s: StrategyDefinition) => (
-                  <option key={s.strategyName} value={s.strategyName}>{s.displayName || s.strategyName}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className={flabel}>Intraday Square-off Minutes <HelpIcon article={brokerConfigHelpContent['brokerStrategyConfig.intradaySquareOffMinutes']} /></label>
-              <input type="number" className={ctrl} value={formData.intradaySquareOffMinutesBeforeClose} onChange={(e) => setFormData({ ...formData, intradaySquareOffMinutesBeforeClose: Number(e.target.value) })} />
-            </div>
-            <div>
-              <label className={flabel}>Positional Square-off Minutes <HelpIcon article={brokerConfigHelpContent['brokerStrategyConfig.positionalSquareOffMinutes']} /></label>
-              <input type="number" className={ctrl} value={formData.positionalSquareOffMinutesBeforeClose} onChange={(e) => setFormData({ ...formData, positionalSquareOffMinutesBeforeClose: Number(e.target.value) })} />
-            </div>
-          </div>
-        </fieldset>
-      </Modal>
-    </>
-  );
-};
-
-// ==================== BROKER API STATS PANEL ====================
-const latencyTone = (ms: number): Tone => (ms > 1000 ? 'danger' : ms > 500 ? 'warning' : 'success');
-
 const BrokerApiStatsPanel: React.FC = () => {
   const [selectedBroker, setSelectedBroker] = useState<string>('all');
   const [selectedDate, setSelectedDate] = useState<string>(new Date().toISOString().split('T')[0]);

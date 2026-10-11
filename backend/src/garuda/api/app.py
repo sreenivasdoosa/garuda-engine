@@ -26,6 +26,7 @@ from garuda.api.credentials import AdminCredentials
 from garuda.api.envelope import ok
 from garuda.api.routers import (
     audit_logs,
+    broker_api_stats,
     broker_exchange_configs,
     broker_instruments,
     brokers,
@@ -239,6 +240,7 @@ def create_app(
     # One router per Console page, added as each page is made to work.
     app.include_router(brokers.build(sessions))
     app.include_router(broker_exchange_configs.build(sessions))
+    app.include_router(broker_api_stats.build(sessions, LiveClock()))
     app.include_router(exchanges.build(sessions))
     app.include_router(holidays.build(sessions))
     app.include_router(special_trading_days.build(sessions))
