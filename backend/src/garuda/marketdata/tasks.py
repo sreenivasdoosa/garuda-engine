@@ -49,7 +49,10 @@ def master_download(
             # than buried in a count.
             logger.warning("instrument skipped: broker=%s %s: %s", broker, trading_symbol, reason)
         return DownloadReport(
-            count=result.count, downloaded=result.downloaded, cached_at=result.cached_at
+            count=result.count,
+            downloaded=result.downloaded,
+            cached_at=result.cached_at,
+            file_bytes=loader.cached_bytes(),
         )
 
     return download

@@ -67,6 +67,9 @@ class DownloadReport:
     downloaded: bool
     #: When the file now in use was fetched.
     cached_at: datetime
+    #: How big the file is, where the source has one. None for a source
+    #: that is not a file.
+    file_bytes: int | None = None
 
 
 #: One source's load. ``force`` means fetch whatever the cache says.
@@ -99,6 +102,8 @@ class DownloadStatus:
     #: today's publication. Computed against the engine's clock when the
     #: status is read, because a file that was fresh at 07:50 is stale at
     #: 08:01 without anything having happened to it.
+    #: The size of the file in use, where the source is a file.
+    file_bytes: int | None = None
     is_from_today: bool = False
     is_stale: bool = True
     #: Set when an attempt was skipped because the last one failed too
@@ -201,6 +206,7 @@ class InstrumentDownloads:
                 last_success_at=now,
                 last_error=None,
                 last_downloaded=report.downloaded,
+                file_bytes=report.file_bytes,
             )
             logger.info(
                 "%s: %d instruments, %s, file from %s",

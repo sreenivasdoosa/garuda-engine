@@ -245,25 +245,12 @@ class ZerodhaBroker:
         return None
 
     def _segment_exchange(self, instrument: Instrument) -> str:
-        """The exchange string Kite wants, which is the segment for derivatives."""
-        return _KITE_EXCHANGES.get(
-            (instrument.exchange.code, instrument.segment.value), instrument.exchange.code
-        )
+        """The exchange string Kite wants: the market's segment code, NFO for
+        an NSE option, which is the same code every broker here uses."""
+        return instrument.segment_exchange
 
     def _require(self, instrument_id: InstrumentId) -> Instrument:
         return self._registry().require(instrument_id)
-
-
-#: Kite routes derivatives through a separate exchange code from the venue
-#: that lists them.
-_KITE_EXCHANGES: dict[tuple[str, str], str] = {
-    ("NSE", "FNO"): "NFO",
-    ("BSE", "FNO"): "BFO",
-    ("NSE", "CURRENCY"): "CDS",
-    ("BSE", "CURRENCY"): "BCD",
-    ("MCX", "COMMODITY"): "MCX",
-    ("MCX", "FNO"): "MCX",
-}
 
 
 def _plain(price: Money) -> str:

@@ -31,6 +31,22 @@ from garuda.domain.money import Currency, Money, Numeric, to_decimal
 #: Instrument kinds that expire and reference an underlying.
 DERIVATIVE_KINDS: Final = frozenset({InstrumentKind.FUTURE, InstrumentKind.OPTION})
 
+#: What the Indian market calls a venue's segment: NSE's derivatives trade on
+#: "NFO", its currencies on "CDS", BSE's on "BFO" and "BCD". Every broker
+#: there names instruments by these codes, so the Console shows them rather
+#: than the venue alone. A venue not listed is named by its own code.
+SEGMENT_EXCHANGE_CODES: Final[dict[tuple[str, Segment], str]] = {
+    ("NSE", Segment.FNO): "NFO",
+    ("NSE", Segment.CURRENCY): "CDS",
+    ("BSE", Segment.FNO): "BFO",
+    ("BSE", Segment.CURRENCY): "BCD",
+}
+
+
+def segment_exchange_code(exchange_code: str, segment: Segment) -> str:
+    """``NFO`` for an NSE option, ``NSE`` for an NSE share."""
+    return SEGMENT_EXCHANGE_CODES.get((exchange_code, segment), exchange_code)
+
 
 #: A broker's own handle on an instrument, as text.
 #:
@@ -99,6 +115,17 @@ class Instrument:
     option_type: OptionType | None = None
     exercise_style: ExerciseStyle | None = None
     settlement_type: SettlementType | None = None
+
+    @property
+    def segment_exchange(self) -> str:
+        """The exchange code the market knows this instrument by: NFO, BFO, NSE.
+
+        An index is the exception: it is modelled in the segment that derives
+        from it, but every broker lists it under the venue itself.
+        """
+        if self.kind is InstrumentKind.INDEX:
+            return self.exchange.code
+        return segment_exchange_code(self.exchange.code, self.segment)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "tick_size", to_decimal(self.tick_size))

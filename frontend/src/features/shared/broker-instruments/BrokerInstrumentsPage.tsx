@@ -52,7 +52,7 @@ const BrokerInstrumentsPage: React.FC = () => {
   return (
     <BrokerSetupRequired>
       <div className="fade-in">
-        <PageHeader title="Broker Instruments" subtitle="View instrument statistics, search instruments, and perform advanced lookups" icon={<BsFileEarmarkText size={24} />} />
+        <PageHeader title="Broker Instruments" subtitle="Each broker's instrument master: what is loaded, and what is in it" icon={<BsFileEarmarkText size={24} />} />
 
         <MissingBrokerExchangeConfigAlert />
 
@@ -70,17 +70,30 @@ const BrokerInstrumentsPage: React.FC = () => {
 };
 
 // ==================== INSTRUMENT STATS PANEL ====================
-const FILE_SIZE_WARNING_THRESHOLD = 0.7;
+const formatFileSize = (bytes: number | null): string => {
+  if (bytes === null || bytes === 0) return '-';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+};
 
-interface StatsPanelProps {
-}
+const formatDateTime = (dateString: string | null): string => {
+  if (!dateString) return 'Never';
+  try {
+    return new Date(dateString).toLocaleString();
+  } catch {
+    return dateString;
+  }
+};
 
-const InstrumentStatsPanel: React.FC<StatsPanelProps> = () => {
+const InstrumentStatsPanel: React.FC = () => {
   const queryClient = useQueryClient();
 
   const { data: stats, isLoading: statsLoading, error: statsError, refetch } = useQuery({
     queryKey: ['broker-instruments-stats'],
     queryFn: () => brokerInstrumentsService.getAllStats(),
+    refetchInterval: 15000,
   });
 
   const { data: brokers, isLoading: brokersLoading } = useQuery({
@@ -88,75 +101,32 @@ const InstrumentStatsPanel: React.FC<StatsPanelProps> = () => {
     queryFn: () => brokerService.getAll(),
   });
 
+  // Every enabled broker, whether or not the engine builds a master for it:
+  // the ones it does not are listed as such rather than left out.
   const mergedStats = useMemo((): BrokerInstrumentsStats[] => {
     const enabledBrokers = brokers?.filter((b) => b.enabled) || [];
-    const statsMap = new Map(stats?.map((s) => [s.brokerName, s]) || []);
+    const statsMap = new Map(stats?.map((s) => [s.brokerName.toLowerCase(), s]) || []);
     return enabledBrokers.map((broker) => {
-      const existingStats = statsMap.get(broker.name);
-      if (existingStats) return existingStats;
-      return { brokerName: broker.name, instrumentsCount: 0, originalFileSize: 0, normalizedFileSize: 0, lastDownloadedTime: null, cacheLoaded: false };
+      const existing = statsMap.get(broker.name.toLowerCase());
+      if (existing) return existing;
+      return { brokerName: broker.name, supported: false, cacheLoaded: false, instrumentsCount: 0, fileBytes: null, lastDownloadedTime: null, download: null };
     });
   }, [brokers, stats]);
 
   const isLoading = statsLoading || brokersLoading;
-  const error = statsError;
 
   const downloadMutation = useMutation({
     mutationFn: (broker: string) => brokerInstrumentsService.downloadInstruments(broker),
-    onSuccess: (_data, broker) => {
+    onSuccess: (result, broker) => {
       queryClient.invalidateQueries({ queryKey: ['broker-instruments-stats'] });
-      toast.success(`Instruments downloaded successfully for ${broker}`);
+      toast.success(`${result.instrumentsCount.toLocaleString()} instruments downloaded for ${broker}`);
     },
     onError: (error: Error, broker) => {
-      toast.error(`Failed to download instruments for ${broker}: ${error.message || 'Unknown error'}`);
+      toast.error(`Could not download instruments for ${broker}: ${error.message || 'unknown error'}`);
     },
   });
 
-  const medianNormalizedSize = useMemo(() => {
-    if (!mergedStats || mergedStats.length < 2) return 0;
-    const sizes = mergedStats.map((s) => s.normalizedFileSize).filter((s) => s > 0).sort((a, b) => a - b);
-    if (sizes.length === 0) return 0;
-    const mid = Math.floor(sizes.length / 2);
-    return sizes.length % 2 !== 0 ? sizes[mid] : (sizes[mid - 1] + sizes[mid]) / 2;
-  }, [mergedStats]);
-
-  const isFileSizeSuspicious = useCallback(
-    (normalizedSize: number): boolean => {
-      if (normalizedSize === 0) return true;
-      if (medianNormalizedSize === 0) return false;
-      return normalizedSize < medianNormalizedSize * FILE_SIZE_WARNING_THRESHOLD;
-    },
-    [medianNormalizedSize],
-  );
-
-  const formatFileSize = (bytes: number): string => {
-    if (bytes === 0) return '0 B';
-    const k = 1024;
-    const sizes = ['B', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-  };
-
-  const getFileSizeWarning = useCallback(
-    (normalizedSize: number): string => {
-      if (normalizedSize === 0) return 'No instrument file found. Instruments may not have been downloaded yet.';
-      if (medianNormalizedSize === 0) return '';
-      const percentage = Math.round((normalizedSize / medianNormalizedSize) * 100);
-      return `File size is ${percentage}% of median (${formatFileSize(medianNormalizedSize)}). This may indicate incomplete instrument data - possibly missing new expiry options/futures.`;
-    },
-    [medianNormalizedSize],
-  );
-
-  const formatDateTime = (dateString: string | null): string => {
-    if (!dateString) return 'Never';
-    try {
-      return new Date(dateString).toLocaleString();
-    } catch {
-      return dateString;
-    }
-  };
-
-  if (error) return <div className={danger}>Failed to load broker instrument statistics</div>;
+  if (statsError) return <div className={danger}>{(statsError as Error).message || 'Failed to load broker instrument statistics'}</div>;
 
   if (isLoading) {
     return (
@@ -170,32 +140,21 @@ const InstrumentStatsPanel: React.FC<StatsPanelProps> = () => {
   if (!mergedStats || mergedStats.length === 0) {
     return (
       <div className={`${info} flex items-center gap-2`}>
-        <BsBarChartFill /> No enabled brokers found. Enable brokers first to download instruments.
+        <BsBarChartFill /> No enabled brokers found. Enable a broker first.
       </div>
     );
   }
 
-  const totalOriginalSize = mergedStats.reduce((sum, s) => sum + s.originalFileSize, 0);
-  const totalNormalizedSize = mergedStats.reduce((sum, s) => sum + s.normalizedFileSize, 0);
-  const suspiciousBrokers = mergedStats.filter((s) => s.instrumentsCount > 0 && isFileSizeSuspicious(s.normalizedFileSize));
-
+  const withMaster = mergedStats.filter((s) => s.supported);
+  const loadedCount = mergedStats.reduce((sum, s) => sum + s.instrumentsCount, 0);
   const summaryTiles = [
-    { value: mergedStats.length, label: 'Enabled Brokers', cls: 'text-primary-500' },
-    { value: formatFileSize(totalOriginalSize), label: 'Original Files', cls: 'text-accent-500' },
-    { value: formatFileSize(totalNormalizedSize), label: 'Normalized Files', cls: 'text-warning-500' },
+    { value: mergedStats.length, label: 'Enabled brokers', cls: 'text-primary-500' },
+    { value: withMaster.length, label: 'With an instrument master', cls: 'text-accent-500' },
+    { value: loadedCount.toLocaleString(), label: 'Instruments loaded', cls: 'text-success-500' },
   ];
 
   return (
     <>
-      {suspiciousBrokers.length > 0 && (
-        <div className={`${warn} mb-4 flex items-start gap-2`}>
-          <BsExclamationTriangle size={20} className="mt-0.5 shrink-0 text-warning-500" />
-          <div>
-            <strong>Warning:</strong> {suspiciousBrokers.length} broker(s) have significantly lower file sizes than others: <strong>{suspiciousBrokers.map((b) => b.brokerName).join(', ')}</strong>. This may indicate incomplete instrument data (missing new expiry options/futures). Consider re-downloading instruments for these brokers.
-          </div>
-        </div>
-      )}
-
       <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-3">
         {summaryTiles.map((t) => (
           <div key={t.label} className={`${card} p-4 text-center`}>
@@ -209,7 +168,7 @@ const InstrumentStatsPanel: React.FC<StatsPanelProps> = () => {
         <div className={cardHeadRow}>
           <div className="flex items-center gap-2">
             <BsBarChartFill className="text-primary-500" />
-            <h5 className="mb-0 font-semibold text-ink">Broker Instrument Statistics</h5>
+            <h5 className="mb-0 font-semibold text-ink">Instrument masters</h5>
           </div>
           <Button variant="secondary" size="sm" onClick={() => refetch()}>
             <BsArrowClockwise /> Refresh
@@ -220,56 +179,59 @@ const InstrumentStatsPanel: React.FC<StatsPanelProps> = () => {
             <thead className={thRow}>
               <tr>
                 <th className={`${cell} text-left`}>Broker</th>
+                <th className={`${cell} text-left`}>Master</th>
                 <th className={`${cell} text-left`}>Instruments</th>
-                <th className={`${cell} text-left`}>Original File</th>
-                <th className={`${cell} text-left`}>Normalized File</th>
-                <th className={`${cell} text-left`}>Last Downloaded</th>
-                <th className={`${cell} text-left`}>Cache Status</th>
+                <th className={`${cell} text-left`}>File</th>
+                <th className={`${cell} text-left`}>Fetched</th>
+                <th className={`${cell} text-left`}>Status</th>
                 <th className={`${cell} text-left`}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {mergedStats.map((stat) => {
-                const hasNoInstruments = stat.instrumentsCount === 0;
-                const isSuspicious = !hasNoInstruments && isFileSizeSuspicious(stat.normalizedFileSize);
+                const d = stat.download;
+                const busy = downloadMutation.isPending && downloadMutation.variables === stat.brokerName;
                 return (
-                  <tr key={stat.brokerName} className={clsx('hover:bg-raised/50', isSuspicious && 'bg-warning-500/5')}>
-                    <td className={`${cell} font-medium text-ink`}>
-                      {stat.brokerName}
-                      {isSuspicious && (
-                        <Tooltip label={getFileSizeWarning(stat.normalizedFileSize)} placement="top">
-                          <span className="ml-2 text-warning-500"><BsExclamationTriangle /></span>
+                  <tr key={stat.brokerName} className="hover:bg-raised/50">
+                    <td className={`${cell} font-medium text-ink`}>{stat.brokerName}</td>
+                    <td className={cell}>
+                      {stat.supported ? <Badge tone="success" icon={<BsCheckCircle />}>Built</Badge> : (
+                        <Tooltip label="The engine builds no instrument master for this broker yet; its accounts trade against the market-data broker's master." placement="top">
+                          <span><Badge tone="neutral" icon={<BsXCircle />}>Not built</Badge></span>
                         </Tooltip>
                       )}
                     </td>
                     <td className={cell}>
-                      {hasNoInstruments ? (
-                        <Badge tone="neutral">Not Downloaded</Badge>
+                      {stat.instrumentsCount === 0 ? (
+                        <Badge tone="neutral">{stat.supported ? 'Not loaded' : '-'}</Badge>
                       ) : (
                         <code className="rounded bg-raised px-2 py-1 text-ink">{stat.instrumentsCount.toLocaleString()}</code>
                       )}
                     </td>
-                    <td className={`${cell} text-ink`}>{hasNoInstruments ? '-' : formatFileSize(stat.originalFileSize)}</td>
-                    <td className={`${cell} text-ink`}>
-                      {hasNoInstruments ? '-' : formatFileSize(stat.normalizedFileSize)}
-                      {isSuspicious && <Badge tone="warning" className="ml-2">Low</Badge>}
-                    </td>
-                    <td className={cell}><small className="text-ink-soft">{formatDateTime(stat.lastDownloadedTime)}</small></td>
+                    <td className={`${cell} text-ink`}>{formatFileSize(stat.fileBytes)}</td>
                     <td className={cell}>
-                      {hasNoInstruments ? (
-                        <Badge tone="neutral" icon={<BsXCircle />}>N/A</Badge>
+                      <small className="text-ink-soft">{formatDateTime(stat.lastDownloadedTime)}</small>
+                      {d?.isFromToday && <Badge tone="success" className="ml-2">Today</Badge>}
+                      {d && d.loaded && d.isStale && <Badge tone="warning" className="ml-2">Stale</Badge>}
+                    </td>
+                    <td className={cell}>
+                      {d?.inProgress ? (
+                        <Badge tone="info">Fetching…</Badge>
+                      ) : d?.lastError ? (
+                        <Tooltip label={d.lastError} placement="top">
+                          <span><Badge tone="danger" icon={<BsExclamationTriangle />}>Failed</Badge></span>
+                        </Tooltip>
                       ) : stat.cacheLoaded ? (
                         <Badge tone="success" icon={<BsCheckCircle />}>Loaded</Badge>
                       ) : (
-                        <Badge tone="warning" icon={<BsXCircle />}>Not Loaded</Badge>
+                        <Badge tone="neutral" icon={<BsXCircle />}>{stat.supported ? 'Not loaded' : 'N/A'}</Badge>
                       )}
                     </td>
-                                          <td className={cell}>
-                        <Button variant={hasNoInstruments || isSuspicious ? 'primary' : 'secondary'} size="sm" onClick={() => downloadMutation.mutate(stat.brokerName)} disabled={downloadMutation.isPending}>
-                          <BsCloudDownload /> {downloadMutation.isPending ? 'Downloading...' : 'Download'}
-                        </Button>
-                      </td>
-                    
+                    <td className={cell}>
+                      <Button variant={stat.cacheLoaded ? 'secondary' : 'primary'} size="sm" onClick={() => downloadMutation.mutate(stat.brokerName)} disabled={!stat.supported || downloadMutation.isPending}>
+                        <BsCloudDownload /> {busy ? 'Downloading...' : 'Download'}
+                      </Button>
+                    </td>
                   </tr>
                 );
               })}
@@ -382,7 +344,7 @@ const InstrumentSearchPanel: React.FC = () => {
                     <td className={cell}><Badge tone="neutral">{instrument.exchange}</Badge></td>
                     <td className={`${cell} text-ink`}>{instrument.name || '-'}</td>
                     <td className={cell}><Badge tone={instrumentTypeTone(instrument.instrumentType)}>{instrument.instrumentType || 'EQ'}</Badge></td>
-                    <td className={`${cell} text-ink`}>{instrument.strike > 0 ? instrument.strike.toLocaleString() : '-'}</td>
+                    <td className={`${cell} text-ink`}>{instrument.strike ?? '-'}</td>
                     <td className={`${cell} text-ink`}>{instrument.expiry || '-'}</td>
                     <td className={`${cell} text-ink`}>{instrument.lotSize}</td>
                     <td className={cell}><small className="text-ink-soft">{instrument.instrumentToken}</small></td>
@@ -450,7 +412,7 @@ const InstrumentLookupPanel: React.FC = () => {
         symbol,
         instrumentType: instrumentType || undefined,
         expiry: expiry || undefined,
-        strike: strike ? parseInt(strike) : undefined,
+        strike: strike || undefined,
       });
       setLookupResult(result);
     } catch {
@@ -474,7 +436,7 @@ const InstrumentLookupPanel: React.FC = () => {
             <BsFileEarmarkText className="text-primary-500" />
             <h5 className="mb-0 font-semibold text-ink">Advanced Instrument Lookup</h5>
           </div>
-          <small className="text-ink-soft">Check if a specific option/future exists for given parameters</small>
+          <small className="text-ink-soft">Check whether a contract is listed. Derivatives are filed under NFO and BFO, shares under NSE and BSE.</small>
         </div>
         <div className="p-4">
           <div className="mb-3 grid grid-cols-1 gap-3 md:grid-cols-3">
@@ -490,8 +452,12 @@ const InstrumentLookupPanel: React.FC = () => {
             <div>
               <label className={flabel}>Exchange *</label>
               <select className={ctrl} value={exchange} onChange={(e) => setExchange(e.target.value)}>
-                <option value="NSE">NSE</option>
-                <option value="BSE">BSE</option>
+                <option value="NSE">NSE (shares and indices)</option>
+                <option value="NFO">NFO (NSE futures and options)</option>
+                <option value="CDS">CDS (NSE currency)</option>
+                <option value="BSE">BSE (shares and indices)</option>
+                <option value="BFO">BFO (BSE futures and options)</option>
+                <option value="BCD">BCD (BSE currency)</option>
                 <option value="MCX">MCX</option>
               </select>
             </div>
@@ -532,7 +498,7 @@ const InstrumentLookupPanel: React.FC = () => {
             </div>
             <div>
               <label className={flabel}>Strike Price</label>
-              <input type="number" className={ctrl} placeholder="e.g., 23000" value={strike} onChange={(e) => setStrike(e.target.value)} />
+              <input type="text" inputMode="decimal" className={ctrl} placeholder="e.g., 23000" value={strike} onChange={(e) => setStrike(e.target.value)} />
             </div>
             <div>
               <Button variant="primary" onClick={handleLookup} disabled={!selectedBroker || !exchange || !symbol || isLookingUp} className="w-full">
@@ -577,7 +543,7 @@ const InstrumentLookupPanel: React.FC = () => {
                   <tbody>
                     <tr>
                       <td className={kvCell}>Strike:</td>
-                      <td className={kvVal}>{lookupResult.instrument.strike > 0 ? lookupResult.instrument.strike.toLocaleString() : '-'}</td>
+                      <td className={kvVal}>{lookupResult.instrument.strike ?? '-'}</td>
                     </tr>
                     <tr>
                       <td className={kvCell}>Expiry:</td>

@@ -77,6 +77,11 @@ class InstrumentLoader:
         assert cached is not None
         return self._index(cached, downloaded)
 
+    def cached_bytes(self) -> int | None:
+        """How big the master in use is, or None before one is cached."""
+        cached = self._cache.read(self._broker)
+        return None if cached is None else len(cached.text.encode("utf-8"))
+
     def _needs_download(self, cached: CachedMaster | None, now: datetime) -> bool:
         if cached is None or cached.is_empty:
             return True

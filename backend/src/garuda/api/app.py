@@ -27,6 +27,7 @@ from garuda.api.envelope import ok
 from garuda.api.routers import (
     audit_logs,
     broker_exchange_configs,
+    broker_instruments,
     brokers,
     data_providers,
     event_days,
@@ -252,6 +253,7 @@ def create_app(
     # and closes, which is a far clearer answer than a route that is not there.
     app.include_router(market_data.build(sessions, LiveClock()))
     app.include_router(ticker.build())
+    app.include_router(broker_instruments.build(LiveClock()))
     app.include_router(terminal.build())
     app.include_router(strategies.build(sessions, LiveClock()))
     app.include_router(strategy_config.build(sessions, LiveClock()))
