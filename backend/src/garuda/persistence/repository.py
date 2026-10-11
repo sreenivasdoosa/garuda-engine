@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import InstrumentedAttribute
 
 from garuda.domain.errors import DomainError
+from garuda.persistence import audit
 from garuda.persistence.base import Base
 
 
@@ -194,6 +195,7 @@ class Repository[RowT: Base]:
                 self._column(column)
 
         keys = list(conflict_on) if conflict_on else self._primary_key_names()
+        await self._audit_upserts(rows, keys)
         statement = postgres_insert(self.model).values(list(rows))
         updatable = {name: statement.excluded[name] for name in rows[0] if name not in keys}
         if updatable:
@@ -208,6 +210,10 @@ class Repository[RowT: Base]:
             return 0
         for column in values:
             self._column(column)
+        if audit.current_capture() is not None:
+            row = await self.get(*primary_key)
+            if row is not None:
+                self._audit_update(audit.row_values(row), values)
         statement = (
             sql_update(self.model).where(*self._primary_key_clause(primary_key)).values(**values)
         )
@@ -219,11 +225,18 @@ class Repository[RowT: Base]:
             return 0
         for column in values:
             self._column(column)
+        if audit.current_capture() is not None:
+            for row in await self.find(**filters):
+                self._audit_update(audit.row_values(row), values)
         statement = self._filtered(sql_update(self.model), filters).values(**values)
         result = await self._session.execute(statement)
         return _rows_affected(result)
 
     async def delete(self, *primary_key: Any) -> int:
+        if audit.current_capture() is not None:
+            row = await self.get(*primary_key)
+            if row is not None:
+                self._audit(audit.AuditAction.DELETE, before=audit.row_values(row))
         statement = sql_delete(self.model).where(*self._primary_key_clause(primary_key))
         result = await self._session.execute(statement)
         return _rows_affected(result)
@@ -234,9 +247,58 @@ class Repository[RowT: Base]:
                 f"{self.model.__tablename__}: refusing to delete every row; "
                 "pass a filter or use truncate deliberately"
             )
+        if audit.current_capture() is not None:
+            for row in await self.find(**filters):
+                self._audit(audit.AuditAction.DELETE, before=audit.row_values(row))
         statement = self._filtered(sql_delete(self.model), filters)
         result = await self._session.execute(statement)
         return _rows_affected(result)
+
+    async def delete_row(self, row: RowT) -> None:
+        """Delete a row already in hand. The ORM path; the flush records it."""
+        await self._session.delete(row)
+
+    # -- the audit capture ----------------------------------------------------
+    #
+    # The statements below never flush an object, so the session's flush
+    # listener cannot see them. Each tells the request's capture, if there
+    # is one, what it is about to change, reading the row first because this
+    # is the one place that knows the key. The engine's own writes find no
+    # capture and cost nothing.
+
+    def _audit(
+        self,
+        action: audit.AuditAction,
+        *,
+        before: Mapping[str, Any] | None = None,
+        after: Mapping[str, Any] | None = None,
+    ) -> None:
+        capture = audit.current_capture()
+        if capture is None:
+            return
+        capture.record(
+            audit.Change(
+                table=self.model.__tablename__,
+                action=action,
+                key_columns=self._primary_key_names(),
+                before=None if before is None else audit.snapshot(before),
+                after=None if after is None else audit.snapshot(after),
+            )
+        )
+
+    def _audit_update(self, before: Mapping[str, Any], values: Mapping[str, Any]) -> None:
+        self._audit(audit.AuditAction.UPDATE, before=before, after={**before, **values})
+
+    async def _audit_upserts(self, rows: Sequence[Mapping[str, Any]], keys: list[str]) -> None:
+        """An upsert is a create or an update; which one is known only by looking."""
+        if audit.current_capture() is None:
+            return
+        for values in rows:
+            existing = await self.find_one(**{key: values[key] for key in keys if key in values})
+            if existing is None:
+                self._audit(audit.AuditAction.CREATE, after=values)
+            else:
+                self._audit_update(audit.row_values(existing), values)
 
     # -- internals ----------------------------------------------------------
 

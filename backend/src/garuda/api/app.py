@@ -21,10 +21,11 @@ from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from garuda.api import envelope
+from garuda.api import audit, envelope
 from garuda.api.credentials import AdminCredentials
 from garuda.api.envelope import ok
 from garuda.api.routers import (
+    audit_logs,
     broker_exchange_configs,
     brokers,
     data_providers,
@@ -163,6 +164,16 @@ def create_app(
         return claims
 
     envelope.install(app)
+    # Every operator mutation, recorded once it succeeded, with who and what
+    # it was before. Added after the CORS middleware so it wraps the routes
+    # and nothing else.
+    audit.install(
+        app,
+        sessions=sessions,
+        secret=secret,
+        clock=LiveClock(),
+        admin_username=config.admin_username,
+    )
 
     @app.on_event("startup")
     async def first_run() -> None:
@@ -247,6 +258,7 @@ def create_app(
     app.include_router(rms.build(sessions, LiveClock()))
     app.include_router(trade_log.build(sessions, LiveClock()))
     app.include_router(system_status.build(sessions, LiveClock()))
+    app.include_router(audit_logs.build(sessions, LiveClock()))
     app.include_router(socket.build(secret))
 
     return app

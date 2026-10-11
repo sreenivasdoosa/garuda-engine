@@ -10,11 +10,11 @@ export interface AuditLog {
   entityType: string;
   entityId: string;
   entityName: string;
-  action: 'CREATE' | 'UPDATE' | 'DELETE' | 'ENABLE' | 'DISABLE' | 'LOGIN' | 'LOGOUT';
+  action: string; // CREATE, UPDATE, DELETE, ENABLE, DISABLE, LOGIN, LOGOUT, START, STOP, RESTART, SQUARE_OFF, DOWNLOAD
   oldData: string | null;
   newData: string | null;
   changedBy: string;
-  changedTimestamp: number; // epoch millis
+  changedTimestamp: string; // ISO instant with offset
 }
 
 export interface AuditLogFilter {

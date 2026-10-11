@@ -33,7 +33,20 @@ export interface AuditLogsProps {
   onLogClick?: (log: AuditLogType) => void;
 }
 
-const ACTIONS = ['CREATE', 'UPDATE', 'DELETE', 'ENABLE', 'DISABLE', 'LOGIN', 'LOGOUT'];
+const ACTIONS = [
+  'CREATE',
+  'UPDATE',
+  'DELETE',
+  'ENABLE',
+  'DISABLE',
+  'LOGIN',
+  'LOGOUT',
+  'START',
+  'STOP',
+  'RESTART',
+  'SQUARE_OFF',
+  'DOWNLOAD',
+];
 
 const ACTION_COLORS: Record<string, string> = {
   CREATE: 'success',
@@ -43,66 +56,71 @@ const ACTION_COLORS: Record<string, string> = {
   DISABLE: 'warning',
   LOGIN: 'success',
   LOGOUT: 'secondary',
+  START: 'primary',
+  STOP: 'warning',
+  RESTART: 'info',
+  SQUARE_OFF: 'danger',
+  DOWNLOAD: 'info',
 };
 
-const STRATEGY_ENTITY_TYPES = [
-  'PRODUCT_EVENT_DAY_ACTION',
-  'STRATEGY_EVENT_DAY_ACTION',
-  'STRATEGY_DEFINITION',
-  'STRATEGY_TEMPLATE',
-  'STRATEGY_CONFIG_TREE',
-  'STRATEGY_POLICY',
-  'STRATEGY_TRANCH_CONFIG',
-  'USER_STRATEGY',
-  'USER_STRATEGY_TRANCH_CONFIG',
-  'USER_SUBSCRIPTION',
-  'TRANCH_SCHEDULE',
-  'EXTERNAL_SIGNAL',
-];
-
-const STRATEGY_ALL_FILTER = '__STRATEGY_ALL__';
-const USER_ALL_FILTER = '__USER_ALL__';
-const BROKER_ALL_FILTER = '__BROKER_ALL__';
-
-const USER_ENTITY_TYPES = [
-  'USER',
-  'USER_BROKER',
-  'USER_STRATEGY',
-  'USER_EVENT_DAY_ACTION',
-  'USER_CAPITAL_MAP',
-  'USER_STRATEGY_TRANCH_CONFIG',
-  'USER_SUBSCRIPTION',
-];
-
-const BROKER_ENTITY_TYPES = [
+// The groups the dropdown offers above the single types: garuda's entities,
+// as the audit middleware names them (see persistence/audit.py).
+const ACCOUNT_ENTITY_TYPES = [
+  'TRADING_CLIENT',
+  'TRADING_CLIENT_SESSION',
   'BROKER',
   'BROKER_EXCHANGE_CONFIG',
-  'BROKER_STRATEGY_CONFIG',
-  'BROKERAGE_PLAN',
-  'BROKERAGE_PLAN_RATE',
-  'STATUTORY_CHARGES',
+  'DATA_PROVIDER',
+  'DATA_PROVIDER_SESSION',
 ];
 
+const STRATEGY_ENTITY_TYPES = [
+  'STRATEGY_DEFINITION',
+  'STRATEGY_RULES',
+  'STRATEGY_CONFIG_TREE',
+  'SUBSCRIPTION',
+  'STRATEGY_EVENT_DAY_ACTION',
+];
+
+const MARKET_ENTITY_TYPES = [
+  'EXCHANGE',
+  'HOLIDAY',
+  'SPECIAL_TRADING_DAY',
+  'EVENT_DAY',
+  'SYMBOL',
+  'STOCK_UNIVERSE',
+  'STOCK_UNIVERSE_MEMBER',
+  'MARKET_DATA',
+];
+
+const RISK_ENTITY_TYPES = ['RMS_CONFIG', 'KILL_SWITCH', 'KILL_SWITCH_TYPE'];
+
+const STRATEGY_ALL_FILTER = '__STRATEGY_ALL__';
+const USER_ALL_FILTER = '__ACCOUNTS_ALL__';
+const BROKER_ALL_FILTER = '__MARKET_ALL__';
+const RISK_ALL_FILTER = '__RISK_ALL__';
+
 const ENTITY_TYPE_LABELS: Record<string, string> = {
-  PRODUCT_EVENT_DAY_ACTION: 'Product Event Day Actions',
-  STRATEGY_EVENT_DAY_ACTION: 'Strategy Event Day Actions',
-  STRATEGY_DEFINITION: 'Strategy Definitions',
-  STRATEGY_TEMPLATE: 'Strategy Templates',
-  STRATEGY_CONFIG_TREE: 'Strategy Config Tree',
-  STRATEGY_POLICY: 'Strategy Policies',
-  STRATEGY_TRANCH_CONFIG: 'Strategy Tranch Config',
-  USER_STRATEGY: 'User Strategy',
-  USER_STRATEGY_TRANCH_CONFIG: 'User Strategy Tranch Config',
-  USER_SUBSCRIPTION: 'User Subscriptions',
-  USER_EVENT_DAY_ACTION: 'User Event Day Actions',
-  USER_CAPITAL_MAP: 'User Capital Map',
+  TRADING_CLIENT: 'Trading Clients',
+  TRADING_CLIENT_SESSION: 'Trading Client Sessions',
   BROKER_EXCHANGE_CONFIG: 'Broker Exchange Config',
-  BROKER_STRATEGY_CONFIG: 'Broker Strategy Config',
-  BROKERAGE_PLAN: 'Brokerage Plans',
-  BROKERAGE_PLAN_RATE: 'Brokerage Plan Rates',
-  STATUTORY_CHARGES: 'Statutory Charges',
-  TRANCH_SCHEDULE: 'Tranch Schedules',
-  EXTERNAL_SIGNAL: 'External Signals',
+  DATA_PROVIDER: 'Data Providers',
+  DATA_PROVIDER_SESSION: 'Data Provider Sessions',
+  STRATEGY_DEFINITION: 'Strategy Definitions',
+  STRATEGY_RULES: 'Strategy Rules',
+  STRATEGY_CONFIG_TREE: 'Strategy Config Tree',
+  SUBSCRIPTION: 'Subscriptions',
+  STRATEGY_EVENT_DAY_ACTION: 'Strategy Event Day Actions',
+  SPECIAL_TRADING_DAY: 'Special Trading Days',
+  EVENT_DAY: 'Event Days',
+  STOCK_UNIVERSE: 'Stock Universes',
+  STOCK_UNIVERSE_MEMBER: 'Stock Universe Members',
+  MARKET_DATA: 'Market Data (ticker and files)',
+  RMS_CONFIG: 'Risk Limits',
+  KILL_SWITCH: 'Kill Switches',
+  KILL_SWITCH_TYPE: 'Kill Switch Sources',
+  SYSTEM_CONFIG: 'System Config',
+  TERMINAL: 'Terminal (square-off)',
 };
 
 const formatEntityTypeLabel = (type: string) =>
@@ -149,13 +167,15 @@ const AuditLogs: React.FC<AuditLogsProps> = ({
     entityType: entityTypeFilter &&
       entityTypeFilter !== STRATEGY_ALL_FILTER &&
       entityTypeFilter !== USER_ALL_FILTER &&
-      entityTypeFilter !== BROKER_ALL_FILTER
+      entityTypeFilter !== BROKER_ALL_FILTER &&
+      entityTypeFilter !== RISK_ALL_FILTER
         ? entityTypeFilter
         : undefined,
     entityTypes:
       entityTypeFilter === STRATEGY_ALL_FILTER ? STRATEGY_ENTITY_TYPES.join(',') :
-      entityTypeFilter === USER_ALL_FILTER ? USER_ENTITY_TYPES.join(',') :
-      entityTypeFilter === BROKER_ALL_FILTER ? BROKER_ENTITY_TYPES.join(',') :
+      entityTypeFilter === USER_ALL_FILTER ? ACCOUNT_ENTITY_TYPES.join(',') :
+      entityTypeFilter === BROKER_ALL_FILTER ? MARKET_ENTITY_TYPES.join(',') :
+      entityTypeFilter === RISK_ALL_FILTER ? RISK_ENTITY_TYPES.join(',') :
       undefined,
     username: filterByUsername,
     action: actionFilter || undefined,
@@ -265,10 +285,11 @@ const AuditLogs: React.FC<AuditLogsProps> = ({
                   onChange={(e) => setEntityTypeFilter(e.target.value)}
                   disabled={entityTypesLoading}
                 >
-                  <option value="">All Entity Types</option>
-                  <option value={USER_ALL_FILTER}>User (All)</option>
-                  <option value={BROKER_ALL_FILTER}>Broker (All)</option>
-                  <option value={STRATEGY_ALL_FILTER}>Strategy (All)</option>
+                  <option value="">All entity types</option>
+                  <option value={USER_ALL_FILTER}>Accounts (all)</option>
+                  <option value={BROKER_ALL_FILTER}>Market (all)</option>
+                  <option value={STRATEGY_ALL_FILTER}>Strategy (all)</option>
+                  <option value={RISK_ALL_FILTER}>Risk (all)</option>
                   {entityTypes.map((type) => (
                     <option key={type} value={type}>{formatEntityTypeLabel(type)}</option>
                   ))}

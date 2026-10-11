@@ -1885,6 +1885,15 @@ class AuditLogRow(Base):
         DateTime(timezone=True), nullable=True
     )
 
+    # The reference's five, for the reads its page makes.
+    __table_args__ = (
+        Index("ix_audit_log_entity_type", "entity_type"),
+        Index("ix_audit_log_entity_id", "entity_id"),
+        Index("ix_audit_log_changed_by", "changed_by"),
+        Index("ix_audit_log_changed_timestamp", "changed_timestamp"),
+        Index("ix_audit_log_action", "action"),
+    )
+
 
 class AlertsRow(Base):
     """One alert, however many times it happened.

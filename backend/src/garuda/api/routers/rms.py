@@ -762,7 +762,7 @@ def build(sessions: async_sessionmaker[AsyncSession], clock: Clock) -> APIRouter
         row = await _row(db, config_id)
         labels = await _labels(db)
         scope = row_wire(row, labels)["scope"]
-        await db.delete(row)
+        await RmsConfigRepository(db).delete_row(row)
         await db.commit()
         await _reload(request, "reload_limits")
         return ok(None, message=f"risk limits for {scope} removed")

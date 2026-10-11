@@ -12,12 +12,12 @@ const AuditLogsPage: React.FC = () => {
     <div className="fade-in">
       <PageHeader
         title="Audit Logs"
-        subtitle="View system activity and security logs"
+        subtitle="Every change made in the Console: who, what, and what it was before"
         icon={<BsJournalText size={24} />}
       />
 
       <AuditLogs
-        title="System Audit Logs"
+        title="Audit log"
         defaultDays={90}
       />
     </div>

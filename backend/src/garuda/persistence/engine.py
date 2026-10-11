@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from garuda.config.settings import DatabaseSettings
+from garuda.persistence import audit
 
 
 def _server_settings(settings: DatabaseSettings) -> dict[str, str]:
@@ -43,6 +44,9 @@ def create_engine(settings: DatabaseSettings) -> AsyncEngine:
 
 
 def create_session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
+    # Every session's flushes are watched for the audit log; outside an API
+    # request the watcher finds no capture and does nothing.
+    audit.listen()
     return async_sessionmaker(
         engine,
         expire_on_commit=False,
