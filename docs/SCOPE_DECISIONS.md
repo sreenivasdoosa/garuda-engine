@@ -140,6 +140,9 @@ and multi-leg / combo strategies.
 | External signal trigger | not an external integration at all — the market-data service evaluated conditions on rolling straddles, IV and PCR and pushed a fired signal. Garuda publishes those as synthetic instruments and writes the condition as a rule. See `STRATEGY_RULES.md` §6 |
 | Trigger types | tick / scheduled / signal / periodic collapse into rules over time and price (`STRATEGY_RULES.md` §1) |
 | Breakout watch table and service | a breakout is a rule on the ordinary tranche lifecycle (`STRATEGY_RULES.md` §7) |
+| Positional daily mark-to-market | The reference marked carry-forward positions day by day and had a page to recompute it. Decided out on 2026-10-11: a positional trade books its whole P&L on the day it exits and is marked on no day before, so there is nothing to recompute; the Recompute Positional MTM page is gone |
+| Strategy policies page | The policy tables are Console-side templates no strategy keys on (`TRADE_MANAGEMENT.md`); the page edited rows nothing read. Gone on 2026-10-11 |
+| Recompute charges page | Removed from the Console on 2026-10-11 until the charges phase exists; a button over an unbuilt computation is a button that does nothing |
 | Broker strategy config | The reference let one strategy's settings be overridden per broker (`BROKER_STRATEGY_CONFIG`). Decided out on 2026-10-11: a strategy's configuration has its four layers (`STRATEGY_CONFIGURATION.md`), and per-broker order handling lives on the broker's exchange config. No table, no page; the Broker Config page keeps its exchange configs and API stats tabs |
 
 Kept where it might have looked droppable:

@@ -25,6 +25,7 @@ from garuda.api import audit, envelope
 from garuda.api.credentials import AdminCredentials
 from garuda.api.envelope import ok
 from garuda.api.routers import (
+    alerts,
     analytics,
     audit_logs,
     broker_api_stats,
@@ -265,6 +266,7 @@ def create_app(
     app.include_router(trade_log.build(sessions, LiveClock()))
     app.include_router(reports.build(sessions, LiveClock()))
     app.include_router(analytics.build(sessions, LiveClock()))
+    app.include_router(alerts.build(sessions, LiveClock()))
     app.include_router(system_status.build(sessions, LiveClock()))
     app.include_router(audit_logs.build(sessions, LiveClock()))
     app.include_router(socket.build(secret))

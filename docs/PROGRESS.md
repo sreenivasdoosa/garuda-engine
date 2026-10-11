@@ -24,15 +24,15 @@ honest:
 **The engine is through Phase 3 and well into Phase 4. The Console is
 served for the market group, most of the accounts group, the Terminal,
 the Strategy Engine and Strategy Config, the risk group, the Trade Log,
-System Status, Audit Logs, Broker Instruments, Reports and Analytics.** Twenty-nine pages work
+System Status, Audit Logs, Broker Instruments, Reports, Analytics and Alerts.** Thirty pages work
 against the real backend — auth, config, health, exchanges, holidays, special
 trading days, event days, symbols, stock universes, data providers, market
 data, the Live Feed, trading clients, brokers, broker exchange configs,
 Broker Instruments, the Terminal, strategy definitions, rules and
 subscriptions, strategy configuration, RMS Config, RMS Breaches, Kill
 Switches, RMS Daily Stats, the Trade Log and its timeline, System Status,
-Audit Logs, Reports, and Analytics. The admin pages still call endpoints
-nothing serves, so
+Audit Logs, Reports, Analytics, and Alerts. System Config and Corporate
+Actions still call endpoints nothing serves, so
 by the plan's own rule —
 *a phase is not done until its Console pages work against the real backend*
 — no phase past 0 is closed.
@@ -172,6 +172,7 @@ Newest first. One line per chunk of work, not per commit.
 
 | Date | What landed |
 |---|---|
+| 2026-10-11 | **Alerts served, and three pages decided out.** `/api/alerts`, ported from the reference's servlet: the bell's `recent` (newest first, a level filter) and `since` (an instant, or the venue's day), the paged list with its filters -- level, entity type, entity, operation, free text over message, entity and operation, a start and end as an instant or a venue day -- and `/filters` from what the table holds plus the vocabulary. Read-only, as the reference's was; the reference's `audience` is accepted and ignored since garuda has one audience. Rows come coalesced as the manager stores them, with the latest wording and the count. The Console's Alerts page loses the audience toggle and the user picker and takes its entity names from the server. **Decided out** (`SCOPE_DECISIONS.md` §9): Recompute Positional MTM (no daily marking under the owner's rule), Strategy Policies (templates nothing reads), Recompute Charges (until the charges phase); their pages, routes and nav entries are gone. **Not built:** acknowledging an alert; nothing retires old rows. |
 | 2026-10-11 | **Analytics: one page, one Submit, any combination of inputs.** The reference's four pages and twenty routes -- trade analytics, strategy performance, capital and margin, broker performance -- become one question over the same trade rows the reports read: a date range, any accounts, any brokers, any strategies, any products, live or paper, and a grouping (day, week, month, account, broker, strategy, symbol, product, exit reason, direction). `garuda/reports/analytics.py` measures each group and the whole -- trades, won, lost, flat, win rate, gross P&L, average trade, average win and loss, best, worst, the largest fall from a running peak, profit factor -- and draws the cumulative line by day. `GET /api/analytics/query` and `/options`; a broker filter is the accounts at that broker. The Console page: inputs, Submit, the figures, two charts (cumulative P&L, P&L by group) and the group table; nothing runs until Submit. The four copied pages, their standalone service and hooks are deleted; the nav has one Analytics entry. **Dropped:** capital and margin analytics -- nothing pools capital here yet -- and the user-growth and billing views, which were the reference's business. **Not built:** charges in any figure; capital-based ROI. |
 | 2026-10-11 | **Reports: the trades, and the day's P&L, with CSV and Excel.** The owner's two reports, read from the trades table the engine writes so a report is right the minute a trade closes. `garuda/reports/trades.py` is the arithmetic, pure over `Trade`: one row per trade with its gross P&L, totals (closed, won, lost, flat, win rate, best, worst), and the daily P&L -- closed trades summed by the day they **ended** on the venue's clock, which is the owner's rule for positional trades too: a carry-forward position books its whole P&L on its exit day and is marked on no day before. The reference's rule for the daily view is kept: filters before grouping, so a row means "this day, for whatever was selected"; the owner's strategy-wise view (`byStrategy`, and `byAccount`, `byProduct`) only splits a day further, and `strategy=` picks one or all. No capital or ROI column, for the reason the reference gives. `/api/reports/trades`, `/daily-pnl`, `/filters`, and `/trades/export` and `/daily-pnl/export` as `csv` or `xlsx` -- openpyxl is the one dependency added, at the owner's word, with its stubs. Charges are null until the charges phase, never a zero, and net equals gross. **The day's record:** `composition/reports.py` writes `eod_pnl_reports` at each venue's REPORTS phase -- one row per account, strategy, product and paper flag, upserted so a rerun rewrites rather than doubles -- the table the reference's page read, kept as the durable record while the page reads the trades. **Ported from `EOD_PNL_REPORTS` per column:** user and broker as the trading client, date, strategy, product, capital (null here; nothing pools it yet), profit, charges (null), net, paper flag, MTF interest (null). The Console's Reports page is rewritten: Trades and Daily P&L tabs, one filter bar, totals, exports. **Not built:** the reference's external and positional daily-MTM report tables (`EOD_PNL_REPORTS_EXTERNAL`, `_POSITIONAL`, `EOD_POSITIONAL_TRADE_DAY_PNL`) -- by the owner's rule there is no daily marking to record; charges; capital on the day's row. |
 | 2026-10-11 | **Broker API Stats served, and Broker Strategy Configs decided out.** Every call an account makes to its broker -- place, modify, cancel, the order book, positions, funds, the instrument master -- is now timed by `MeteredBroker`, one wrapper over any adapter in place of the reference's timing inside each order manager, and written as one row of `broker_api_stats`: broker, operation, the order it concerned, start, end, milliseconds. A call that fails is timed too and re-raised, since the slow call that ended in a timeout is the one the page is for. The write never changes the call's outcome. **Ported from `BROKER_API_STATS` per column**, all kept, plus the row id garuda's model already had. The reference's `dump.broker.stats.in.db` flag is not ported -- one operator's accounts make a few thousand calls a day -- and its five-day startup sweep is: `serve` purges rows older than five days and writes it to the startup timeline. `GET /api/broker-api-stats?date&broker` is the reference's route: a venue day, every broker or one, the raw rows newest first; the Console aggregates them as it did. **Broker Strategy Configs** are decided out (`SCOPE_DECISIONS.md` §9): the tab, its service and endpoints leave the Console; there was never a table here. **Not built:** the paper broker is not metered. |
@@ -227,9 +228,9 @@ In value order. **Ask before starting anything with a Console page.**
    files, trading clients, brokers, broker exchange configs, the Terminal,
    the strategy pages, the risk pages, the trade log, System Status, Audit
    Logs, Broker Instruments, RMS Daily Stats, Broker Config in full, and
-   Reports and Analytics. Everything else still calls endpoints nothing
-   answers. Next: the admin pages, each a decision on whether it is wanted
-   at all.
+   Reports, Analytics and Alerts. Still unserved: System Config (nothing
+   reads a setting yet) and Corporate Actions (with the equity phase). Next:
+   run a phase now, from System Status.
    See [`API_AND_CONSOLE.md`](API_AND_CONSOLE.md).
 
 2. **Read the stock universe in the strategy engine.** Both tables and

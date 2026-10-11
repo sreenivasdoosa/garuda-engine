@@ -1,28 +1,11 @@
 import { useState, useMemo } from 'react';
-import clsx from 'clsx';
 import { BsSearch, BsArrowClockwise, BsXCircle } from 'react-icons/bs';
 
 import { useAlertsPage } from '@/hooks/useAlerts';
-import { useAuthStore } from '@/store/authStore';
-import UserSelect from '@/components/common/UserSelect';
 import TablePagination from '@/components/common/TablePagination';
 import type { SystemAlert } from '@/types/common';
 import { Badge, Button, Spinner } from '@/components/ui';
 import type { Tone } from '@/components/ui';
-
-type AudienceMode = 'important' | 'all';
-
-const AUDIENCE_STORAGE_KEY_PREFIX = 'alerts.audience.';
-
-const readStoredAudience = (username: string | undefined): AudienceMode => {
-  if (!username) return 'important';
-  try {
-    const stored = localStorage.getItem(AUDIENCE_STORAGE_KEY_PREFIX + username);
-    return stored === 'all' ? 'all' : 'important';
-  } catch {
-    return 'important';
-  }
-};
 
 const formatTimestamp = (timestamp: string): string => {
   try {
@@ -58,26 +41,9 @@ const cell = 'px-2 py-1.5 text-[0.8rem]';
 const affixBtn = 'flex h-8 items-center justify-center rounded-r border border-l-0 border-hairline bg-raised px-2.5 text-ink-soft hover:text-ink';
 
 const AlertsPage: React.FC = () => {
-  const { user } = useAuthStore();
-  const username = user?.username;
-
-  const [audienceMode, setAudienceMode] = useState<AudienceMode>(() => readStoredAudience(username));
-
-  const { alerts, pagination, filters, isLoading, isFetching, params, setPage, setPageSize, setFilter, setSearch, resetFilters, refresh } = useAlertsPage({ audience: audienceMode });
+  const { alerts, pagination, filters, isLoading, isFetching, params, setPage, setPageSize, setFilter, setSearch, resetFilters, refresh } = useAlertsPage();
 
   const [searchInput, setSearchInput] = useState('');
-
-  const handleAudienceChange = (value: AudienceMode) => {
-    setAudienceMode(value);
-    if (username) {
-      try {
-        localStorage.setItem(AUDIENCE_STORAGE_KEY_PREFIX + username, value);
-      } catch {
-        // ignore localStorage errors (private mode, quota, etc.)
-      }
-    }
-    setFilter('audience', value);
-  };
 
   const handleSearch = () => setSearch(searchInput);
   const handleSearchKeyDown = (e: React.KeyboardEvent) => {
@@ -88,31 +54,17 @@ const AlertsPage: React.FC = () => {
     return !!(params.alertLevel || params.entityType || params.entityName || params.operation || params.search);
   }, [params]);
 
-  const colSpan = audienceMode === 'all' ? 9 : 8;
-
-  const segBtn = (active: boolean) =>
-    clsx(
-      'px-3 py-1 text-xs font-medium transition-colors',
-      active ? 'bg-primary-500 text-white' : 'bg-app text-ink-soft hover:text-ink',
-    );
+  const colSpan = 8;
 
   return (
     <div className="py-3">
       <div className="rounded-card border border-hairline bg-card">
         <div className="flex items-center justify-between border-b border-hairline p-3">
           <div className="flex items-center gap-2">
-            <h5 className="mb-0 font-semibold text-ink">System Alerts</h5>
+            <h5 className="mb-0 font-semibold text-ink">Alerts</h5>
             {isFetching && <Spinner size="sm" />}
           </div>
           <div className="flex items-center gap-2">
-            <div className="inline-flex overflow-hidden rounded border border-hairline">
-              <button type="button" className={segBtn(audienceMode === 'important')} onClick={() => handleAudienceChange('important')}>
-                Important
-              </button>
-              <button type="button" className={`${segBtn(audienceMode === 'all')} border-l border-hairline`} onClick={() => handleAudienceChange('all')}>
-                All
-              </button>
-            </div>
             <Button variant="secondary" size="sm" onClick={refresh} disabled={isFetching}>
               <BsArrowClockwise className={isFetching ? 'animate-spin' : ''} /> Refresh
             </Button>
@@ -129,7 +81,12 @@ const AlertsPage: React.FC = () => {
               </button>
             </div>
             <div className="lg:col-span-2">
-              <UserSelect value={params.entityName || ''} onChange={(username) => setFilter('entityName', username || undefined)} />
+              <select className={ctrl} value={params.entityName || ''} onChange={(e) => setFilter('entityName', e.target.value || undefined)}>
+                <option value="">All entities</option>
+                {filters?.entityNames.map((name) => (
+                  <option key={name} value={name}>{name}</option>
+                ))}
+              </select>
             </div>
             <div className="lg:col-span-2">
               <select className={ctrl} value={params.alertLevel || ''} onChange={(e) => setFilter('alertLevel', e.target.value || undefined)}>
@@ -196,7 +153,6 @@ const AlertsPage: React.FC = () => {
                 <tr>
                   <th className={`${cell} text-left`} style={{ width: '170px' }}>Last seen</th>
                   <th className={`${cell} text-left`} style={{ width: '80px' }}>Level</th>
-                  {audienceMode === 'all' && <th className={`${cell} text-left`} style={{ width: '95px' }}>Audience</th>}
                   <th className={`${cell} text-left`} style={{ width: '80px' }}>Entity Type</th>
                   <th className={`${cell} text-left`} style={{ width: '150px' }}>Entity Name</th>
                   <th className={`${cell} text-left`} style={{ width: '120px' }}>Operation</th>
@@ -223,11 +179,6 @@ const AlertsPage: React.FC = () => {
                       <td className={cell}>
                         <Badge tone={getAlertTone(alert.alertLevel)}>{alert.alertLevel}</Badge>
                       </td>
-                      {audienceMode === 'all' && (
-                        <td className={cell}>
-                          <Badge tone={alert.audience === 'DEVELOPER' ? 'neutral' : 'primary'}>{alert.audience ?? 'OPERATOR'}</Badge>
-                        </td>
-                      )}
                       <td className={`${cell} text-ink`}>{alert.entityType}</td>
                       <td className={`${cell} truncate text-ink`} title={alert.entityName}>{alert.entityName}</td>
                       <td className={`${cell} text-ink`}>{alert.operation}</td>

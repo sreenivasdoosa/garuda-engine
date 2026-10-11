@@ -33,14 +33,11 @@ import BreachesPage from '@/features/shared/rms/BreachesPage';
 import KillSwitchesPage from '@/features/shared/rms/KillSwitchesPage';
 import RMSDailyStatsPage from '@/features/shared/rms/RMSDailyStatsPage';
 import RiskConfigPage from '@/features/shared/rms/RiskConfigPage';
-import RecomputeChargesPage from '@/features/admin/recompute-charges/RecomputeChargesPage';
-import RecomputePositionalMtmPage from '@/features/admin/recompute-positional-mtm/RecomputePositionalMtmPage';
 import RunEodJobPage from '@/features/admin/run-eod-job/RunEodJobPage';
 import SpecialTradingDaysPage from '@/features/shared/exchanges/SpecialTradingDaysPage';
 import StockUniversesPage from '@/features/shared/equity-universe/StockUniversesPage';
 import StrategyConfigPage from '@/features/shared/strategy-config/StrategyConfigPage';
 import StrategyEnginePage from '@/features/shared/strategy-engine/StrategyEnginePage';
-import StrategyPoliciesPage from '@/features/shared/strategy-config/StrategyPoliciesPage';
 import SymbolsPage from '@/features/shared/symbols/SymbolsPage';
 import SystemConfig from '@/features/admin/system-config/SystemConfig';
 import SystemStatus from '@/features/admin/system-status/SystemStatus';
@@ -106,7 +103,6 @@ function App() {
         {/* Strategy */}
         <Route path="/console/strategy-engine" element={<StrategyEnginePage />} />
         <Route path="/console/strategy-config" element={<StrategyConfigPage />} />
-        <Route path="/console/strategy-policies" element={<StrategyPoliciesPage />} />
         <Route path="/console/allocation-models" element={<AllocationModelsPage />} />
 
         {/* Risk */}
@@ -133,11 +129,6 @@ function App() {
         <Route path="/console/system-config" element={<SystemConfig />} />
         <Route path="/console/system-status" element={<SystemStatus />} />
         <Route path="/console/corporate-actions" element={<CorporateActionsPage />} />
-        <Route path="/console/recompute-charges" element={<RecomputeChargesPage />} />
-        <Route
-          path="/console/recompute-positional-mtm"
-          element={<RecomputePositionalMtmPage />}
-        />
         <Route path="/console/run-eod-job" element={<RunEodJobPage />} />
 
         {/* Analytics: one page, one Submit */}
