@@ -60,6 +60,7 @@ class AuditAction(StrEnum):
     RESTART = "RESTART"
     SQUARE_OFF = "SQUARE_OFF"
     DOWNLOAD = "DOWNLOAD"
+    RUN = "RUN"
 
 
 #: Table name to the entity type the log shows. The reference's names where

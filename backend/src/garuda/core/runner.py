@@ -256,6 +256,29 @@ class EngineRunner:
             phase=TimelinePhase.DAY,
         )
 
+    async def run_now(self, exchange_code: str, phase: DayPhase, trading_day: date) -> str | None:
+        """Run one phase for one venue and day, now, at the operator's hand.
+
+        The reference's manual EOD button, widened to any phase: the morning
+        the master failed at DAY_INIT, or REPORTS after a fix. Exactly what
+        the reconciler would run, recorded the same way, and run even if the
+        day already has it recorded -- that is what "again" means. Returns
+        the failure reason, or None when every task finished.
+        """
+        for exchange in self._exchanges:
+            if exchange.code == exchange_code:
+                break
+        else:
+            raise DomainError(
+                f"{exchange_code!r} is not a venue this engine runs; "
+                f"one of {', '.join(e.code for e in self._exchanges)}"
+            )
+        instant = PhaseInstant(
+            exchange=exchange.code, trading_day=trading_day, phase=phase, at=self._clock.now()
+        )
+        logger.warning("%s %s run by hand for %s", exchange.code, phase.value, trading_day)
+        return await self._run_phase(exchange, instant)
+
     def _days_in_flight(self, exchange: Exchange, now: datetime) -> tuple[date, ...]:
         """The trading days a venue could still owe work for.
 

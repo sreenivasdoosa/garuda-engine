@@ -38,7 +38,7 @@ from garuda.core.timeline import InitTimeline, TimelineEvent
 from garuda.domain.instrument import InstrumentId
 from garuda.domain.market import BarInterval
 from garuda.domain.money import Money
-from garuda.domain.phases import PhaseInstant, next_phase_after
+from garuda.domain.phases import DayPhase, PhaseInstant, next_phase_after
 from garuda.marketdata.downloads import DownloadStatus
 from garuda.marketdata.service import MarketDataService
 from garuda.protocols.clock import Clock
@@ -328,6 +328,31 @@ class SystemStatusView:
 
     def day_events(self) -> list[TimelineEvent]:
         return self._timeline.day_events() if self._timeline is not None else []
+
+    # -- a phase, now ----------------------------------------------------------
+
+    async def run_phase(
+        self, exchange_code: str, phase: str, trading_day: date | None
+    ) -> str | None:
+        """Run one phase for one venue by hand. Returns the failure reason or None."""
+        if self._runtime is None:
+            raise RuntimeError("the engine is built but not running, so no phase can run")
+        try:
+            wanted = DayPhase(phase.strip().upper())
+        except ValueError:
+            raise ValueError(
+                f"{phase!r} is not a phase; one of {', '.join(p.value for p in DayPhase)}"
+            ) from None
+        day = trading_day
+        if day is None:
+            now = self._clock.now()
+            for exchange in self._engine.parts.exchanges:
+                if exchange.code == exchange_code.upper():
+                    day = exchange.trading_day_for(now)
+                    break
+            else:
+                day = now.date()
+        return await self._runtime.runner.run_now(exchange_code.upper(), wanted, day)
 
     # -- the probe -----------------------------------------------------------
 

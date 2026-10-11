@@ -22,12 +22,14 @@ from typing import Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from garuda.api.envelope import ok
 from garuda.api.routers.rms import AUTOMATIC_SOURCES
 from garuda.api.routers.ticker import download_wire, ticker_wire
+from garuda.domain.errors import DomainError
 from garuda.persistence import models
 from garuda.persistence.repositories import (
     BrokersRepository,
@@ -180,6 +182,15 @@ def session_state(status: models.TradingClientLoginStatusRow | None) -> str:
     if not status.is_login_success and status.login_error:
         return "FAILED"
     return "LOGGED_OUT"
+
+
+class RunPhaseBody(BaseModel):
+    """Module-level, not nested: with postponed annotations FastAPI resolves
+    the name against the module, and a nested class reads as a query field."""
+
+    exchange: str
+    phase: str
+    tradingDay: str | None = None  # noqa: N815
 
 
 def build(sessions: async_sessionmaker[AsyncSession], clock: Clock) -> APIRouter:
@@ -412,6 +423,51 @@ def build(sessions: async_sessionmaker[AsyncSession], clock: Clock) -> APIRouter
                 "tick": probe_wire(result.tick),
                 "history": probe_wire(result.history),
             }
+        )
+
+    @router.post("/run-phase")
+    async def run_phase(body: RunPhaseBody, request: Request) -> dict[str, Any]:
+        """Run one phase for one venue now: the reference's manual EOD, widened.
+
+        Confirmed in the Console first, because INTRADAY_SQUARE_OFF and EOD
+        do what their names say.
+        """
+        view = _view(request)
+        if view is None:
+            raise HTTPException(status_code=503, detail=f"{NO_ENGINE}, so no phase can run")
+        day: dt.date | None = None
+        if body.tradingDay:
+            try:
+                day = dt.date.fromisoformat(body.tradingDay)
+            except ValueError:
+                raise HTTPException(
+                    status_code=400, detail=f"{body.tradingDay!r} is not a date (YYYY-MM-DD)"
+                ) from None
+        try:
+            failure = await view.run_phase(body.exchange, body.phase, day)
+        except (ValueError, DomainError, RuntimeError) as error:
+            raise HTTPException(status_code=400, detail=str(error)) from None
+        ran_for = day.isoformat() if day else "today"
+        if failure is not None:
+            return ok(
+                {
+                    "exchange": body.exchange.upper(),
+                    "phase": body.phase.upper(),
+                    "ran": False,
+                    "failure": failure,
+                },
+                message=(
+                    f"{body.exchange.upper()} {body.phase.upper()} for {ran_for} failed: {failure}"
+                ),
+            )
+        return ok(
+            {
+                "exchange": body.exchange.upper(),
+                "phase": body.phase.upper(),
+                "ran": True,
+                "failure": None,
+            },
+            message=f"{body.exchange.upper()} {body.phase.upper()} for {ran_for} ran",
         )
 
     @router.get("/init-timeline")

@@ -47,6 +47,7 @@ BUTTONS: dict[str, AuditAction] = {
     "restart": AuditAction.RESTART,
     "square-off": AuditAction.SQUARE_OFF,
     "download": AuditAction.DOWNLOAD,
+    "run-phase": AuditAction.RUN,
 }
 
 #: The route prefix to the entity a button acts on.
@@ -56,6 +57,7 @@ BUTTON_ENTITIES: dict[str, str] = {
     "trading-clients": "TRADING_CLIENT",
     "data-providers": "DATA_PROVIDER",
     "brokers": "BROKER",
+    "system-status": "ENGINE",
 }
 
 MUTATING = frozenset({"POST", "PUT", "PATCH", "DELETE"})

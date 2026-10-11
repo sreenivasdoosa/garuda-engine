@@ -325,3 +325,54 @@ class TestTheDayTimeline:
         assert sum(1 for m in messages if m.startswith("Failed")) == 1
         assert sum(1 for m in messages if m.startswith("Finished")) == 1
         assert sum(1 for m in messages if m.startswith("Day ")) == 1
+
+
+class TestRunningAPhaseByHand:
+    async def test_the_phases_tasks_run_now_and_are_recorded(self, nse):
+        seen: list[tuple[str, DayPhase, date]] = []
+
+        async def load(context: PhaseContext) -> None:
+            seen.append((context.exchange.code, context.phase, context.trading_day))
+
+        registry = TaskRegistry()
+        registry.register(DayPhase.DAY_INIT, load, name="load-instruments")
+        recorder = Recorder()
+        engine = runner([nse], ReplayClock(DAWN), registry=registry, recorder=recorder)
+
+        failure = await engine.run_now("NSE", DayPhase.DAY_INIT, MONDAY)
+
+        assert failure is None
+        assert seen == [("NSE", DayPhase.DAY_INIT, MONDAY)], (
+            "before its time, at the operator's hand"
+        )
+        assert (nse.code, DayPhase.DAY_INIT) in recorder.order
+
+    async def test_again_means_again(self, nse):
+        """A phase already recorded for the day still runs when asked by hand."""
+        attempts: list[int] = []
+
+        async def load(context: PhaseContext) -> None:
+            attempts.append(1)
+
+        registry = TaskRegistry()
+        registry.register(DayPhase.DAY_INIT, load, name="load-instruments")
+        engine = runner([nse], ReplayClock(MIDDAY), registry=registry)
+        await engine.run_once()
+        await engine.run_now("NSE", DayPhase.DAY_INIT, MONDAY)
+
+        assert len(attempts) == 2
+
+    async def test_a_failure_is_the_answer_not_an_exception(self, nse):
+        async def load(context: PhaseContext) -> None:
+            raise RuntimeError("broker unreachable")
+
+        registry = TaskRegistry()
+        registry.register(DayPhase.DAY_INIT, load, name="load-instruments")
+        failure = await runner([nse], ReplayClock(DAWN), registry=registry).run_now(
+            "NSE", DayPhase.DAY_INIT, MONDAY
+        )
+        assert failure == "load-instruments: RuntimeError: broker unreachable"
+
+    async def test_a_venue_the_engine_does_not_run_is_refused(self, nse):
+        with pytest.raises(DomainError, match="not a venue"):
+            await runner([nse], ReplayClock(DAWN)).run_now("CME", DayPhase.DAY_INIT, MONDAY)

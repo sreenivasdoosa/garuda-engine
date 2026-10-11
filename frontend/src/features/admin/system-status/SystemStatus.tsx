@@ -9,7 +9,7 @@
  * round-trip, so it runs on the button and nowhere else.
  */
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   BsActivity,
   BsArchive,
@@ -39,7 +39,7 @@ import type {
   SystemStatus as Snapshot,
   TimelineEvent,
 } from '@/types/systemStatus';
-import { panel, panelError } from '@/types/systemStatus';
+import { DAY_PHASES, panel, panelError } from '@/types/systemStatus';
 
 const REFRESH_MS = 15000;
 
@@ -155,6 +155,70 @@ const Timeline: React.FC<{ icon: React.ReactNode; title: string; events: Timelin
     </div>
   </Panel>
 );
+
+// ---- a phase, now -------------------------------------------------------------
+
+const RunPhase: React.FC<{ venues: { code: string; tradingDay: string }[]; onRan: () => void }> = ({ venues, onRan }) => {
+  const [exchange, setExchange] = useState(venues[0]?.code ?? '');
+  const [phase, setPhase] = useState<string>('DAY_INIT');
+  const [day, setDay] = useState('');
+  const [confirming, setConfirming] = useState(false);
+  const chosen = venues.find((v) => v.code === exchange) ?? venues[0];
+  const effectiveDay = useMemo(() => day || chosen?.tradingDay || '', [day, chosen]);
+  const run = useMutation({
+    mutationFn: () => systemStatusService.runPhase({ exchange, phase, tradingDay: effectiveDay || undefined }),
+    onSuccess: (result) => {
+      setConfirming(false);
+      if (result.ran) toast.success(`${result.exchange} ${result.phase} ran for ${effectiveDay}`);
+      else toast.error(`${result.exchange} ${result.phase} failed: ${result.failure}`);
+      onRan();
+    },
+    onError: (e: Error) => {
+      setConfirming(false);
+      toast.error(e.message || 'The phase could not be run');
+    },
+  });
+  const dangerous = phase === 'INTRADAY_SQUARE_OFF' || phase === 'EOD' || phase === 'SESSION_CLOSE';
+  return (
+    <div className="flex flex-wrap items-end gap-2 border-t border-hairline px-3 py-2">
+      <div>
+        <div className={kv}>Venue</div>
+        <select className="h-7 rounded border border-hairline bg-card px-1 text-xs text-ink" value={exchange} onChange={(e) => { setExchange(e.target.value); setConfirming(false); }}>
+          {venues.map((v) => (
+            <option key={v.code} value={v.code}>{v.code}</option>
+          ))}
+        </select>
+      </div>
+      <div>
+        <div className={kv}>Phase</div>
+        <select className="h-7 rounded border border-hairline bg-card px-1 text-xs text-ink" value={phase} onChange={(e) => { setPhase(e.target.value); setConfirming(false); }}>
+          {DAY_PHASES.map((p) => (
+            <option key={p} value={p}>{p}</option>
+          ))}
+        </select>
+      </div>
+      <div>
+        <div className={kv}>Trading day</div>
+        <input type="date" className="h-7 rounded border border-hairline bg-card px-1 text-xs text-ink" value={effectiveDay} onChange={(e) => { setDay(e.target.value); setConfirming(false); }} />
+      </div>
+      {confirming ? (
+        <>
+          <span className={`text-xs ${dangerous ? 'text-danger-500' : 'text-ink'}`}>
+            Run {phase} for {exchange} on {effectiveDay} now{dangerous ? ' — it does what its name says' : ''}?
+          </span>
+          <Button variant={dangerous ? 'danger' : 'primary'} size="sm" onClick={() => run.mutate()} disabled={run.isPending}>
+            {run.isPending ? <Spinner size="sm" /> : 'Yes, run it'}
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setConfirming(false)}>No</Button>
+        </>
+      ) : (
+        <Button variant="secondary" size="sm" onClick={() => setConfirming(true)} disabled={!exchange}>
+          <BsPlayCircle /> Run now
+        </Button>
+      )}
+    </div>
+  );
+};
 
 // ---- the page ---------------------------------------------------------------
 
@@ -587,7 +651,14 @@ const SystemStatus: React.FC = () => {
 
             {/* Timelines */}
             <Timeline icon={<BsPlayCircle />} title="Startup" events={timeline.data?.startup} empty={attached ? 'Nothing recorded yet.' : 'No engine, so no startup to show.'} />
-            <Timeline icon={<BsCardChecklist />} title="The day" events={timeline.data?.day} empty={attached ? 'No phase has run yet today.' : 'No engine, so no day to show.'} />
+            <div>
+              <Timeline icon={<BsCardChecklist />} title="The day" events={timeline.data?.day} empty={attached ? 'No phase has run yet today.' : 'No engine, so no day to show.'} />
+              {attached && venues && venues.rows.length > 0 && (
+                <div className="-mt-px rounded-b-card border border-t-0 border-hairline bg-card">
+                  <RunPhase venues={venues.rows.map((v) => ({ code: v.code, tradingDay: v.tradingDay }))} onRan={refresh} />
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="mt-3 text-right text-xs text-ink-faint">

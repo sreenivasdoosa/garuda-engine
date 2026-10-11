@@ -46,6 +46,7 @@ const ACTIONS = [
   'RESTART',
   'SQUARE_OFF',
   'DOWNLOAD',
+  'RUN',
 ];
 
 const ACTION_COLORS: Record<string, string> = {
@@ -61,6 +62,7 @@ const ACTION_COLORS: Record<string, string> = {
   RESTART: 'info',
   SQUARE_OFF: 'danger',
   DOWNLOAD: 'info',
+  RUN: 'warning',
 };
 
 // The groups the dropdown offers above the single types: garuda's entities,
@@ -121,6 +123,7 @@ const ENTITY_TYPE_LABELS: Record<string, string> = {
   KILL_SWITCH_TYPE: 'Kill Switch Sources',
   SYSTEM_CONFIG: 'System Config',
   TERMINAL: 'Terminal (square-off)',
+  ENGINE: 'Engine (phases run by hand)',
 };
 
 const formatEntityTypeLabel = (type: string) =>

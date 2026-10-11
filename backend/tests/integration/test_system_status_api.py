@@ -59,6 +59,7 @@ class FakeView:
             ),
         ]
         self.switches: tuple[ActiveKillSwitch, ...] = ()
+        self.ran: list[tuple[str, str, dt.date | None]] = []
 
     def process(self) -> ProcessStatus:
         return ProcessStatus(
@@ -125,6 +126,14 @@ class FakeView:
 
     def day_events(self) -> list[TimelineEvent]:
         return []
+
+    async def run_phase(self, exchange: str, phase: str, trading_day: dt.date | None) -> str | None:
+        self.ran.append((exchange.upper(), phase.upper(), trading_day))
+        if phase.upper() == "EOD":
+            return "archive: RuntimeError: disk full"
+        if phase.upper() not in {"DAY_INIT", "ALGO_START", "REPORTS", "EOD"}:
+            raise ValueError(f"{phase!r} is not a phase")
+        return None
 
     async def health_check(self) -> HealthCheck:
         return HealthCheck(
@@ -430,6 +439,56 @@ class TestTheProbe:
     ) -> None:
         response = await detached.get("/api/system-status/health-check")
         assert response.status_code == 503
+
+
+class TestRunningAPhase:
+    async def test_the_press_reaches_the_runner(
+        self, attached: tuple[httpx.AsyncClient, FakeView]
+    ) -> None:
+        http, view = attached
+        response = await http.post(
+            "/api/system-status/run-phase",
+            json={"exchange": "nse", "phase": "reports", "tradingDay": "2026-10-12"},
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["data"]["ran"] is True
+        assert view.ran == [("NSE", "REPORTS", dt.date(2026, 10, 12))]
+
+    async def test_a_failure_is_reported_not_hidden(
+        self, attached: tuple[httpx.AsyncClient, FakeView]
+    ) -> None:
+        http, _ = attached
+        body = (
+            await http.post(
+                "/api/system-status/run-phase", json={"exchange": "NSE", "phase": "EOD"}
+            )
+        ).json()
+        assert body["data"]["ran"] is False
+        assert "disk full" in body["data"]["failure"]
+        assert "failed" in body["message"]
+
+    async def test_bad_inputs_are_refused(
+        self, attached: tuple[httpx.AsyncClient, FakeView]
+    ) -> None:
+        http, _ = attached
+        assert (
+            await http.post(
+                "/api/system-status/run-phase", json={"exchange": "NSE", "phase": "LUNCH"}
+            )
+        ).status_code == 400
+        assert (
+            await http.post(
+                "/api/system-status/run-phase",
+                json={"exchange": "NSE", "phase": "REPORTS", "tradingDay": "monday"},
+            )
+        ).status_code == 400
+
+    async def test_without_an_engine_nothing_can_run(self, detached: httpx.AsyncClient) -> None:
+        assert (
+            await detached.post(
+                "/api/system-status/run-phase", json={"exchange": "NSE", "phase": "REPORTS"}
+            )
+        ).status_code == 503
 
 
 class TestTheTimeline:

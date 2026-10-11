@@ -227,3 +227,22 @@ export const panel = <T extends object>(value: T | PanelError | null | undefined
 
 export const panelError = (value: object | null | undefined): string | null =>
   value && 'error' in value ? String((value as PanelError).error) : null;
+
+export interface RunPhaseResult {
+  exchange: string;
+  phase: string;
+  ran: boolean;
+  failure: string | null;
+}
+
+/** A venue's day, in the order its phases occur. */
+export const DAY_PHASES = [
+  'DAY_INIT',
+  'ALGO_START',
+  'PRE_OPEN',
+  'SESSION_OPEN',
+  'INTRADAY_SQUARE_OFF',
+  'SESSION_CLOSE',
+  'REPORTS',
+  'EOD',
+] as const;

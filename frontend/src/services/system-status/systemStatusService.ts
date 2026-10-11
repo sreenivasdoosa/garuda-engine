@@ -1,6 +1,6 @@
 import { api } from '@/api/client';
 import { API_ENDPOINTS } from '@/api/endpoints';
-import type { HealthCheck, InitTimeline, SystemStatus } from '@/types/systemStatus';
+import type { HealthCheck, InitTimeline, RunPhaseResult, SystemStatus } from '@/types/systemStatus';
 
 const E = API_ENDPOINTS.SYSTEM_STATUS;
 
@@ -13,4 +13,8 @@ export const systemStatusService = {
 
   /** What starting up and starting the day did, newest first. */
   getInitTimeline: () => api.get<InitTimeline>(E.INIT_TIMELINE),
+
+  /** Run one phase for one venue now. Confirmed in the page first. */
+  runPhase: (body: { exchange: string; phase: string; tradingDay?: string }) =>
+    api.post<RunPhaseResult>(`${E.STATUS}/run-phase`, body),
 };
