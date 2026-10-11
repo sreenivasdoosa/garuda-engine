@@ -18,12 +18,15 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
 from garuda.brokers.sessions import Credentials, SessionResolver
 from garuda.brokers.streams import AccountStreamManager, UpdateHandler
 from garuda.brokers.websocket import Connector
 from garuda.composition.brokers import BrokerState
 from garuda.composition.engine import ClientParts, Engine, build_account_stream
 from garuda.composition.persistence import TradePersistence
+from garuda.composition.reports import register_daily_pnl
 from garuda.composition.strategy_loop import StrategyLoop
 from garuda.core.runner import EngineRunner, InMemoryPhaseRecorder
 from garuda.core.timeline import InitTimeline
@@ -143,6 +146,9 @@ async def start(
     #: Where the start is written for the System Status page. None records
     #: nothing.
     timeline: InitTimeline | None = None,
+    #: For the day's tasks that write a table of their own, such as the
+    #: daily P&L at REPORTS. None registers no such task.
+    sessions: async_sessionmaker[AsyncSession] | None = None,
 ) -> Runtime:
     """Restore the books, open the channels, and register the day's tasks."""
     parts = engine.parts
@@ -188,7 +194,7 @@ async def start(
             key="account-streams-none",
         )
 
-    _register_tasks(engine, loader, catalogue_loads or {})
+    _register_tasks(engine, loader, catalogue_loads or {}, sessions)
     runner = EngineRunner(
         parts.exchanges,
         parts.clock,
@@ -334,6 +340,7 @@ def _register_tasks(
     engine: Engine,
     loader: InstrumentLoader | None,
     catalogue_loads: Mapping[str, CatalogueLoad],
+    sessions: async_sessionmaker[AsyncSession] | None = None,
 ) -> None:
     """Everything a venue's day is made of, in phase order."""
     parts = engine.parts
@@ -369,3 +376,5 @@ def _register_tasks(
     if parts.market_data is not None:
         register_feed_lifecycle(parts.registry, parts.market_data, parts.exchanges)
     register_trade_loops(parts.registry, engine.loops, parts.exchanges)
+    if sessions is not None:
+        register_daily_pnl(parts.registry, sessions, parts.exchanges)

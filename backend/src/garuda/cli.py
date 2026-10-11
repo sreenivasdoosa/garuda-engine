@@ -209,6 +209,7 @@ async def _serve_with_engine(settings: Settings, host: str | None, port: int | N
             strategies=_strategy_loop(assembled, clock),
             catalogue_loads=assembled.catalogue_loads,
             timeline=timeline,
+            sessions=assembled.sessions,
         )
         timeline.end(starting, f"-- {assembled.engine.describe()}")
         # The reference's startup sweep: broker API stat rows older than

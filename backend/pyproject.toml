@@ -28,11 +28,14 @@ dependencies = [
     # Already present transitively via uvicorn[standard]; declared because the
     # tick feed depends on it directly.
     "websockets>=14",
+    # Reports: the Excel export the owner asked for. CSV needs nothing.
+    "openpyxl>=3.1",
     # zoneinfo has no system tz database on Windows; this ships one.
     "tzdata>=2024.2",
     "cryptography>=50.0.1",
     "pyyaml>=6.0.3",
     "types-pyyaml>=6.0.12.20260815",
+    "types-openpyxl>=3.1",
 ]
 
 [project.scripts]

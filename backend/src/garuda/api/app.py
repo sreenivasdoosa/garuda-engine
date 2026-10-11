@@ -35,6 +35,7 @@ from garuda.api.routers import (
     exchanges,
     holidays,
     market_data,
+    reports,
     rms,
     socket,
     special_trading_days,
@@ -261,6 +262,7 @@ def create_app(
     app.include_router(strategy_config.build(sessions, LiveClock()))
     app.include_router(rms.build(sessions, LiveClock()))
     app.include_router(trade_log.build(sessions, LiveClock()))
+    app.include_router(reports.build(sessions, LiveClock()))
     app.include_router(system_status.build(sessions, LiveClock()))
     app.include_router(audit_logs.build(sessions, LiveClock()))
     app.include_router(socket.build(secret))
