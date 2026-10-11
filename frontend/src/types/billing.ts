@@ -1,6 +1,6 @@
 /**
  * Billing and Brokerage Plans type definitions
- * Covers billing plans, brokerage plans, and allocation models
+ * Covers billing plans and brokerage plans
  */
 
 // ==================== BILLING PLANS ====================
@@ -121,51 +121,3 @@ export interface CreateStatutoryChargesRequest {
   depositoryCharges: number;
 }
 
-// ==================== ALLOCATION MODELS ====================
-
-export interface AllocationModel {
-  name: string;
-  capital: number;
-  intradayCapital: number;
-  positionalCapital: number;
-  strategiesList: string[];
-}
-
-export interface CreateAllocationModelRequest {
-  name: string;
-  capital: number;
-  intradayCapital: number;
-  positionalCapital: number;
-}
-
-export interface AllocationModelStrategy {
-  // Core fields (stored in DB)
-  modelName?: string;
-  strategyName: string;
-  numOfLots: number;
-  /**
-   * Per-mapping overlap flag (stored). Excludes this (model, strategy) mapping from the
-   * allocation-model total, independent of the strategy-level overlap flag. Use for the
-   * same strategy mapped on multiple indices where only a subset run at once.
-   */
-  mappingOverlapCapital?: boolean;
-
-  // Computed fields (populated by backend from P0 config)
-  hedgingEnabled?: boolean;
-  capitalPerLot?: number;
-  capitalPerLotHedged?: number;
-  capitalPerLotNaked?: number;
-  totalCapital?: number;
-  product?: 'INTRADAY' | 'POSITIONAL';
-  /** Effective overlap = strategy-level OR mappingOverlapCapital; drives total exclusion. */
-  isOverlapCapital?: boolean;
-}
-
-export interface AllocationModelDeletionImpact {
-  modelName: string;
-  userBrokersCount: number;
-  affectedUserBrokers: string[];
-  strategyMappingsCount: number;
-  affectedStrategies: string[];
-  dayAllocationConfigsCount: number;
-}

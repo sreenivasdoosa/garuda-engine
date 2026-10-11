@@ -8,12 +8,10 @@ import {
   BsCalendarX,
   BsCollection,
   BsCpu,
-  BsDiagram3,
   BsFileEarmarkText,
   BsGear,
   BsListUl,
   BsPlug,
-  BsShieldCheck,
   BsShieldLock,
   BsSliders,
   BsStopCircle,
@@ -150,18 +148,6 @@ const STAGES: Stage[] = [
     title: 'Strategy',
     why: 'Strategies here are configuration, not code. Build the pieces, then subscribe an account to one.',
     steps: [
-      {
-        to: '/console/allocation-models',
-        label: 'Allocation Models',
-        icon: BsDiagram3,
-        blurb: 'How capital is divided across strategies and legs.',
-      },
-      {
-        to: '/console/strategy-policies',
-        label: 'Strategy Policies',
-        icon: BsShieldCheck,
-        blurb: 'Reusable entry, exit and trailing templates to point a strategy at.',
-      },
       {
         to: '/console/strategy-config',
         label: 'Strategy Config',

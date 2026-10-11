@@ -72,7 +72,6 @@ const UserBroker: React.FC<UserBrokerProps> = ({
     appSecret: '',
     autoLogin: false,
     brokeragePlan: '',
-    allocationModel: '',
     isPro: false,
     webSocketEnabled: false,
   });
@@ -98,7 +97,6 @@ const UserBroker: React.FC<UserBrokerProps> = ({
         appSecret: '',
         autoLogin: broker.autoLogin,
         brokeragePlan: broker.brokeragePlan || '',
-        allocationModel: broker.allocationModel || '',
         useApiOf: broker.useApiOf || '',
         isPro: broker.isPro,
         xtremeAgentUrl: broker.xtremeAgentUrl || '',
@@ -117,8 +115,7 @@ const UserBroker: React.FC<UserBrokerProps> = ({
         appSecret: '',
         autoLogin: false,
         brokeragePlan: '',
-        allocationModel: '',
-        isPro: false,
+            isPro: false,
         webSocketEnabled: false,
       });
     }
@@ -242,10 +239,6 @@ const UserBroker: React.FC<UserBrokerProps> = ({
               <div>{broker.brokeragePlan || 'N/A'}</div>
             </Col>
             <Col md={4}>
-              <label className="text-ink-soft text-[0.875em]">Allocation Model</label>
-              <div>{broker.allocationModel || 'Default'}</div>
-            </Col>
-            <Col md={4}>
               <label className="text-ink-soft text-[0.875em]">WebSocket</label>
               <div><Badge bg={broker.webSocketEnabled ? 'info' : 'light'} text={broker.webSocketEnabled ? 'white' : 'dark'}>{broker.webSocketEnabled ? 'Yes' : 'No'}</Badge></div>
             </Col>
@@ -348,16 +341,6 @@ const UserBroker: React.FC<UserBrokerProps> = ({
                       placeholder="Enter brokerage plan"
                     />
                   )}
-                </Form.Group>
-              </Col>
-              <Col md={6}>
-                <Form.Group className="mb-4">
-                  <Form.Label>Allocation Model</Form.Label>
-                  <Form.Control
-                    value={formData.allocationModel || ''}
-                    onChange={(e) => setFormData({ ...formData, allocationModel: e.target.value })}
-                    placeholder="Enter allocation model"
-                  />
                 </Form.Group>
               </Col>
             </Row>

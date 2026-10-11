@@ -128,7 +128,7 @@ active provider fails over without dropping an order event.
 - Hedging: hedge schedules, hedge windows, hedge replace + recovery job — **enable/disable at
   strategy level**.
 - Cross-day strategy state and snapshots.
-- Console: Strategy Engine, Strategy Configs, Strategy Policies, Allocation Models.
+- Console: Strategy Engine, Strategy Configs. (Strategy Policies and Allocation Models were decided out on 2026-10-11.)
 
 **Exit criteria** — every ported template runs end to end in paper mode against live data, with a
 behavioural test per template asserting emitted legs, strikes, ordering and roles.
@@ -192,7 +192,7 @@ unwinds cleanly rather than leaving a naked leg.
 
 ## Phase 8 — Capital, charges, reports, analytics · size M
 
-Allocation models and compounding; capital change history; brokerage plans and rates; statutory
+Compounding; capital change history (allocation models decided out); brokerage plans and rates; statutory
 charges with broker overrides; charge recompute; EOD P&L job (intraday, positional); positional
 daily MTM + recompute; aggregated P&L snapshots; the six analytics dashboards;
 Excel export/import for strategy definitions and RMS config.

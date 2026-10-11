@@ -118,7 +118,8 @@ believes.
 3. **The Terminal and the socket** — positions, trades, P&L, alerts, live.
    The first point where they can see what it did.
 4. **Strategy configuration** — Strategy Engine, Config, Subscriptions,
-   Allocation Models, and the dry-run resolver beside them.
+   and the dry-run resolver beside them. (Allocation Models were decided
+   out on 2026-10-11.)
 5. **Risk** — RMS Config, Breaches, Kill Switches. The breach log has been
    filling since 2026-09-01 and nothing reads it.
 6. **Market and operations** — Symbols, Exchanges, calendars, Data Providers,

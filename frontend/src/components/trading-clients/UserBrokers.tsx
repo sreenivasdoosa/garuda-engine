@@ -176,11 +176,6 @@ const UserBrokers: React.FC<UserBrokersProps> = ({
       render: (b) => <Badge bg={b.isPro ? 'warning' : 'light'} text="dark">{b.isPro ? 'Yes' : 'No'}</Badge>,
     },
     {
-      key: 'allocation',
-      header: 'Allocation',
-      render: (b) => <span className="text-ink-soft text-[0.875em]">{b.allocationModel || 'Default'}</span>,
-    },
-    {
       key: 'actions',
       header: 'Actions',
       render: (b) => (

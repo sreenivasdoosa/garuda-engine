@@ -10,7 +10,6 @@ import {
   holidayService,
   eventDayService,
   brokerExchangeConfigService,
-  allocationModelService,
   faqService,
   auditLogService,
 } from '@/services/admin/v2AdminService';
@@ -20,8 +19,6 @@ import type {
   CreateBrokerExchangeConfigRequest,
 } from '@/types/exchange';
 import type {
-  CreateAllocationModelRequest,
-  AllocationModelStrategy,
 } from '@/types/billing';
 import type { CreateFAQRequest, AuditLogFilter } from '@/types/system';
 
@@ -230,107 +227,6 @@ export const useBrokerExchangeConfigMutations = () => {
     isUpdating: updateMutation.isPending,
     deleteConfig: deleteMutation.mutate,
     isDeleting: deleteMutation.isPending,
-  };
-};
-
-// ==================== ALLOCATION MODELS ====================
-
-export const useAllocationModels = () => {
-  return useQuery({
-    queryKey: ['admin', 'allocationModels'],
-    queryFn: () => allocationModelService.getAll(),
-    staleTime: 10 * 60 * 1000,
-  });
-};
-
-export const useAllocationModel = (name: string) => {
-  return useQuery({
-    queryKey: ['admin', 'allocationModels', name],
-    queryFn: () => allocationModelService.getByName(name),
-    enabled: !!name,
-  });
-};
-
-export const useAllocationModelStrategies = (name: string) => {
-  return useQuery({
-    queryKey: ['admin', 'allocationModels', name, 'strategies'],
-    queryFn: () => allocationModelService.getStrategies(name),
-    enabled: !!name,
-  });
-};
-
-export const useAllocationModelMutations = () => {
-  const queryClient = useQueryClient();
-
-  const createMutation = useMutation({
-    mutationFn: (data: CreateAllocationModelRequest) => allocationModelService.create(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin', 'allocationModels'] });
-      toast.success('Allocation model created');
-    },
-    onError: (error: { message: string }) => {
-      toast.error(error.message || 'Failed to create allocation model');
-    },
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: ({ name, data }: { name: string; data: Partial<CreateAllocationModelRequest> }) =>
-      allocationModelService.update(name, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin', 'allocationModels'] });
-      toast.success('Allocation model updated');
-    },
-    onError: (error: { message: string }) => {
-      toast.error(error.message || 'Failed to update allocation model');
-    },
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: (name: string) => allocationModelService.delete(name),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['admin', 'allocationModels'] });
-      toast.success('Allocation model deleted');
-    },
-    onError: (error: { message: string }) => {
-      toast.error(error.message || 'Failed to delete allocation model');
-    },
-  });
-
-  const addStrategyMutation = useMutation({
-    mutationFn: ({ name, data }: { name: string; data: Omit<AllocationModelStrategy, 'allocationModel'> }) =>
-      allocationModelService.addStrategy(name, data),
-    onSuccess: (_, { name }) => {
-      queryClient.invalidateQueries({ queryKey: ['admin', 'allocationModels', name, 'strategies'] });
-      toast.success('Strategy added to model');
-    },
-    onError: (error: { message: string }) => {
-      toast.error(error.message || 'Failed to add strategy');
-    },
-  });
-
-  const removeStrategyMutation = useMutation({
-    mutationFn: ({ name, strategy }: { name: string; strategy: string }) =>
-      allocationModelService.removeStrategy(name, strategy),
-    onSuccess: (_, { name }) => {
-      queryClient.invalidateQueries({ queryKey: ['admin', 'allocationModels', name, 'strategies'] });
-      toast.success('Strategy removed from model');
-    },
-    onError: (error: { message: string }) => {
-      toast.error(error.message || 'Failed to remove strategy');
-    },
-  });
-
-  return {
-    createModel: createMutation.mutate,
-    isCreating: createMutation.isPending,
-    updateModel: updateMutation.mutate,
-    isUpdating: updateMutation.isPending,
-    deleteModel: deleteMutation.mutate,
-    isDeleting: deleteMutation.isPending,
-    addStrategy: addStrategyMutation.mutate,
-    isAddingStrategy: addStrategyMutation.isPending,
-    removeStrategy: removeStrategyMutation.mutate,
-    isRemovingStrategy: removeStrategyMutation.isPending,
   };
 };
 

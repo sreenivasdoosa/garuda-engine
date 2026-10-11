@@ -53,7 +53,6 @@ export const API_ENDPOINTS = {
   // Utilities
   UTILS: {
     FAQ: '/api/utils/faq',
-    ALLOCATION_MODELS: '/api/allocationmodels',
     REFERRAL_CODE: '/api/public/referralcode/generate',
     BUILD_INFO: '/api/build-info',
   },
@@ -295,12 +294,6 @@ export const API_ENDPOINTS = {
   },
 
 
-  // V2 Strategy Days Allocation Configs
-  STRATEGY_DAYS_ALLOCATION: {
-    BASE: '/api/strategy-days-allocation-configs',
-    DETAILS: (strategy: string, allocationModel: string) => `/api/strategy-days-allocation-configs/${strategy}/${allocationModel}`,
-  },
-
   // V2 RMS Config (Hierarchical RMS system)
   RMS_CONFIG: {
     BASE: '/api/rms-config',
@@ -332,17 +325,6 @@ export const API_ENDPOINTS = {
     IMPORT_APPLY: '/api/rms-config/transfer/import/apply',
   },
 
-  // V2 Allocation Models
-  ALLOCATION_MODELS: {
-    BASE: '/api/allocation-models',
-    LIST: '/api/allocation-models',
-    DETAILS: (name: string) => `/api/allocation-models/${name}`,
-    STRATEGIES: (name: string) => `/api/allocation-models/${name}/strategies`,
-    STRATEGY_DETAILS: (name: string, strategy: string) => `/api/allocation-models/${name}/strategies/${strategy}`,
-    DELETION_IMPACT: (name: string) => `/api/allocation-models/${name}/deletion-impact`,
-    RENAME: (name: string) => `/api/allocation-models/${name}/rename`,
-    SYNC_USER_ALLOCATIONS: (name: string) => `/api/allocation-models/${name}/sync-user-allocations`,
-  },
 
   // V2 FAQs
   FAQS: {

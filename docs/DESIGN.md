@@ -91,7 +91,7 @@ garuda-engine/
 │   │   ├── ordermgmt/       order manager · state machine · escalation · protections
 │   │   ├── trademgmt/       trade book · exits · trailing SL · square-off · watchdogs
 │   │   ├── rms/             validators · breach types · kill switches · trackers
-│   │   ├── capital/         allocation models · sizers · compounding
+│   │   ├── capital/         lot allocation · sizers · compounding
 │   │   ├── reports/         EOD · MTM · charges · analytics
 │   │   ├── persistence/     repositories · models · seed data
 │   │   ├── api/             REST routers · WebSocket · auth · DTOs
@@ -828,8 +828,9 @@ Console.
 
 ### 11.1 Sizing and allocation
 
-Allocation models map capital to strategies; `SequentialLotAllocator` and
-`RiskAwareSequentialLotAllocator` convert capital into lots; `EquitySizingCalculator` handles
+A subscription carries its own capital -- there is no allocation model dividing one pool across
+strategies (`SCOPE_DECISIONS.md` §9); `SequentialLotAllocator` and
+`RiskAwareSequentialLotAllocator` convert that capital into lots; `EquitySizingCalculator` handles
 share-count sizing with leverage. Compounding is a per-client capital policy with a change history.
 
 Sizing is **engine-owned** — strategies emit intent, not quantity.

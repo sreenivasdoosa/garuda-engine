@@ -143,6 +143,7 @@ and multi-leg / combo strategies.
 | Positional daily mark-to-market | The reference marked carry-forward positions day by day and had a page to recompute it. Decided out on 2026-10-11: a positional trade books its whole P&L on the day it exits and is marked on no day before, so there is nothing to recompute; the Recompute Positional MTM page is gone |
 | Strategy policies page | The policy tables are Console-side templates no strategy keys on (`TRADE_MANAGEMENT.md`); the page edited rows nothing read. Gone on 2026-10-11 |
 | Recompute charges page | Removed from the Console on 2026-10-11 until the charges phase exists; a button over an unbuilt computation is a button that does nothing |
+| Allocation models | The reference divided one capital pool across strategies by a named model (`ALLOCATION_MODELS`, `ALLOCATION_MODEL_STRATEGIES_MAP`). Decided out on 2026-10-11: a trading client subscribes to strategies directly, each subscription carrying its own capital, and the reports follow the same shape -- no overall base capital, no model. The two tables, their page and their fields on the subscription form are gone |
 | Broker strategy config | The reference let one strategy's settings be overridden per broker (`BROKER_STRATEGY_CONFIG`). Decided out on 2026-10-11: a strategy's configuration has its four layers (`STRATEGY_CONFIGURATION.md`), and per-broker order handling lives on the broker's exchange config. No table, no page; the Broker Config page keeps its exchange configs and API stats tabs |
 
 Kept where it might have looked droppable:

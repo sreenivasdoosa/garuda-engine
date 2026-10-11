@@ -85,14 +85,6 @@ class AlertsRepository(Repository[models.AlertsRow]):
         return list(result.scalars().all())
 
 
-class AllocationModelStrategiesRepository(Repository[models.AllocationModelStrategiesRow]):
-    model = models.AllocationModelStrategiesRow
-
-
-class AllocationModelsRepository(Repository[models.AllocationModelsRow]):
-    model = models.AllocationModelsRow
-
-
 class AppConfigRepository(Repository[models.AppConfigRow]):
     model = models.AppConfigRow
 
@@ -605,14 +597,6 @@ class Repositories:
     @property
     def alerts(self) -> AlertsRepository:
         return self.of(AlertsRepository)
-
-    @property
-    def allocation_model_strategies(self) -> AllocationModelStrategiesRepository:
-        return self.of(AllocationModelStrategiesRepository)
-
-    @property
-    def allocation_models(self) -> AllocationModelsRepository:
-        return self.of(AllocationModelsRepository)
 
     @property
     def app_config(self) -> AppConfigRepository:

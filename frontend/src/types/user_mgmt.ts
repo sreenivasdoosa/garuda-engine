@@ -99,11 +99,6 @@ export interface UserBrokerConfig {
   licenseKey?: string;
   loginVerified: boolean;
   useApiOf?: string;
-  allocationModel?: string;
-  // Capital allocation fields (user-broker level)
-  allocatedCapital?: number;
-  allocatedExternalIntradayCapital?: number;
-  allocatedExternalPositionalCapital?: number;
   xtremeAgentUrl?: string;
   xtremeAgentBypass: boolean;
   webSocketEnabled: boolean;
@@ -123,11 +118,6 @@ export interface CreateUserBrokerRequest {
   appSecret?: string;
   autoLogin?: boolean;
   brokeragePlan?: string;
-  allocationModel?: string;
-  // Capital allocation fields (user-broker level)
-  allocatedCapital?: number;
-  allocatedExternalIntradayCapital?: number;
-  allocatedExternalPositionalCapital?: number;
   useApiOf?: string;
   isPro?: boolean;
   xtremeAgentUrl?: string;

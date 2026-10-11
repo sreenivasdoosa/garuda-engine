@@ -31,7 +31,7 @@ import { strategyConfigTreeService } from '@/services/admin/v2AdminService';
 import { userSubscriptionHelpContent } from '@/data/help/user-subscription-help';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { userSubscriptionService, strategyCatalogService  } from '@/services/admin/strategyEngineService';
-import { userManagementService, allocationModelService, userBrokerService } from '@/services/admin/v2AdminService';
+import { userManagementService } from '@/services/admin/v2AdminService';
 import { toast } from 'react-toastify';
 import type {
   UserStrategySubscription,
@@ -39,8 +39,7 @@ import type {
   UpdateUserSubscriptionRequest,
   StrategyDefinition,
 } from '@/types/strategy-engine';
-import type { User, UserBrokerConfig, UpdateUserBrokerRequest } from '@/types/user_mgmt';
-import type { AllocationModel, AllocationModelStrategy } from '@/types/billing';
+import type { User, UserBrokerConfig } from '@/types/user_mgmt';
 
 // Grouped subscription for table display
 interface SubscriptionGroup {
@@ -1188,7 +1187,6 @@ const UserSubscriptions: React.FC = () => {
           broker={bulkEditGroup.broker}
           userSubscriptions={bulkEditGroup.subscriptions}
           allStrategyDefinitions={strategyDefinitions}
-          userBrokerConfig={users.find((u) => u.username === bulkEditGroup.username)?.brokers?.find((b) => b.broker === bulkEditGroup.broker)}
           onClose={handleCloseBulkEditModal}
           onSuccess={handleBulkEditSuccess}
         />
@@ -1205,7 +1203,6 @@ interface BulkSubscriptionEditModalProps {
   broker: string;
   userSubscriptions: UserStrategySubscription[];
   allStrategyDefinitions: StrategyDefinition[];
-  userBrokerConfig?: UserBrokerConfig;
   onClose: () => void;
   onSuccess: () => void;
 }
@@ -1234,7 +1231,6 @@ const BulkSubscriptionEditModal: React.FC<BulkSubscriptionEditModalProps> = ({
   broker,
   userSubscriptions,
   allStrategyDefinitions,
-  userBrokerConfig,
   onClose,
   onSuccess,
 }) => {
@@ -1243,31 +1239,6 @@ const BulkSubscriptionEditModal: React.FC<BulkSubscriptionEditModalProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [strategySearch, setStrategySearch] = useState<string>('');
   const [showOnlyActive, setShowOnlyActive] = useState(false);
-
-  // Allocation model and capital state
-  const [selectedAllocationModel, setSelectedAllocationModel] = useState<string>('');
-  const [allocatedCapital, setAllocatedCapital] = useState<number>(0);
-  const [allocatedExternalIntradayCapital, setAllocatedExternalIntradayCapital] = useState<number>(0);
-  const [allocatedExternalPositionalCapital, setAllocatedExternalPositionalCapital] = useState<number>(0);
-
-  // Fetch allocation models
-  const { data: allocationModels = [] } = useQuery<AllocationModel[]>({
-    queryKey: ['allocationModels'],
-    queryFn: () => allocationModelService.getAll(),
-    enabled: show,
-  });
-
-  // Fetch strategies for selected allocation model
-  const { data: modelStrategies = [] } = useQuery<AllocationModelStrategy[]>({
-    queryKey: ['allocationModelStrategies', selectedAllocationModel],
-    queryFn: () => allocationModelService.getStrategies(selectedAllocationModel),
-    enabled: !!selectedAllocationModel,
-  });
-
-  // Get selected allocation model details
-  const selectedModelData = useMemo(() => {
-    return allocationModels.find((m) => m.name === selectedAllocationModel);
-  }, [allocationModels, selectedAllocationModel]);
 
   // Initialize subscriptions and broker config from props
   React.useEffect(() => {
@@ -1306,19 +1277,7 @@ const BulkSubscriptionEditModal: React.FC<BulkSubscriptionEditModalProps> = ({
     setStrategySearch('');
     setShowOnlyActive(false);
 
-    // Initialize allocation model and capital from broker config
-    if (userBrokerConfig) {
-      setSelectedAllocationModel(userBrokerConfig.allocationModel || '');
-      setAllocatedCapital(userBrokerConfig.allocatedCapital || 0);
-      setAllocatedExternalIntradayCapital(userBrokerConfig.allocatedExternalIntradayCapital || 0);
-      setAllocatedExternalPositionalCapital(userBrokerConfig.allocatedExternalPositionalCapital || 0);
-    } else {
-      setSelectedAllocationModel('');
-      setAllocatedCapital(0);
-      setAllocatedExternalIntradayCapital(0);
-      setAllocatedExternalPositionalCapital(0);
-    }
-  }, [show, allStrategyDefinitions, userSubscriptions, broker, userBrokerConfig]);
+  }, [show, allStrategyDefinitions, userSubscriptions, broker]);
 
   // Filter subscriptions based on search
   const filteredSubscriptions = useMemo(() => {
@@ -1339,58 +1298,10 @@ const BulkSubscriptionEditModal: React.FC<BulkSubscriptionEditModalProps> = ({
     });
   }, [subscriptions, strategySearch, showOnlyActive]);
 
-  // Handle allocation model change - recalculate all strategy capitals
-  const handleAllocationModelChange = React.useCallback((modelName: string) => {
-    setSelectedAllocationModel(modelName);
-    // Reset allocated capital when model changes
-    if (!modelName) {
-      setAllocatedCapital(0);
-    }
-  }, []);
-
-  // Handle allocated capital change - recalculate all strategy capitals based on model
-  const applyAllocationModel = React.useCallback(() => {
-    if (!selectedModelData || !modelStrategies.length || allocatedCapital <= 0) {
-      return;
-    }
-
-    // Calculate multiplier: user's capital / model's base capital
-    const multiplier = allocatedCapital / selectedModelData.capital;
-
-    setSubscriptions((prev) =>
-      prev.map((s) => {
-        // Find this strategy in the model's strategy mappings
-        const modelStrategy = modelStrategies.find((ms) => ms.strategyName === s.strategyName);
-
-        if (modelStrategy) {
-          // Calculate lots based on multiplier
-          const userLots = Math.floor(modelStrategy.numOfLots * multiplier);
-          // Calculate capital = lots × capitalPerLot
-          const newCapital = userLots * s.capitalPerLot;
-          return { ...s, newCapital, isActive: newCapital > 0 };
-        }
-
-        // Strategy not in model - set to 0
-        return { ...s, newCapital: 0, isActive: false };
-      })
-    );
-  }, [selectedModelData, modelStrategies, allocatedCapital]);
-
   // Calculate total capital
   const totalCapital = useMemo(() => {
     return subscriptions.reduce((sum, s) => sum + s.newCapital, 0);
   }, [subscriptions]);
-
-  // Check if broker config has changed
-  const hasBrokerConfigChanges = useMemo(() => {
-    if (!userBrokerConfig) return selectedAllocationModel || allocatedCapital > 0 || allocatedExternalIntradayCapital > 0 || allocatedExternalPositionalCapital > 0;
-    return (
-      selectedAllocationModel !== (userBrokerConfig.allocationModel || '') ||
-      allocatedCapital !== (userBrokerConfig.allocatedCapital || 0) ||
-      allocatedExternalIntradayCapital !== (userBrokerConfig.allocatedExternalIntradayCapital || 0) ||
-      allocatedExternalPositionalCapital !== (userBrokerConfig.allocatedExternalPositionalCapital || 0)
-    );
-  }, [userBrokerConfig, selectedAllocationModel, allocatedCapital, allocatedExternalIntradayCapital, allocatedExternalPositionalCapital]);
 
   // Handle capital change
   const handleCapitalChange = React.useCallback((strategyName: string, value: number) => {
@@ -1456,8 +1367,8 @@ const BulkSubscriptionEditModal: React.FC<BulkSubscriptionEditModalProps> = ({
 
   // Check if any data has changed
   const hasChanges = useMemo(() => {
-    return isCapitalChanged() || isActiveChanged() || isPaperChanged() || hasBrokerConfigChanges;
-  }, [isCapitalChanged, isActiveChanged, isPaperChanged, hasBrokerConfigChanges]);
+    return isCapitalChanged() || isActiveChanged() || isPaperChanged();
+  }, [isCapitalChanged, isActiveChanged, isPaperChanged]);
 
   // Validate capital (must be multiples of capitalPerLot)
   const getCapitalError = React.useCallback((subscription: SubscriptionEditState) => {
@@ -1531,7 +1442,7 @@ const BulkSubscriptionEditModal: React.FC<BulkSubscriptionEditModalProps> = ({
 
     const hasSubscriptionChanges = toCreate.length > 0 || toUpdate.length > 0 || toDelete.length > 0;
 
-    if (!hasSubscriptionChanges && !hasBrokerConfigChanges) {
+    if (!hasSubscriptionChanges) {
       setUpdateInProgress(false);
       setError('No changes to save');
       return;
@@ -1555,30 +1466,10 @@ const BulkSubscriptionEditModal: React.FC<BulkSubscriptionEditModalProps> = ({
         promises.push(userSubscriptionService.delete(id));
       });
 
-      // Update broker config if changed. The capitals MUST be sent even when 0:
-      // the backend merge keeps the existing value for absent (null) fields, so
-      // `0 || undefined` made zero unsendable (couldn't clear a capital).
-      if (hasBrokerConfigChanges) {
-        const brokerUpdate: UpdateUserBrokerRequest = {
-          allocationModel: selectedAllocationModel || undefined,
-          allocatedCapital,
-          allocatedExternalIntradayCapital,
-          allocatedExternalPositionalCapital,
-        };
-        promises.push(userBrokerService.updateUserBroker(username, broker, brokerUpdate));
-      }
-
       await Promise.all(promises);
 
       setUpdateInProgress(false);
-      const messages: string[] = [];
-      if (hasSubscriptionChanges) {
-        messages.push(`Created ${toCreate.length}, updated ${toUpdate.length}, deleted ${toDelete.length} subscriptions`);
-      }
-      if (hasBrokerConfigChanges) {
-        messages.push('Broker config updated');
-      }
-      toast.success(messages.join('. '));
+      toast.success(`Created ${toCreate.length}, updated ${toUpdate.length}, deleted ${toDelete.length} subscriptions`);
       onSuccess();
     } catch (err) {
       setUpdateInProgress(false);
@@ -1586,7 +1477,7 @@ const BulkSubscriptionEditModal: React.FC<BulkSubscriptionEditModalProps> = ({
       setError(error.message || 'Failed to save changes');
       toast.error(error.message || 'Failed to save changes');
     }
-  }, [subscriptions, username, broker, onSuccess, hasBrokerConfigChanges, selectedAllocationModel, allocatedCapital, allocatedExternalIntradayCapital, allocatedExternalPositionalCapital]);
+  }, [subscriptions, username, broker, onSuccess]);
 
   // Format capital display
   const formatCapital = (capital: number) => {
@@ -1602,108 +1493,6 @@ const BulkSubscriptionEditModal: React.FC<BulkSubscriptionEditModalProps> = ({
         </Modal.Title>
       </Modal.Header>
       <Modal.Body>
-        {/* Allocation Model & Capital Section */}
-        <Card className="mb-4 border-primary-500">
-          <Card.Header className="bg-primary-500 text-white py-2">
-            <strong>Allocation Model Configuration</strong>
-          </Card.Header>
-          <Card.Body>
-            <Row className="mb-4">
-              <Col md={4}>
-                <Form.Group>
-                  <Form.Label className="font-bold flex items-center">Allocation Model <HelpIcon article={userSubscriptionHelpContent['userSubscription.allocationModel']} /></Form.Label>
-                  <Form.Select
-                    value={selectedAllocationModel}
-                    onChange={(e) => handleAllocationModelChange(e.target.value)}
-                    disabled={updateInProgress}
-                  >
-                    <option value="">-- Select Allocation Model --</option>
-                    {allocationModels.map((m) => (
-                      <option key={m.name} value={m.name}>
-                        {m.name} (Base: {formatCapital(m.capital)})
-                      </option>
-                    ))}
-                  </Form.Select>
-                  <Form.Text className="text-ink-soft">
-                    Select a model to auto-calculate strategy capitals
-                  </Form.Text>
-                </Form.Group>
-              </Col>
-              <Col md={4}>
-                <Form.Group>
-                  <Form.Label className="font-bold flex items-center">Allocated Capital <HelpIcon article={userSubscriptionHelpContent['userSubscription.allocatedCapital']} /></Form.Label>
-                  <InputGroup>
-                    <InputGroup.Text>₹</InputGroup.Text>
-                    <Form.Control
-                      type="number"
-                      step={selectedModelData?.capital || 100000}
-                      min={0}
-                      value={allocatedCapital}
-                      onChange={(e) => setAllocatedCapital(parseInt(e.target.value) || 0)}
-                      disabled={updateInProgress || !selectedAllocationModel}
-                    />
-                  </InputGroup>
-                  {selectedModelData && (
-                    <Form.Text className="text-ink-soft">
-                      Step: {formatCapital(selectedModelData.capital)} | Multiplier: {allocatedCapital > 0 ? (allocatedCapital / selectedModelData.capital).toFixed(1) : 0}x
-                    </Form.Text>
-                  )}
-                </Form.Group>
-              </Col>
-              <Col md={4} className="flex items-end">
-                <Button
-                  variant="primary"
-                  onClick={applyAllocationModel}
-                  disabled={updateInProgress || !selectedAllocationModel || allocatedCapital <= 0}
-                  className="mb-4"
-                >
-                  Apply to Strategies
-                </Button>
-              </Col>
-            </Row>
-            <Row>
-              <Col md={4}>
-                <Form.Group>
-                  <Form.Label className="font-bold flex items-center">External Intraday Capital <HelpIcon article={userSubscriptionHelpContent['userSubscription.allocatedExternalIntradayCapital']} /></Form.Label>
-                  <InputGroup>
-                    <InputGroup.Text>₹</InputGroup.Text>
-                    <Form.Control
-                      type="number"
-                      min={0}
-                      step={100000}
-                      value={allocatedExternalIntradayCapital}
-                      onChange={(e) => setAllocatedExternalIntradayCapital(parseInt(e.target.value) || 0)}
-                      disabled={updateInProgress}
-                    />
-                  </InputGroup>
-                  <Form.Text className="text-ink-soft">
-                    External intraday capital for reports (step: 1L)
-                  </Form.Text>
-                </Form.Group>
-              </Col>
-              <Col md={4}>
-                <Form.Group>
-                  <Form.Label className="font-bold flex items-center">External Positional Capital <HelpIcon article={userSubscriptionHelpContent['userSubscription.allocatedExternalPositionalCapital']} /></Form.Label>
-                  <InputGroup>
-                    <InputGroup.Text>₹</InputGroup.Text>
-                    <Form.Control
-                      type="number"
-                      min={0}
-                      step={100000}
-                      value={allocatedExternalPositionalCapital}
-                      onChange={(e) => setAllocatedExternalPositionalCapital(parseInt(e.target.value) || 0)}
-                      disabled={updateInProgress}
-                    />
-                  </InputGroup>
-                  <Form.Text className="text-ink-soft">
-                    External positional capital for reports (step: 1L)
-                  </Form.Text>
-                </Form.Group>
-              </Col>
-            </Row>
-          </Card.Body>
-        </Card>
-
         {/* Strategy Search */}
         <Row className="mb-4">
           <Col md={6}>

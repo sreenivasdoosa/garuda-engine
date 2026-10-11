@@ -161,7 +161,6 @@ export interface UserTradeSummary {
   username: string;
   broker: string;
   clientID?: string;
-  allocationModel?: string;
 
   // Trade counts by status (totals — include live + paper)
   openTradesCount: number;      // Orders placed but not filled
@@ -386,7 +385,6 @@ export interface TerminalWebSocketMessage {
 export interface TerminalFilters {
   username?: string;
   broker?: string;
-  allocationModel?: string;
   showOnlyWithMismatch?: boolean;
   showOnlyWithActiveTrades?: boolean;
   showOnlyLoggedIn?: boolean;

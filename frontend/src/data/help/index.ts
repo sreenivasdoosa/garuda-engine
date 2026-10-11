@@ -3,7 +3,6 @@ import { rmsHelpContent } from './rms-help';
 import { brokerHelpContent } from './broker-help';
 import { exchangeHelpContent } from './exchange-help';
 import { symbolHelpContent } from './symbol-help';
-import { allocationHelpContent } from './allocation-help';
 import { billingHelpContent } from './billing-help';
 import { strategyDefinitionHelpContent } from './strategy-definition-help';
 import { strategyTemplateHelpContent } from './strategy-template-help';
@@ -25,7 +24,6 @@ export {
   brokerHelpContent,
   exchangeHelpContent,
   symbolHelpContent,
-  allocationHelpContent,
   billingHelpContent,
   strategyDefinitionHelpContent,
   strategyTemplateHelpContent,
@@ -48,7 +46,6 @@ export const allHelpContent: Record<string, HelpArticle> = {
   ...brokerHelpContent,
   ...exchangeHelpContent,
   ...symbolHelpContent,
-  ...allocationHelpContent,
   ...billingHelpContent,
   ...strategyDefinitionHelpContent,
   ...strategyTemplateHelpContent,

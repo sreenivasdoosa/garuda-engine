@@ -18,7 +18,6 @@ import LoginPage from '@/features/auth/LoginPage';
 
 // Console
 import SetupGuide from '@/features/console/setup/SetupGuide';
-import AllocationModelsPage from '@/features/shared/allocation-models/AllocationModelsPage';
 import AuditLogsPage from '@/features/shared/audit-logs/AuditLogsPage';
 import BrokerConfigPage from '@/features/shared/broker-config/BrokerConfigPage';
 import BrokerInstrumentsPage from '@/features/shared/broker-instruments/BrokerInstrumentsPage';
@@ -103,7 +102,6 @@ function App() {
         {/* Strategy */}
         <Route path="/console/strategy-engine" element={<StrategyEnginePage />} />
         <Route path="/console/strategy-config" element={<StrategyConfigPage />} />
-        <Route path="/console/allocation-models" element={<AllocationModelsPage />} />
 
         {/* Risk */}
         <Route path="/console/rms" element={<RiskConfigPage />} />

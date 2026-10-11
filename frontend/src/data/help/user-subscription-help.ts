@@ -87,56 +87,6 @@ export const userSubscriptionHelpContent: Record<string, HelpArticle> = {
 
   // ==================== BULK EDIT MODAL ====================
 
-  'userSubscription.allocationModel': us({
-    fieldKey: 'userSubscription.allocationModel',
-    title: 'Allocation Model',
-    category: 'Bulk Subscription Edit',
-    description: [
-      'The **allocation model** used to auto-calculate strategy capitals based on the user\'s total allocated capital. The model defines a base capital amount and per-strategy lot ratios.',
-      'When applied, each strategy\'s capital is calculated as: `userCapital / modelBaseCapital × modelStrategyLots × capitalPerLot`.',
-    ],
-    example: {
-      title: 'Example',
-      content:
-        'Model "Balanced" has base capital ₹10L with NIFTY_STRADDLE = 2 lots, BNF_STRADDLE = 1 lot. User allocates ₹20L (2x multiplier). Result: NIFTY_STRADDLE = 4 lots, BNF_STRADDLE = 2 lots.',
-    },
-    relatedFields: ['userSubscription.allocatedCapital'],
-  }),
-
-  'userSubscription.allocatedCapital': us({
-    fieldKey: 'userSubscription.allocatedCapital',
-    title: 'Allocated Capital',
-    category: 'Bulk Subscription Edit',
-    description: [
-      'The **total capital** (in INR) allocated to this user-broker for strategy trading. This is the base amount used with the allocation model to calculate per-strategy capitals.',
-      'The step value for this field is the allocation model\'s base capital amount.',
-    ],
-    example: {
-      title: 'Example',
-      content:
-        'Allocation model base = ₹10,00,000. User allocates ₹30,00,000 (3x multiplier). Each strategy gets 3x its model-defined lot count.',
-    },
-    relatedFields: ['userSubscription.allocationModel'],
-  }),
-
-  'userSubscription.allocatedExternalIntradayCapital': us({
-    fieldKey: 'userSubscription.allocatedExternalIntradayCapital',
-    title: 'External Intraday Capital',
-    category: 'Bulk Subscription Edit',
-    description: [
-      'Capital allocated for **external intraday trading** (manual or other system trades) for this user-broker. This value is used in reports and billing calculations but does not affect the algo trading engine.',
-    ],
-  }),
-
-  'userSubscription.allocatedExternalPositionalCapital': us({
-    fieldKey: 'userSubscription.allocatedExternalPositionalCapital',
-    title: 'External Positional Capital',
-    category: 'Bulk Subscription Edit',
-    description: [
-      'Capital allocated for **external positional trading** (manual or other system overnight positions) for this user-broker. This value is used in reports and billing calculations but does not affect the algo trading engine.',
-    ],
-  }),
-
   'userSubscription.leverage': us({
     fieldKey: 'userSubscription.leverage',
     title: 'Leverage Override',

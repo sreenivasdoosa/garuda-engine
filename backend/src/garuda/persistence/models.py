@@ -1175,28 +1175,6 @@ class OrderFillEscalationPolicyRow(Base):
     updated_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
-class AllocationModelsRow(Base):
-    """ALLOCATION_MODELS in the reference engine."""
-
-    __tablename__ = "allocation_models"
-
-    model_name: Mapped[str] = mapped_column(String(50), primary_key=True)
-    capital: Mapped[int] = mapped_column(Integer)
-    intraday_capital: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    positional_capital: Mapped[int | None] = mapped_column(Integer, nullable=True)
-
-
-class AllocationModelStrategiesRow(Base):
-    """ALLOCATION_MODEL_STRATEGIES_MAP in the reference engine."""
-
-    __tablename__ = "allocation_model_strategies"
-
-    model_name: Mapped[str] = mapped_column(String(50), primary_key=True)
-    strategy_name: Mapped[str] = mapped_column(String(30), primary_key=True)
-    num_of_lots: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    is_overlap_capital: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
-
-
 class TradesRow(Base):
     """TRADES in the reference engine."""
 

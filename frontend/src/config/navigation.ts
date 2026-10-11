@@ -10,7 +10,6 @@ import {
   BsClockHistory,
   BsCollection,
   BsCpu,
-  BsDiagram3,
   BsExclamationTriangle,
   BsFileEarmarkBarGraph,
   BsFileEarmarkText,
@@ -91,7 +90,6 @@ export const NAV_SECTIONS: NavSection[] = [
   {
     title: 'Strategy',
     items: [
-      { path: '/console/allocation-models', label: 'Allocation Models', icon: BsDiagram3 },
       { path: '/console/strategy-config', label: 'Strategy Config', icon: BsSliders },
       { path: '/console/strategy-engine', label: 'Strategy Engine', icon: BsCpu },
     ],

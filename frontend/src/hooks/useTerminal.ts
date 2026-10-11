@@ -634,14 +634,10 @@ export const useTerminal = (options: UseTerminalOptions = {}): UseTerminalReturn
   // NOTE: username (search), broker, "active" and "online" are applied SERVER-SIDE on the full set
   // before pagination (see the user-brokers list query above), so we must NOT re-filter them here —
   // doing so would wrongly drop rows from the already-correct server page. Only the filters the server
-  // can't cheaply do (mismatch — needs live position comparison; allocationModel) stay client-side,
+  // can't cheaply do (mismatch — needs live position comparison) stay client-side,
   // plus sorting of the current page.
   const filteredSummaries = useMemo(() => {
     let result = [...summaries];
-
-    if (filters.allocationModel) {
-      result = result.filter(s => s.allocationModel === filters.allocationModel);
-    }
 
     if (filters.showOnlyWithMismatch) {
       result = result.filter(s => s.mismatchSeverity !== 'NONE');

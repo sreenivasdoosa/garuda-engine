@@ -366,7 +366,7 @@ export const strategyDefinitionHelpContent: Record<string, HelpArticle> = {
     category: 'Capital & Hedge',
     description: [
       'The **default capital** required per lot for this strategy. Used as a fallback when neither hedged nor naked capital-per-lot values are applicable.',
-      'This value is used by the allocation model to calculate total capital: `numOfLots × capitalPerLot`.',
+      'A subscription\'s capital is sized in lots of this amount: `numOfLots × capitalPerLot`.',
     ],
     example: {
       title: 'Example',
@@ -382,7 +382,7 @@ export const strategyDefinitionHelpContent: Record<string, HelpArticle> = {
     category: 'Capital & Hedge',
     description: [
       'Capital required per lot when **hedging is enabled** for this strategy. Hedged positions require less margin because the hedge limits max loss.',
-      'Used by the allocation model when the strategy\'s P0-level config has hedging enabled.',
+      'Used when the strategy\'s P0-level config has hedging enabled.',
     ],
     example: {
       title: 'Example',
@@ -601,7 +601,7 @@ export const strategyDefinitionHelpContent: Record<string, HelpArticle> = {
     title: 'Overlap Capital',
     category: 'Advanced Options',
     description: [
-      'When enabled, this strategy\'s capital is **not counted** toward the allocation model\'s total capital. This is used for strategies that share margin with other strategies (e.g., hedges that reduce margin on the main position).',
+      'When enabled, this strategy\'s capital is **not counted** toward an account\'s total. This is used for strategies that share margin with other strategies (e.g., hedges that reduce margin on the main position).',
     ],
     defaultValue: 'false',
   }),
@@ -635,7 +635,7 @@ export const strategyDefinitionHelpContent: Record<string, HelpArticle> = {
       'Defines how users can subscribe to this strategy.',
     ],
     validValues: [
-      '**SYSTEM** — Admin-managed. Only admins can assign this strategy to users via subscriptions or allocation models.',
+      '**SYSTEM** — Admin-managed. Only admins can assign this strategy to users via subscriptions.',
       '**USER** — User self-service. Users can discover and subscribe to this strategy themselves (if public).',
     ],
     defaultValue: 'SYSTEM',

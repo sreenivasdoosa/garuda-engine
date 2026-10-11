@@ -36,13 +36,6 @@ export interface ServerConfig {
 export interface SystemConfig {
   supportedBrokers: string[];
   strategies: string[];
-  allocationModels: AllocationModel[];
-}
-
-export interface AllocationModel {
-  id: string;
-  name: string;
-  description: string;
 }
 
 export interface FAQ {
@@ -109,12 +102,6 @@ export const configService = {
     return api.get<FAQ[]>(API_ENDPOINTS.UTILS.FAQ);
   },
 
-  /**
-   * Get allocation models
-   */
-  async getAllocationModels(): Promise<AllocationModel[]> {
-    return api.get<AllocationModel[]>(API_ENDPOINTS.UTILS.ALLOCATION_MODELS);
-  },
 
   /**
    * Generate referral code

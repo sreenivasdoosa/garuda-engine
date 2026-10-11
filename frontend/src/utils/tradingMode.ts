@@ -13,9 +13,9 @@
  * `countForMode` for trade/position counts (clamp at 0 to absorb any rounding).
  *
  * Capital is intentionally NOT mode-split: the terminal always shows the
- * user-broker configured total capital (overlap-capital at the allocation-model
- * → strategy mapping level makes a per-subscription paper/live split unreliable),
- * so capital is rendered directly from `totalCapital` regardless of mode.
+ * account's configured total capital (a strategy's overlap-capital flag makes
+ * a per-subscription paper/live split unreliable), so capital is rendered
+ * directly from `totalCapital` regardless of mode.
  *
  * Margin / mismatch are live-only: paper trades consume no real broker margin
  * and never reconcile against a real broker position, so their paper value is

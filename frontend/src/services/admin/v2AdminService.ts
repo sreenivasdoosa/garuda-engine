@@ -33,10 +33,6 @@ import type {
   StatutoryCharges,
   StatutoryChargesBrokerOverride,
   CreateStatutoryChargesRequest,
-  AllocationModel,
-  CreateAllocationModelRequest,
-  AllocationModelStrategy,
-  AllocationModelDeletionImpact,
 } from '@/types/billing';
 import type {
   TradeFilter,
@@ -1162,82 +1158,6 @@ export const statutoryChargesService = {
   },
 };
 
-// ==================== ALLOCATION MODELS ====================
-
-export const allocationModelService = {
-  // Get all models
-  async getAll(): Promise<AllocationModel[]> {
-    return api.get<AllocationModel[]>(API_ENDPOINTS.ALLOCATION_MODELS.LIST);
-  },
-
-  // Get model by name
-  async getByName(name: string): Promise<AllocationModel> {
-    return api.get<AllocationModel>(API_ENDPOINTS.ALLOCATION_MODELS.DETAILS(name));
-  },
-
-  // Get model strategies
-  async getStrategies(name: string): Promise<AllocationModelStrategy[]> {
-    return api.get<AllocationModelStrategy[]>(API_ENDPOINTS.ALLOCATION_MODELS.STRATEGIES(name));
-  },
-
-  // Create model
-  async create(data: CreateAllocationModelRequest): Promise<AllocationModel> {
-    return api.post<AllocationModel>(API_ENDPOINTS.ALLOCATION_MODELS.BASE, data);
-  },
-
-  // Update model
-  async update(name: string, data: Partial<CreateAllocationModelRequest>): Promise<AllocationModel> {
-    return api.put<AllocationModel>(API_ENDPOINTS.ALLOCATION_MODELS.DETAILS(name), data);
-  },
-
-  // Delete model
-  async delete(name: string): Promise<{ success: boolean }> {
-    return api.delete(API_ENDPOINTS.ALLOCATION_MODELS.DETAILS(name));
-  },
-
-  // Rename model — re-points all references atomically on the server
-  async rename(name: string, newName: string): Promise<AllocationModel> {
-    return api.post<AllocationModel>(API_ENDPOINTS.ALLOCATION_MODELS.RENAME(name), { newName });
-  },
-
-  // Get deletion impact preview
-  async getDeletionImpact(name: string): Promise<AllocationModelDeletionImpact> {
-    return api.get<AllocationModelDeletionImpact>(API_ENDPOINTS.ALLOCATION_MODELS.DELETION_IMPACT(name));
-  },
-
-  // Add strategy to model
-  async addStrategy(name: string, data: Omit<AllocationModelStrategy, 'allocationModel'>): Promise<AllocationModelStrategy> {
-    return api.post<AllocationModelStrategy>(API_ENDPOINTS.ALLOCATION_MODELS.STRATEGIES(name), data);
-  },
-
-  // Update strategy mapping
-  async updateStrategy(name: string, strategy: string, data: Partial<AllocationModelStrategy>): Promise<AllocationModelStrategy> {
-    return api.put<AllocationModelStrategy>(API_ENDPOINTS.ALLOCATION_MODELS.STRATEGY_DETAILS(name, strategy), data);
-  },
-
-  // Remove strategy from model
-  async removeStrategy(name: string, strategy: string): Promise<{ success: boolean }> {
-    return api.delete(API_ENDPOINTS.ALLOCATION_MODELS.STRATEGY_DETAILS(name, strategy));
-  },
-
-  // Sync all associated user+brokers' subscriptions to this model (scaled by each
-  // user's capital). Server-side equivalent of the "apply to strategies" bulk edit.
-  async syncUserAllocations(name: string): Promise<AllocationSyncResult> {
-    return api.post<AllocationSyncResult>(API_ENDPOINTS.ALLOCATION_MODELS.SYNC_USER_ALLOCATIONS(name), {});
-  },
-};
-
-export interface AllocationSyncResult {
-  modelName: string;
-  userBrokersAssociated: number;
-  usersUpdated: number;
-  subscriptionsAdded: number;
-  subscriptionsUpdated: number;
-  subscriptionsDeleted: number;
-  errors: string[];
-  message: string;
-}
-
 // ==================== FAQ ====================
 
 export const faqService = {
@@ -1894,43 +1814,6 @@ export const userBillsService = {
   // the daily-maintained reports (fast). Runs in the background; returns once started.
   async reconcile(params: { fromDate: string; regenerateEodReports: boolean }): Promise<{ started: boolean; fromDate: string; regenerateEodReports: boolean }> {
     return api.post(API_ENDPOINTS.USER_BILLS.RECONCILE, params);
-  },
-};
-
-// ==================== STRATEGY DAYS ALLOCATION ====================
-
-export interface StrategyDaysAllocationConfig {
-  strategyName: string;
-  allocationModel: string;
-  mondayAllocation: number;
-  tuesdayAllocation: number;
-  wednesdayAllocation: number;
-  thursdayAllocation: number;
-  fridayAllocation: number;
-  expiryDayAllocation: number;
-  dt1DayAllocation: number;  // DT1 day allocation (days to expiry = 1)
-  dt2DayAllocation: number;  // DT2 day allocation (days to expiry = 2)
-}
-
-export const strategyDaysAllocationService = {
-  // Get all configs
-  async getAll(): Promise<StrategyDaysAllocationConfig[]> {
-    return api.get<StrategyDaysAllocationConfig[]>(API_ENDPOINTS.STRATEGY_DAYS_ALLOCATION.BASE);
-  },
-
-  // Get config by strategy and allocation model
-  async get(strategyName: string, allocationModel: string): Promise<StrategyDaysAllocationConfig> {
-    return api.get<StrategyDaysAllocationConfig>(API_ENDPOINTS.STRATEGY_DAYS_ALLOCATION.DETAILS(strategyName, allocationModel));
-  },
-
-  // Create/Update config
-  async save(data: StrategyDaysAllocationConfig): Promise<StrategyDaysAllocationConfig> {
-    return api.post<StrategyDaysAllocationConfig>(API_ENDPOINTS.STRATEGY_DAYS_ALLOCATION.BASE, data);
-  },
-
-  // Delete config
-  async delete(strategyName: string, allocationModel: string): Promise<{ success: boolean }> {
-    return api.delete(API_ENDPOINTS.STRATEGY_DAYS_ALLOCATION.DETAILS(strategyName, allocationModel));
   },
 };
 
@@ -2667,12 +2550,10 @@ export const v2AdminService = {
   specialTradingDays: specialTradingDayService,
   mockTradingDays: mockTradingDayService,
   brokerExchangeConfigs: brokerExchangeConfigService,
-  strategyDaysAllocation: strategyDaysAllocationService,
   billingPlans: billingPlanService,
   brokeragePlans: brokeragePlanService,
   brokeragePlanRates: brokeragePlanRateService,
   statutoryCharges: statutoryChargesService,
-  allocationModels: allocationModelService,
   faqs: faqService,
   trades: tradeService,
   eodPnl: eodPnlService,
