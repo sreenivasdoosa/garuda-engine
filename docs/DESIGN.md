@@ -583,244 +583,28 @@ the operator's view of step 2.
 
 ## 10. Strategy engine
 
-### 10.1 Event pipeline
+Defined in full in `STRATEGY_ENGINE.md` (decided 2026-10-15). In brief:
 
-```
-Tick / Scheduled / ExternalSignal / HedgeReplace / Periodic / Breakout / TranchComplete / EndOfDay / ConfigReload
-      │
-      ▼
-StrategyEventDispatcher ── subscription registry, per-strategy fan-out
-      │
-      ▼
-Evaluator.evaluate(ctx) ── stateless, pure; returns EvaluationResult
-      │
-      ▼
-Intent(s) ──► Sizer ──► RiskGate ──► OrderManager ──► Router ──► Adapter | PaperBroker
-                                                                    │
-                                                                    ▼
-                                                              BrokerEvent
-                                                                    │
-                                                                    ▼
-                                                    TradeBook ──► journal ──► WebSocket ──► UI
-```
-
-Evaluators are **stateless**: all state arrives in `EvaluationContext` and all durable state changes
-leave as intents or explicit state deltas. This is what makes them testable without a broker and
-replayable.
-
-### 10.2 Strategies are composed, not subclassed
-
-The reference engine models a strategy template as a **class**: its
-`strategy_templates` table has an `evaluator_class` column, and each template
-is a subclass of a base evaluator. Garuda does not copy that, because the
-evidence that it does not hold up is in the reference engine's own history.
-
-Five things vary independently between strategies:
-
-| Axis | Values |
-|---|---|
-| **What is traded, and which way** | sell options · buy options · futures · equity · any combination |
-| **Entry trigger** | scheduled · tick · tranche · breakout · external signal · periodic |
-| **Direction** | fixed · candle · indicator · IV skew · PCR · N-bars breakout |
-| **Leg composition** | how many legs, their roles, how each instrument is chosen |
-| **Exit** | SL · target · trailing · time · indicator · decay · combined |
-
-Single inheritance can express exactly one axis. The reference engine spent it
-on "template", and then had to thread the others through by hand: adding an
-option-*buying* mode to an engine written for option-*selling* meant six new
-helper methods and seventeen hardcoded `Direction.SHORT` replacements inside a
-single evaluator. Multi-leg combos ended up as a *sibling* of advanced options
-rather than a configuration of it, and the Console form accumulated ~29
-hardcoded template-name checks.
-
-**Garuda puts the variation in data.**
-
-```
-StrategyEvaluator (Protocol)
-    evaluate(ctx: EvaluationContext) -> EvaluationResult
-
-BaseEvaluator (ABC)        shared machinery: resolved config, leg emission,
-│                          correlation ids, journal notes, exit bookkeeping
-└── LegBasedEvaluator      the single concrete evaluator in core
-```
-
-Everything a template used to encode becomes a validated `StrategySpec`:
-
-```python
-@dataclass(frozen=True)
-class LegSpec:
-    role: LegRole                  # MAIN · HEDGE · PROTECTIVE
-    selector: InstrumentSelector   # option strike · underlying future · equity · fixed
-    side: SideRule                 # SAME_AS_SIGNAL · OPPOSITE · ALWAYS_LONG · ALWAYS_SHORT
-    ratio: Fraction                # size relative to the main leg
-    product: ProductType
-    sequence: int                  # entry order; exits reverse it by default
-
-
-@dataclass(frozen=True)
-class StrategySpec:
-    trigger: TriggerSpec
-    direction: DirectionSpec
-    legs: tuple[LegSpec, ...]
-    sizing: SizingSpec
-    exits: ExitSpec
-```
-
-The combinations then cost nothing to add:
-
-| Strategy | Spec |
-|---|---|
-| Directional option | one option leg, side from the direction provider |
-| Short straddle | two option legs, CE and PE, both `ALWAYS_SHORT` |
-| Hedged short straddle | the above plus two `HEDGE` legs at an offset |
-| Iron condor | four option legs |
-| Covered call | one **equity** leg + one short **option** leg |
-| Cash-future arbitrage | one **equity** leg + one **future** leg |
-| Futures + options | one future leg + one option leg |
-
-The reference engine's `TradeMode` enum disappears as a concept. Selling
-options is `side=ALWAYS_SHORT` on an option leg; buying them is `ALWAYS_LONG`;
-futures and equity are different selectors. What needed a new enum value and
-seventeen edits becomes a row of data.
-
-**Templates become named presets** — a `StrategySpec` skeleton plus capability
-flags, stored as data with no `evaluator_class`. The Console form renders from
-capabilities, so a new preset needs no UI change.
-
-**Core ships no custom-logic evaluators.** Third parties can register one
-through the `garuda.evaluators` entry point when no spec can express their
-logic, but nothing in core is a bespoke subclass.
-
-**One evaluator, and no abstract base above it.** A single-leg strategy is a
-combo with one leg, so "combo" is not a special case to inherit from -- it is
-the general case, and `N = 1` is not special. An ABC with exactly one concrete
-subclass is ceremony rather than structure.
-
-The evaluator stays an orchestrator: resolve direction, resolve each leg's
-instrument, size, order the legs, emit intents. Every piece of real logic lives
-in a selector, a direction provider, a sizer or an exit policy, each testable
-on its own. An `if leg.kind is OPTION` branch appearing in the evaluator is the
-signal that something belongs in a selector instead.
-
-**Asset class lives on the leg, not the strategy.** Three selectors, in a
-registry:
-
-| Selector | Chooses by |
-|---|---|
-| `OptionSelector` | strike and expiry rules -- offset, delta, premium, OI rank, straddle |
-| `FutureSelector` | expiry rules and rollover |
-| `EquitySelector` | symbol |
-
-**MTF is not a fourth.** It is a *product* on an equity leg -- funded delivery,
-alongside CNC and MIS -- so it is `ProductType.MTF` on a `LegSpec`, not a
-sibling of equity. Putting a funding mode on the same axis as an asset class is
-one of the naming confusions this rewrite exists to remove.
-
-**Indicators are never a template.** `INDICATOR` is a value that `trigger`,
-`direction` and `exits` can each take, independently of one another and of what
-the legs are. A scheduled entry with an indicator exit, an indicator-triggered
-equity strategy, an indicator-directed option straddle -- all field
-combinations, no inheritance. This is what removes the "indicator" and
-"advanced" axes from the template list entirely.
-
-#### Leg count
-
-Capped at **8 by default, configurable up to a hard ceiling of 16**, held in
-`system_config` and validated when a strategy is saved.
-
-Eight covers every structure this engine is built for: an iron condor is four
-legs, and a *hedged* iron condor is exactly eight -- which is the reason the
-cap is a setting rather than a constant. A futures overlay on top of that is
-nine. Elsewhere in the world the ceiling is far higher: CME accepts
-user-defined spreads of up to forty legs.
-
-The cap counts **legs in the spec, not resulting orders**. Freeze-quantity
-slicing turns one leg into several broker orders, so a four-leg strategy at
-size may legitimately place twenty. Capping orders would break sizing.
-
-#### Exits: per-leg and combined, both live at once
-
-Both apply simultaneously, and neither is restricted to a particular structure:
-
-- **Combined** -- one `ExitSpec` on the strategy, evaluated against the
-  position as a whole. Non-directional option selling uses this for a stop on
-  total premium.
-- **Per-leg** -- an optional `ExitSpec` on any `LegSpec`, evaluated against
-  that leg alone.
-
-Whichever triggers first wins; there is no precedence rule between them,
-because in practice both are real stops and the earlier one is the one that
-matters.
-
-What happens to the *other* legs when one exits is a declared **linkage**, not
-a hardcoded rule:
-
-| Linkage | Meaning |
-|---|---|
-| `EXIT_SELF` | only this leg exits |
-| `EXIT_GROUP` | every leg in the combo exits |
-| `EXIT_LINKED` | legs correlated to this one exit -- a main leg pulls its hedge |
-
-Defaults follow leg role: a `MAIN` leg exiting pulls its `HEDGE`; a `HEDGE`
-exiting leaves the main unprotected, which is a decision the operator must
-make rather than one the engine should assume. Every combination is
-configurable; the engine does not privilege any particular structure.
-
-*The cost, stated honestly:* a data-driven spec is harder to read in a debugger
-than a class, and a nonsensical spec must be rejected when it is saved rather
-than at 09:20 on expiry day. So `StrategySpec` validation is strict and total —
-a hedge leg with no main leg, a ratio that cannot be expressed in lots, an
-equity leg on a venue that does not trade equity — and the preset library
-constrains what the Console can produce in the first place.
-
-### 10.3 Configuration resolution
-
-Java's three-level config tree collapses to two layers plus a dated capital override:
-
-```
-strategy_config              base values for a strategy definition
-      ▲ overridden by
-strategy_day_overrides       by day type: MON…FRI, EXPIRY, DTE_0, DTE_1, DTE_2…
-      ▲ and, for capital only
-event_days                   dated: 2026-02-01 "Budget" → capital 50%
-```
-
-- **Day overrides** can override *any* property — SL, trailing SL, combined SL, entry time, lots,
-  strike offset.
-- **Event days** are dated and touch **capital allocation only**: on that date a strategy that
-  normally trades 10 lots trades 5 or 3. Pre-configured; applied automatically.
-- Resolution is a pure function `resolve(strategy, trading_day) -> ResolvedConfig`, unit-testable
-  without a database, and its result is journalled with the intent so any decision can be explained
-  after the fact.
-
-### 10.4 Direction and instrument selection
-
-- **Direction providers:** fixed · candle · indicator · IV-skew · PCR · N-bars breakout.
-- **Instrument resolvers:** option strike · hedge offset · underlying equity · underlying future.
-- **Strike selection policy** and the straddle selector are configuration, not code.
-
-Both are registries so a new provider or resolver is a registration, not a change to the evaluators.
-
-### 10.5 Tranches, hedging, breakout
-
-- **Tranches** — scheduled multi-entry through the day, each with its own schedule, gap and position
-  cap; `TranchComplete` events chain them.
-- **Hedging** — hedge schedules, hedge windows, hedge replacement and its recovery job.
-  **Hedge enable/disable is a strategy-level setting**, moved up from tranch level as in Java.
-- **Breakout watch** — levels, trigger modes, and shared evaluation across subscriptions watching
-  the same level.
-
-### 10.6 Indicators
-
-ATR · Bollinger · BB-squeeze · CCI · Choppiness · Heikin-Ashi · MACD · moving averages · pivot
-points · Renko · RSI · standard deviation · Supertrend · Vortex · VWAP · candlestick patterns.
-
-Computed once per (instrument, interval) per tick batch and shared across every subscription that
-needs them — the Java "evaluation sharing" optimization, which stays because it is about
-correctness and CPU per tick, not about user count.
-
-The rule engine evaluates AND/OR trees of comparators over indicator outputs, configured from the
-Console.
+- The reference's strategy layer is ported **feature for feature** — definition
+  and configuration vocabulary, scheduled tranches, strike selection, direction
+  providers, lot allocation, breakout watches, adaptive tranches, re-entry,
+  hedge windows, persisted per-day state — without its template table or its
+  seven-class evaluator hierarchy.
+- **One pipeline with a hook per step** (`gate`, `direction`, `legs`, `lots`,
+  `emit`, and the tick, periodic, tranche-complete and hedge-window handlers),
+  whose defaults do what the configuration says, in the reference's order.
+- **Four registries** of pluggable parts: triggers, direction providers, strike
+  selectors, indicators. A provider answers `LONG`, `SHORT`, `BOTH` or declines.
+- **Template behaviours become definition fields**: adaptive tranches and stop
+  rules, indicator entry and exit, re-entry mode, a provider for the five-day
+  move, combo legs, equity sizing.
+- **Custom strategies** subclass the base and override hooks; discovered by
+  entry point or a plugins directory; refused by name if unknown; fail closed.
+- **Runtime:** one asyncio task per subscription over its own event queue;
+  Clock-driven event sources; reload without restart.
+- **Configuration:** base, day, tranche, tranche-and-day scopes merged per
+  column; the runtime config built as the reference builds it, subscription
+  clamps included; dated event days scale lots.
 
 ---
 

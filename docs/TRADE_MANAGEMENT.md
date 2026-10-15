@@ -354,8 +354,8 @@ Two things this settles:
   at half the main leg's ratio is not, and points would silently misweight it.
 
 Each leg keeps its own stop as well. The combined level is an additional exit
-for the group, in the same way an exit rule set is (`STRATEGY_RULES.md` §5):
-whichever comes first.
+for the group, alongside an indicator exit when one is configured
+(`STRATEGY_ENGINE.md` §4): whichever comes first.
 
 **Built.** `trademgmt/combined_rules.py` holds the arithmetic and
 `trademgmt/positions.py` runs it, once per tick, for every group holding the
@@ -591,8 +591,7 @@ exchange, and it will not place again.
   reference's own rows are unusable as data. `TRAIL_0.5_BUFFER` and
   `TRAIL_1_BUFFER` are typed `PERCENTAGE` with an empty `trail_config`, so the
   buffer each is named for exists only in the name and the description.
-- **Where capital comes from.** Settled — see `STRATEGY_ENGINE.md` §5 for the
-  chain. `build` still takes it as an argument and nothing reads the tables
-  yet.
+- **Where capital comes from.** `subscriptions.capital`, sized into lots as
+  `STRATEGY_ENGINE.md` §4 step 5 says. `build` still takes it as an argument.
 - **Group and tranche.** Both are parameters with defaults. Tranche scheduling
   is not built.

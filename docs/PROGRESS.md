@@ -156,9 +156,13 @@ configuration is refused loudly rather than silently ignored.
 
 Recorded in `SCOPE_DECISIONS.md`; listed here so the two do not drift.
 
-- **No `EXTERNAL_SIGNAL` and no second rule engine in market data.** Market
-  data publishes synthetic *instruments* and the strategy's own rules read
-  them. `STRATEGY_RULES.md` §6.
+- **The strategy engine is being rebuilt to the reference's shape** without
+  its templates (`STRATEGY_ENGINE.md`, decided 2026-10-15). Until that lands,
+  what runs is the withdrawn rules design: a one-second sweep over JSON entry
+  rules, no scheduled tranches, strikes from leg selectors, lots sized per leg
+  against the whole capital. Do not build on it.
+- **External signals are deferred**, not out: the event type will exist from
+  the start, the producer later (`TODO.md`).
 - **Candle history is cached in memory, not Postgres.** Settled days fetched
   once, today refreshed when stale.
 - **11 indicators, not 16.** The absent five are ones no configured strategy
@@ -172,6 +176,7 @@ Newest first. One line per chunk of work, not per commit.
 
 | Date | What landed |
 |---|---|
+| 2026-10-15 | **Strategy engine design revised.** The owner compared what runs with the reference and found it deviated: the 2026-08-31 rules design had dropped scheduled tranches, strike types, direction providers, lot allocation, breakout watches, adaptive tranches, re-entry, hedge windows and persisted state along with the reference's class hierarchy, and the templates table sat unread and unseeded. Decided: port the reference feature for feature, **without templates** -- one pipeline with a hook per step defaulting to the configuration, four registries, template behaviours as definition fields, custom strategies as subclasses discovered by entry point or a plugins directory. User and broker config scopes, `GLOBAL_SHARED` and mock stay out; external signals are deferred with the event type present from the start. `STRATEGY_ENGINE.md` rewritten as the design and the seven-step build order; `STRATEGY_RULES.md` deleted; `DESIGN.md` §10, `SCOPE_DECISIONS.md` §5 and §5a and the plan's phase 3 rewritten to match. **Not built:** anything -- this entry is the decision. Step 1 (schema and runtime config) is next. |
 | 2026-10-11 | **Allocation models dropped.** The reference divided one capital pool across strategies by a named model; the owner decided against it: a trading client subscribes to strategies directly, each subscription carrying its own capital, and the reports read the same shape -- no overall base capital, no model (`SCOPE_DECISIONS.md` §9). Migration 0015 drops `allocation_models` and `allocation_model_strategies`, which nothing in the engine read; the Console loses the page, the field on the trading-client form, the column in its table, the allocation card on the bulk subscription editor (and with it the external intraday and positional capitals, which only the reference's reports used), the terminal filter and the help. The strategy-days allocation service, keyed by model, went with it. |
 | 2026-10-11 | **Run a phase now, from System Status.** The reference's manual "Run EOD job" button, widened to any phase: `EngineRunner.run_now(exchange, phase, trading_day)` runs exactly what the reconciler would -- the phase's tasks in order, recorded and written to the day timeline the same way -- and runs it even when the day already has it recorded, since "again" is what the operator meant: the morning the master failed at DAY_INIT, or REPORTS after a fix. A failure is the answer, not an exception. `POST /api/system-status/run-phase` with the venue, the phase and an optional trading day (the venue's today otherwise); 503 without an engine, 400 for a phase or venue the engine does not know. In the Console the form sits under the day timeline and asks first, in red for INTRADAY_SQUARE_OFF, SESSION_CLOSE and EOD, which do what their names say. The press is audited as RUN on ENGINE. **Not built:** the reference's time gate on the EOD run; the Console asks instead. |
 | 2026-10-11 | **Alerts served, and three pages decided out.** `/api/alerts`, ported from the reference's servlet: the bell's `recent` (newest first, a level filter) and `since` (an instant, or the venue's day), the paged list with its filters -- level, entity type, entity, operation, free text over message, entity and operation, a start and end as an instant or a venue day -- and `/filters` from what the table holds plus the vocabulary. Read-only, as the reference's was; the reference's `audience` is accepted and ignored since garuda has one audience. Rows come coalesced as the manager stores them, with the latest wording and the count. The Console's Alerts page loses the audience toggle and the user picker and takes its entity names from the server. **Decided out** (`SCOPE_DECISIONS.md` §9): Recompute Positional MTM (no daily marking under the owner's rule), Strategy Policies (templates nothing reads), Recompute Charges (until the charges phase); their pages, routes and nav entries are gone. **Not built:** acknowledging an alert; nothing retires old rows. |
@@ -236,7 +241,11 @@ In value order. **Ask before starting anything with a Console page.**
    parked in [`TODO.md`](TODO.md).
    See [`API_AND_CONSOLE.md`](API_AND_CONSOLE.md).
 
-2. **Read the stock universe in the strategy engine.** Both tables and
+2. **The strategy engine, rebuilt** — `STRATEGY_ENGINE.md` §10, seven steps,
+   starting with the schema and the runtime config. Everything below waits on
+   it or lands inside it.
+
+3. **Read the stock universe in the strategy engine.** Both tables and
    `strategy_definitions.universe_id` exist, the endpoints serve them, and
    nothing resolves a universe into anything. The reference does it in
    `SubscriptionLoader`: a universe-bound definition expands to one
@@ -250,11 +259,11 @@ In value order. **Ask before starting anything with a Console page.**
    position when a symbol leaves the list mid-day. Neither has an obvious
    answer and both cost money if guessed.
 
-3. **The users → trading clients rename in the Console.** The pages that scope
+4. **The users → trading clients rename in the Console.** The pages that scope
    by *user* still say so. Waiting on the API defining the trading-client wire
    shape.
 
-4. **`HEIKIN_ASHI` trailing.** The last trailing mode.
+5. **`HEIKIN_ASHI` trailing.** The last trailing mode.
 
-5. **Phase 4 leftovers that are not UI**: the adapter contract test suite, the
+6. **Phase 4 leftovers that are not UI**: the adapter contract test suite, the
    order-fill escalation ladder, and the four exit policies above.

@@ -44,49 +44,37 @@ licence in `README.md`, standalone (market data in-process), single-operator.
 
 ## 5. Strategy configuration
 
-- **Collapse the Java 3-level config tree.** Keep one **day override** layer over the strategy's
-  base configuration. Two distinct mechanisms, both retained:
-  - **Day-type config override** — overrides *any* strategy property (SL, trailing SL, combined SL,
-    entry time, …) by day type: weekday and expiry day / days-to-expiry.
-  - **Event days** — a dated table (budget day, election day, …) that scales *capital allocation*
-    only: on that date a strategy trades 5 or 3 lots instead of its usual 10. Pre-configured
-    per date, applied automatically.
-- Strategy definitions, templates and per-trading-client subscriptions stay.
-- **Hedging enable/disable moves from tranch level to strategy level.**
+- **The config tree keeps four scopes**: base, day condition, tranche, and tranche with day
+  condition, merged per column. The reference's user and broker scopes are **out**: one operator,
+  and a strategy that behaves differently on one account than another cannot be reasoned about.
+- **Event days** — a dated table (budget day, election day, …) that scales lots only, applied
+  automatically. **Day allocation** — per-strategy percentages by weekday and expiry proximity,
+  keyed by strategy alone now that allocation models are out.
+- Strategy definitions and per-trading-client subscriptions stay. **Templates do not** (§5a).
+- `GLOBAL_SHARED` lot allocation is out; a lot budget is per day.
 
-## 5a. Strategy templates — composed, not subclassed
+## 5a. Strategy engine — the reference's features, without its templates
 
-The reference engine's template hierarchy is not ported. Its inheritance tree spends single
-inheritance on "template" and then threads every other axis through by hand, which is why adding
-an option-buying mode meant seventeen edits inside one evaluator and why combos ended up a sibling
-of advanced options rather than a configuration of it.
+Decided 2026-10-15; the design is `STRATEGY_ENGINE.md`. The reference's strategy layer is ported
+**feature for feature**: its vocabulary, scheduled tranches, strike selection, direction providers,
+lot allocation, breakout watches, adaptive tranches, re-entry, hedge windows and persisted state.
+What is not ported is its template table and the seven evaluator classes keyed by it. Instead:
 
-Garuda has **one concrete evaluator** driven by a validated `StrategySpec` — legs, instrument
-selectors, side rules, triggers and exits as data. Templates become named presets of that spec.
-See `DESIGN.md` §10.2.
+- **One pipeline with a hook per step**, in the reference's order, each hook defaulting to what
+  the configuration says.
+- **Four registries** — triggers, direction providers, strike selectors, indicators — so a new one
+  is a registration.
+- **Template behaviours become definition fields**: adaptive tranches and the 0DTE stop rules,
+  indicator entry and exit, a re-entry mode, a direction provider for the five-day move, combo
+  legs, equity sizing. Nothing a template did is lost; it is reachable from any strategy.
+- **Custom strategies in code**: a subclass of the base overriding hooks, discovered by entry
+  point or a plugins directory, named on the definition, refused if unknown, fail closed.
 
-Consequences:
-
-- **All combinations are first-class**: equity + options, equity + futures, futures + options,
-  covered calls, cash-future arbitrage, multi-leg combos. Each is a different set of legs, not a
-  different class.
-- The reference engine's `TradeMode` enum disappears. Selling options is a side rule on an option
-  leg; buying them is the opposite side rule; futures and equity are different selectors.
-- **The two custom-logic templates are dropped entirely** — not ported, not reimplemented. Core
-  ships no bespoke evaluator. A third party can register one through the `garuda.evaluators`
-  entry point if a spec genuinely cannot express their logic.
-- **Asset class lives on the leg**, as one of three instrument selectors — option, future,
-  equity. **MTF is a product on an equity leg, not a fourth selector**: it is funded delivery,
-  which belongs alongside CNC and MIS rather than on the same axis as an asset class.
-- **Indicators are never a template.** `INDICATOR` is a value that the trigger, the direction
-  and the exits can each take independently, so it applies to every strategy regardless of what
-  its legs are.
-- **Legs are capped at 8 by default**, configurable to a hard ceiling of 16. A hedged iron
-  condor is exactly eight, which is why this is a setting and not a constant. The cap counts
-  legs in the spec, never the orders that freeze-quantity slicing produces from them.
-- **Per-leg and combined exits are both live at once** — non-directional option selling runs a
-  stop on total premium alongside per-leg stops. Whichever triggers first wins, and what
-  happens to the other legs is a declared linkage rather than a rule the engine assumes.
+An earlier design (2026-08-28 to 08-31) replaced the reference's triggers, providers and breakout
+watches with a rule engine and a leg spec. It was **withdrawn on 2026-10-15**: it dropped the
+reference's behaviours along with its class hierarchy, and nothing built on it scheduled a tranche,
+chose a strike by type, or sized a lot the way the reference does. Its resolver, day conditions,
+indicators and rule translator survive inside the new design.
 
 ## 6. Paper trading (virtual broker)
 
@@ -137,9 +125,9 @@ and multi-leg / combo strategies.
 | Building candles from ticks | Brokers publish history for every interval; reconstructing it from a tick stream is a second source for one number, wrong exactly across a restart or a dropped connection |
 | Global shared lot allocation | `GLOBAL_SHARED` spread one lot budget across tranches and across days. A lot budget is per day and nothing else; `global_allocation_tranches` and `allocation_start_tranch` go with it |
 | Leverage and max-risk-per-trade | both columns are set on no configured strategy; not ported |
-| External signal trigger | not an external integration at all — the market-data service evaluated conditions on rolling straddles, IV and PCR and pushed a fired signal. Garuda publishes those as synthetic instruments and writes the condition as a rule. See `STRATEGY_RULES.md` §6 |
-| Trigger types | tick / scheduled / signal / periodic collapse into rules over time and price (`STRATEGY_RULES.md` §1) |
-| Breakout watch table and service | a breakout is a rule on the ordinary tranche lifecycle (`STRATEGY_RULES.md` §7) |
+| External signal trigger | **deferred, not out** (2026-10-15). The reference received signals as frames from its data feed; garuda will take them from an API endpoint and in-process conditions, with the same ENTRY and EXIT semantics. The event type exists from the start; the producer is in `TODO.md` |
+| Strategy templates | the table, the capability flags and the template resolver. Decided out 2026-10-15: one pipeline whose hooks default to the configuration, and definition fields for what a template used to switch on (§5a) |
+| Rules-as-triggers design | the 2026-08-31 proposal (`STRATEGY_RULES.md`, deleted) that collapsed triggers, providers and breakout watches into a rule engine. Withdrawn 2026-10-15 (§5a) |
 | Positional daily mark-to-market | The reference marked carry-forward positions day by day and had a page to recompute it. Decided out on 2026-10-11: a positional trade books its whole P&L on the day it exits and is marked on no day before, so there is nothing to recompute; the Recompute Positional MTM page is gone |
 | Strategy policies page | The policy tables are Console-side templates no strategy keys on (`TRADE_MANAGEMENT.md`); the page edited rows nothing read. Gone on 2026-10-11 |
 | Recompute charges page | Removed from the Console on 2026-10-11 until the charges phase exists; a button over an unbuilt computation is a button that does nothing |

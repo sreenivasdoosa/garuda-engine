@@ -111,27 +111,31 @@ active provider fails over without dropping an order event.
 
 ## Phase 3 — Strategy engine, breadth · size L
 
+Redefined 2026-10-15; the design and the seven-step build order are in `STRATEGY_ENGINE.md`.
+
 **Deliverables**
 
-- `StrategySpec` and the single `LegBasedEvaluator` (`DESIGN.md` §10.2): legs, selectors, side
-  rules and triggers as validated data rather than a subclass per template. Strict spec
-  validation at save time. Preset library with capability flags; the Console form renders from
-  capabilities, not from template-name checks.
-- Config resolution: `strategy_config` + `strategy_day_overrides` (weekday / expiry / DTE-n) +
-  dated `event_days` capital scaling. Pure, unit-tested, journalled with each intent.
-- Direction providers: fixed, candle, indicator, IV-skew, PCR, N-bars breakout.
-- Instrument resolvers: option strike, hedge offset, underlying equity, underlying future.
-  Strike-selection policy and straddle selector as configuration.
-- Indicator library (16 indicators) + AND/OR rule engine, with per-(instrument, interval) sharing.
-- Tranches: schedules, gaps, position caps, `TranchComplete` chaining.
-- Breakout watch: levels, trigger modes, shared evaluation.
-- Hedging: hedge schedules, hedge windows, hedge replace + recovery job — **enable/disable at
-  strategy level**.
-- Cross-day strategy state and snapshots.
-- Console: Strategy Engine, Strategy Configs. (Strategy Policies and Allocation Models were decided out on 2026-10-11.)
+- The reference's strategy layer feature for feature, without templates: one pipeline with a
+  hook per step, four registries (triggers, direction providers, strike selectors, indicators),
+  template behaviours as definition fields, custom strategies as subclasses.
+- Config resolution at base, day, tranche and tranche-and-day scope, merged per column; the
+  runtime config built in the reference's order with the subscription clamps; day allocation and
+  dated event days scaling lots.
+- Scheduled tranches with cutoff, gap, catch-up and day checks; per-day persisted state restored
+  at start; one task per subscription.
+- Strike selection by the six types with the premium-balanced straddle selector, hedge offset and
+  liquidity filters; the eight direction providers; option-pair, single-leg, futures, combo and
+  equity shapes; lot allocation (sequential and risk-aware); freeze slicing with the reference's
+  ids.
+- Tick path (combined stop, target, trail), breakout watches, periodic path (indicator entry and
+  exit), adaptive tranches with stop rules, re-entry modes, hedge windows with replace and
+  recovery, equity with universes, the evaluation log.
+- Console: the reference's definition form, engine monitor, tranche schedules and config-tree
+  page, routed and served. (Strategy Policies, Allocation Models and Templates were decided out.)
 
-**Exit criteria** — every ported template runs end to end in paper mode against live data, with a
-behavioural test per template asserting emitted legs, strikes, ordering and roles.
+**Exit criteria** — every behaviour in the table of `STRATEGY_ENGINE.md` §5 runs end to end in
+paper mode against live data, with a behavioural test per behaviour asserting emitted legs,
+strikes, lots, ordering and ids.
 
 ---
 

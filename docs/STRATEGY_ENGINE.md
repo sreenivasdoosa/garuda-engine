@@ -1,202 +1,312 @@
-# Strategy engine — analysis and build order
+# Strategy engine — design and build order
 
-Read `DESIGN.md` §10 first; it says *what* the strategy engine is. This says
-what the reference engine actually does, what that means for the order things
-get built in, and what has been decided along the way.
+Decided with the owner on 2026-10-15. This replaces the rules proposal
+(`STRATEGY_RULES.md`, deleted) and the earlier "spec and one evaluator"
+design in `DESIGN.md` §10, which this document now defines. Read
+`SCOPE_DECISIONS.md` §5 for what is in and out.
 
-Written after reading the reference engine's configuration schema and the
-shape of a real configured book. Nothing about that book — names, counts,
-underlyings — belongs in this repository, so what follows describes weight
-qualitatively and vocabulary exactly.
+## 0. The decision in one paragraph
 
-## 1. What the configuration actually looks like
+The reference engine's strategy layer is ported **feature for feature**: its
+definition and configuration vocabulary, its scheduled tranches, its strike
+selection, direction providers, lot allocation, breakout watches, adaptive
+tranches, re-entry, hedge windows and persisted state. What is *not* ported
+is its seven-class evaluator hierarchy keyed by a template table. In its
+place: **one pipeline with a hook per step, four registries of pluggable
+parts, and definition fields for the behaviours a template used to encode.**
+A developer who needs logic the configuration cannot express subclasses the
+base strategy and overrides a hook; everything else keeps running around it.
 
-> **Superseded in part.** `STRATEGY_RULES.md` replaces trigger types with
-> rules. What follows still describes what the reference engine does and why
-> the scheduler matters; it no longer describes what garuda will build.
+The earlier deviation — rules as triggers, legs as the primary shape, a
+one-second sweep, no templates *and* no template behaviours — is withdrawn.
+What it got right (per-column config resolution, day conditions, indicators,
+the rule translator, protection parsing, trade management) stays.
 
-### Entries are scheduled, not ticked
+## 1. Vocabulary
 
-**No configured strategy uses a tick trigger.** Almost all use the scheduled
-trigger; a minority use an external-signal trigger and a handful a periodic
-one. This is the single most important thing the configuration says, and it
-contradicts the obvious reading of "event-driven engine".
+The reference's, exactly. These are the values the engine accepts; anything
+else is refused by name at save time, never guessed at.
 
-The consequence: **the dispatcher is a scheduler.** A strategy wakes at a
-configured tranche time, resolves its legs, and emits intents. Ticks matter
-after that — the entry service watches for the trigger price, the tracker
-follows fills, trailing follows the extreme — but a tick is not what makes a
-strategy decide to trade.
-
-Building a tick-driven dispatcher first would have been building the path
-nothing uses.
-
-### One template does nearly all the work
-
-Most strategies are one template: **scheduled option selling on an index,
-in tranches, with a hedge.** The remaining templates are variations that add
-an indicator entry, a different direction provider, or a different tranche
-rhythm — not different shapes.
-
-`DESIGN.md` §10.2 already decided that templates become data rather than
-subclasses. The configuration supports that: what separates one template from
-another here is which fields are populated, not what code runs.
-
-Multi-leg combos configured through `combo_spec_json` are rare. The combo
-machinery in trade management is built and tested and should stay, but combo
-*configuration* is not what the first working strategy needs.
-
-### The vocabulary, exactly
-
-These are the values that actually appear. Anything not listed is in the
-schema but unused, and should be refused loudly rather than guessed at.
-
-| Field | Values in use |
+| Field | Values |
 |---|---|
-| `day_condition` | `E` (expiry day) · `DT1` (day before expiry) · unset |
-| `strike_type` | `MoneyNess` · `PremiumRange` · `PremiumRange_OIRanked` · `FixedPremium` · `CandleLow_NearPremium` |
-| `strike_value` (MoneyNess) | `ATM` · `ITM-1` · `ITM-2` · `OTM+1` · `OTM+2` |
-| `trail_sl_type` | `RISK_MULTIPLE` |
-| `exit_mode` | `MINUTES_FROM_ENTRY` · `DAYS_FROM_ENTRY` · `EXPIRY` · `SAME_DAY` |
-| `lot_allocation_mode` | `GLOBAL_SHARED` · `DAY_LOCAL` |
+| `trade_mode` | `OPTION_SELLING` · `OPTION_BUYING` · `FUTURES` · `FUTURES_OPTIONS` · `EQUITY` |
+| `product` | `INTRADAY` · `POSITIONAL` · `CASHBUY` · `MTF` |
+| `underlying_type` | `INDEX` · `FUTURE` · `SYNTHETIC_FUTURE` |
+| `expiry_type` | `WEEKLY` · `MONTHLY` |
+| `direction_provider_type` | `FIXED` · `CANDLE` · `INDICATOR` · `PCR` · `IV_SKEW` · `N_BARS_BREAKOUT` · `ORB_BREAKOUT` · `RECENT_DAYS_MOVE` · any registered name |
+| `strike_type` | `MoneyNess` · `FixedPremium` · `PremiumRange` · `PremiumRange_OIRanked` · `CandleLow_NearPremium` · `FixedDelta` |
+| `strike_value` (MoneyNess) | `ATM` · `ITM-1`…`ITM-5` · `OTM+1`…`OTM+5` |
+| `day_condition` | `E` · `DT1` · `DT2` · `M` · `T` · `W` · `TH` · `F` |
 | `risk_calculation_mode` | `STOP_LOSS` · `WING_WIDTH_MAX_LOSS` |
-| `breakout_watch_type` | `OPTION_SYMBOL` |
-| `breakout_trigger_mode` | `PERCENTAGE` · `CANDLE_LOW` |
-| `direction_provider_type` | `CANDLE` · `INDICATOR` · `IV_SKEW` · `PCR` · `N_BARS_BREAKOUT` · `FIXED` · unset |
-| `trade_mode` | `OPTION_SELLING` · `OPTION_BUYING` · `EQUITY` · `FUTURES` · `FUTURES_OPTIONS` |
-| `product` | `INTRADAY` · `POSITIONAL` · `CASHBUY` |
+| `trail_sl_type` | `RISK_MULTIPLE` · `PERCENTAGE` · `ATR` · `EMA` · `SUPERTREND` · `HEIKIN_ASHI` |
+| `exit_mode` | `SAME_DAY` · `MINUTES_FROM_ENTRY` · `DAYS_FROM_ENTRY` · `DTE` · `EXPIRY` |
+| `lot_allocation_mode` | `DAY_LOCAL` only (`GLOBAL_SHARED` is out, §5) |
+| `breakout_watch_type` | `OPTION_SYMBOL` · `UNDERLYING` |
+| `breakout_trigger_mode` | `PERCENTAGE` · `ABSOLUTE` · `CANDLE_LOW` · `RANGE` |
+| `breakout_direction` | `ABOVE` · `BELOW` · `EITHER` |
+| `breakout_range_type` | `INTRADAY_WINDOW` · `PREVIOUS_DAYS` |
+| `breakout_reversal_mode` | `NONE` · `AFTER_CLOSE` · `PARALLEL` |
+| `equity_sizing_model` | `FIXED_AMOUNT_PER_STOCK` · `MAX_POSITIONS_EQUAL_SPLIT` · `MAX_RISK_PER_TRADE` |
+| `re_entry_mode` (new) | `NONE` · `AFTER_SL_WATCH` · `NEXT_CLOSE` · `ON_SIGNAL_FLIP` |
+| `status` | `ACTIVE` · `WIND_DOWN` · `INACTIVE` |
 
-Two things worth noting. **`MoneyNess` with `ATM` is by far the most common
-strike rule** — most positions are at the money, and the offsets are the
-exception. And **`RISK_MULTIPLE` is the only trailing type configured**: the
-indicator-based trailing modes that trade management refuses with an alert
-(ATR, EMA, SuperTrend, Heikin Ashi) are not used, so that refusal costs
-nothing today.
+Triggers are four booleans on the definition, as in the reference:
+`scheduled_trigger_enabled`, `tick_trigger_enabled`, `periodic_trigger_enabled`,
+`signal_trigger_enabled`. The last is stored and refused when set, until
+external signals are built (§9).
 
-### Configuration is resolved per column, not per row
+## 2. Data model
 
-`strategy_config` holds rows at four scopes, and the database computes how
-specific each is:
+The reference's tables, already ported, with these changes:
 
-| Scope | Keyed by | Priority |
-|---|---|---|
-| base | strategy | 0 |
-| day | strategy + day condition | 1 |
-| tranche | strategy + tranche | 2 |
-| tranche and day | strategy + tranche + day condition | 3 |
+- **`strategy_templates` is dropped**, and `strategy_definitions.template_name`
+  with it. There is no template. The reference's template `DEFAULT_CONFIG` is
+  replaced by a seeded base row in `strategy_config` for each new strategy.
+- **`strategy_definitions` gains** `strategy_class` (null = the base pipeline;
+  otherwise a registered custom strategy, §7), `use_indicator_entry`,
+  `re_entry_mode`, `always_in_position`, and loses `template_params` (its two
+  uses move into `direction_provider_params`).
+- **`strategy_config` gains** the columns garuda's port missed: `target_delta`,
+  `breakout_range_type`, `breakout_range_start`, `breakout_range_end`,
+  `breakout_range_lookback`, `breakout_on_high_break`, `breakout_on_low_break`,
+  `breakout_reversal_mode`; and two new ones from the 0DTE template,
+  `stop_after_loss_tranches` and `stop_after_profit_tranches`.
+- **`strategy_days_allocation`** (new, from `STRATEGY_DAYS_ALLOCATION_CONFIG`):
+  per strategy, the percentage of lots on each weekday and on `E`, `DT1`,
+  `DT2`. Keyed by strategy alone, since allocation models are out.
+- `strategy_indicator_rules` keeps the reference's JSON shape (`operator` /
+  `condition` trees) as the only shape.
+- `subscription_state` is the reference's `USER_STRATEGY_STATE`: one row per
+  subscription per trading day, `state_data` holding the strategy state (§6).
+- `strategy_breakout_watches`, `strategy_evaluation_log`, `hedge_schedules`,
+  `strategy_symbol_subscriptions` are read and written as the reference does.
+  `strategy_symbol_subscriptions` is kept only for the Console's chain
+  subscriptions, as the reference keeps it.
 
-Resolution takes every row whose scope matches the situation, orders them by
-priority descending, and takes **the first non-null value for each column
-independently**. A base row supplying the stop-loss percentage and a tranche
-row supplying only the strike type merge into one configuration; the tranche
-row does not have to repeat the stop.
+### Configuration resolution
 
-This is why almost every column in that table is nullable. A null means "not
-set at this scope", never "set to nothing" — and that distinction is the whole
-mechanism. Anything that reads the table by taking the highest-priority *row*
-rather than merging columns will silently lose most of a strategy's settings.
+Unchanged from what is built: rows at base, day, tranche, and tranche-plus-day
+scope; **merged per column**, the most specific non-null value winning. The
+user and broker scopes are out (`SCOPE_DECISIONS.md` §5).
 
-The reference engine has two further scopes, per user and per broker, and
-weights its priority arithmetic to leave room for them. Garuda dropped both
-deliberately (recorded on `StrategyConfigRow`): one operator, and a strategy
-that behaves differently on one account than another cannot be reasoned about.
+The runtime configuration for one subscription on one day is built in the
+reference's order, and every evaluation sees exactly this object:
 
-## 2. Build order
+1. engine defaults;
+2. the definition's columns;
+3. the subscription: capital, `is_paper_trading`, and `risk_percentage`,
+   `absolute_max_risk`, `leverage`, `max_active_positions` **clamped** to the
+   definition's min and max, as the reference clamps them;
+4. the config tree for the day condition, per column;
+5. one `TrancheConfig` per tranche number found in any applicable row, each
+   resolved per column for that tranche and day, with the base-and-day rows
+   as the default tranche config.
 
-Each step ends with something that runs and tests that prove it.
+`strategy_event_days` scales lots on a dated event day, as built.
 
-1. **Day conditions.** A pure function from a trading day and the expiry
-   calendar to the conditions that hold — `E`, `DT1`. Needed by everything
-   below it, and testable with nothing but a calendar.
-2. **Config resolution.** Rows to one resolved configuration, merging per
-   column by priority. Pure, and the place where a subtle bug is most
-   expensive: a lost stop-loss percentage is a position with no stop.
-3. **Protection from configuration.** Resolved stop and target percentages to
-   a `Protection`, given an entry price. This closes the largest gap left by
-   the signal seam — today every signal enters at market with no stop.
-4. **Strike selection.** `MoneyNess` first, since it is most of the book:
-   ATM and n-strikes either side, resolved against the option chain. Then the
-   premium-based rules. `CandleLow_NearPremium` needs candles and waits.
-5. **Strategy definitions to specs.** A definition plus its resolved
-   configuration becomes a `StrategySpec`: the legs, their sides, the hedge
-   offset, the product.
-6. **Subscriptions.** Which trading client runs which strategy, with what
-   capital, paper or live. This is where an account and a strategy meet.
-7. **The scheduler.** Tranche times to evaluations: at a configured time, for
-   each active subscription, evaluate and hand the intents to the signal
-   factory. This is the step where the engine first produces a trade.
-8. **Direction providers.** Fixed first, then candle-based. The indicator,
-   IV-skew and PCR providers need machinery that does not exist yet.
+## 3. The runtime
 
-Steps 1–3 are pure and can be built and tested with no database and no feed.
-Step 7 is where the engine stops being a thing that starts and becomes a thing
-that trades.
+```
+event sources ──► per-subscription queue ──► one task per subscription
+  SCHEDULED        (serialised)               │
+  TICK                                        ▼
+  PERIODIC                              Strategy.handle(event)
+  TRANCH_COMPLETE                             │
+  BREAKOUT                                    ▼
+  HEDGE_WINDOW                 signals ──► SignalProcessor ──► trade management
+  (EXTERNAL_SIGNAL: enum only)  exits   ──► square-off
+```
 
-## 3. Decided
+- **One asyncio task per active subscription** consumes that subscription's
+  queue. This is the reference's per-subscription serialisation without its
+  striped locks: two events for the same subscription never overlap, two
+  subscriptions never wait on each other.
+- **Event sources** are Clock-driven tasks, one per kind. Each knows which
+  subscriptions it addresses:
+  - `SCHEDULED` — the tranche scheduler (§4) fires at each consolidated
+    tranche time for the subscriptions sharing it.
+  - `TICK` — the feed, to subscriptions whose underlying matches, **only when
+    the subscription has active trades or live breakout watches**, as in the
+    reference.
+  - `PERIODIC` — a minute timer, to subscriptions whose
+    `periodic_interval_minutes` divides the minute, delayed by
+    `periodic_offset_seconds`, inside the start–stop window.
+  - `TRANCH_COMPLETE` — trade management, when the last trade of a tranche
+    group exits, carrying the tranche's P&L and exit reason.
+  - `BREAKOUT` — the breakout watch service, on a tick that breaches a watch.
+  - `HEDGE_WINDOW` — the hedge window scheduler, at the start of a morning or
+    evening window and on each recovery check.
+- **Loading and reload.** At start of day per venue, and on every write to a
+  definition, config row or subscription: active subscriptions × active
+  definitions become registrations; the tranche schedules are rebuilt; state
+  is restored. Reload is incremental in effect — a subscription deactivated
+  mid-day stops receiving events at the next one; a config change re-resolves
+  at the next evaluation. **No restart for any of it.**
+- **End of day** flushes state and clears the day's in-memory marks, as the
+  reference's end-of-day task does.
 
-- **Unknown vocabulary is refused, not guessed.** A `strike_type` this engine
-  does not implement raises rather than falling back to ATM. A strategy that
-  silently trades a different strike than configured is worse than one that
-  does not trade.
-- **The scheduler drives entries.** Ticks drive the entry service, the tracker
-  and trailing — not the decision to trade.
-- **Null means "not set at this scope".** Never "set to nothing".
+## 4. The pipeline
 
-## 5. Where capital comes from
+`BaseStrategy` is the reference's F&O evaluator as **one fixed sequence of
+hooks**. The default implementation of every hook is "what the configuration
+says". The order is the reference's and is not configurable.
 
-Settled. Three tables can supply a number and only one of them is read at
-trading time.
+**On `SCHEDULED` (and on `BREAKOUT`, entering at step 3):**
 
-**`subscriptions.capital` is the answer.** A subscription is one trading
-client running one strategy, and its capital column is what the sizer uses.
-Nothing else is consulted while trading.
+1. **`gate`** — status `ACTIVE`; not a holiday; `exclude_monthly_expiry`;
+   `excluded_days` then `tradable_days`; inside `start_time` to the tranche
+   cutoff (or `stop_time`); the tranche not yet signalled today; and, when
+   `use_indicator_entry`, the entry rule tree passes.
+2. **Breakout gate** — if this tranche has `breakout_enabled`, create the
+   watches now and stop: an `OPTION_SYMBOL` watch selects strikes immediately
+   and waits for the premium to breach; an `UNDERLYING` watch builds the range
+   band (`INTRADAY_WINDOW` or `PREVIOUS_DAYS`) and waits for the spot. A range
+   whose window has not elapsed yields "not ready" and is retried on the next
+   event. Only "disabled" falls through to an immediate entry; a failed watch
+   is a critical alert and no entry.
+3. **`direction`** — the breakout's breached side if entering from a watch;
+   otherwise the providers in the definition's order, first opinion wins;
+   then the applicable-direction filter. A non-directional strategy answers
+   `BOTH`. A provider answers `LONG`, `SHORT`, `BOTH` or declines.
+4. **`legs`** — the shape from `trade_mode`, the direction and
+   `combo_spec_json`: an option pair (CE and PE, each with its hedge), a single
+   option leg (`OPTION_SELLING` sells the PE on `LONG`; `OPTION_BUYING` buys the
+   CE), a future, combo legs resolved one by one, or one entry per universe
+   member for equity. Each option leg goes through its **strike selector**
+   (`strike_type`), the **premium-balanced straddle selector** when
+   `use_premium_balancing`, the **hedge offset** resolver (distance %, rounded
+   to the strike gap and then to the symbol's rounding multiple past the
+   minimum distance), the **liquidity filters** (volume and OI; hedges exempt
+   unless flagged), and the wing-width capture for `WING_WIDTH_MAX_LOSS`. Any
+   leg that cannot be resolved stands the whole entry down.
+5. **`lots`** — `capital ÷ capital_per_lot` (hedged or naked by
+   `hedging_enabled`) × the day-allocation % × the event-day %, through the
+   sequential allocator across the day's tranches and, when a risk percentage
+   is set, the risk-aware allocator. Equity uses the sizing model instead.
+   Zero lots refuses the entry whole, with an alert.
+6. **`emit`** — freeze-quantity slicing; the reference's group id
+   (`[date|]Tranch-n|Slice-s`), pair correlation ids, hedge correlation and
+   combo ids; `exit_trade_at` from `exit_mode`; protection from the tranche
+   config; the signals go to the signal processor. The tranche is marked
+   signalled and the state persisted.
 
-The other two are how that number gets *set*, which is a different activity
-happening at a different time:
+**On `TICK`:** combined stop, combined target and combined trail per group,
+throttled as the reference throttles them; tick-driven trailing is trade
+management's. **On `PERIODIC`:** with active trades, the exit rule tree when
+`use_indicator_exit`; otherwise the entry path for the next tranche. **On
+`TRANCH_COMPLETE`:** when `adaptive_tranches_enabled`, the next tranche fires
+unless the exit reason is one that suppresses the cascade, `max_tranches` is
+reached, `stop_after_loss_tranches` or `stop_after_profit_tranches` is hit,
+or the window has closed; then the `re_entry_mode` policy. **On
+`HEDGE_WINDOW`:** replace each short's hedge at the window's distance, with
+the reference's status machine and recovery limits.
 
-- **An allocation model is a plan, not a runtime input.** It names a total
-  capital, splits it intraday versus positional, and lists how many lots of
-  each strategy it wants. Choosing a model for a trading client is what
-  derives each subscription's capital; after that the model has done its job.
-- **Capital per lot** lives on the strategy definition, because how much
-  capital one lot of a strategy needs is a property of the strategy, not of
-  whoever runs it. It is the bridge: a model asking for four lots of a
-  strategy whose capital per lot is one figure produces a subscription capital
-  of four times it.
+Every hook is a method with a default. Overriding one does not change the
+order, the state handling, the fail-closed behaviour or anything downstream.
 
-So the chain is `model → lots × capital-per-lot → subscription capital →
-sizer`, and only the last arrow happens while the market is open.
+## 5. What a template used to be
 
-**Overlap.** Both the model's strategy map and the strategy definition carry an
-overlap flag, and roughly a fifth of configured strategies set it. It exists
-because strategies that cannot be open at once do not each need their own
-capital reserved. The exact arithmetic — whether overlapping strategies sum,
-or take the largest, or something between — is not settled and matters only
-when a model is being *applied*, not when a trade is being sized.
+| Reference template | Here |
+|---|---|
+| `ADVANCED_OPTIONS` | the pipeline with its defaults |
+| `ZERODT_OPTIONS` | `adaptive_tranches_enabled` + `stop_after_loss_tranches` + `stop_after_profit_tranches` |
+| `INDICATOR_ADVANCED_OPTIONS` | `use_indicator_entry` and `use_indicator_exit`, on any strategy |
+| `SIXTH_SENSE_OPTIONS` | the `RECENT_DAYS_MOVE` direction provider, answering CE, PE or both |
+| `ADAPTIVE_OPTIONS` | `re_entry_mode` and `always_in_position`, with the provider's own state under its namespace; shipped as the first custom strategy subclass (§7) to prove the hooks |
+| `COMBO_STRATEGY` | `combo_spec_json` |
+| `EQUITY` | `trade_mode = EQUITY` with a universe and a sizing model |
 
-**Equity sizes differently.** Options size from capital per lot; equity sizes
-from a fixed amount per stock with a cap on how many positions may be open at
-once. That is the only equity sizing model in use, and it is a different
-formula rather than a variation of the same one.
+The capability flags, the template resolver and the Console's template-name
+checks go. The form shows sections by `trade_mode` and the flags.
 
-**Risk-based sizing is also real.** A meaningful minority of strategies set a
-risk percentage, sizing so that being stopped out costs a fixed fraction of
-capital. `RiskAwareLotAllocator` already implements it; what is missing is
-reading the configured percentage.
+**Deliberately out**, each recorded in `SCOPE_DECISIONS.md`: `GLOBAL_SHARED`
+lot allocation; the user and broker config scopes; mock sessions; the
+template table. **External signals are deferred, not out** (§9).
 
-**Two columns are dead.** Leverage and maximum-risk-per-trade are set on no
-configured strategy at all. They are not ported.
+## 6. State
 
-## 6. Open
+The reference's `StrategyState`, one row per subscription per trading day in
+`subscription_state`: last tranche signalled, tranche signal times, signals
+generated today, used risk, lots allocated today, evaluation and signal
+counts, and a `data` map namespaced per provider or custom strategy.
 
-- ~~A hedge that sizes to zero~~ **Settled: refuse the whole entry.** A short
-  option whose hedge was dropped for want of a lot is a different position
-  from the one that was designed, not a smaller one. Already what
-  `engine/signals.py` does.
-- **Reading the capital.** The chain is settled (§5); nothing reads
-  `subscriptions.capital` yet, and `SignalFactory.build` still takes capital
-  as an argument.
-- ~~`lot_allocation_mode`~~ **Settled: only the daily mode.** `GLOBAL_SHARED`
-  spread a lot budget across tranches and is deliberately dropped — see
-  `SCOPE_DECISIONS.md`. A lot budget is per day, and `global_allocation_tranches`
-  and `allocation_start_tranch` go with it.
+- Written at most every thirty seconds, and **at once** when a critical field
+  changes (a tranche signalled, risk used), exactly the reference's rule.
+- Restored at start of day: signalled tranches, so a restart never fires a
+  tranche twice.
+- Carried across days only for positional strategies by expiry cycle, which
+  is what the reference's cross-day state does and the only case it has.
+
+The in-memory tranche ledger built earlier is folded into this; a ledger that
+forgets at restart was the defect the reference's state row exists to avoid.
+
+## 7. Custom strategies
+
+Garuda is open source, and the configuration will not express everything.
+A developer writes a subclass of `BaseStrategy`, overrides the hooks they
+need, and leaves the rest to the configuration:
+
+```python
+from garuda.engine import BaseStrategy, strategy
+
+@strategy("MY_EXPIRY_SCALPER")
+class MyExpiryScalper(BaseStrategy):
+    params = MyParams            # a dataclass; the Console renders its fields
+
+    async def direction(self, ctx):          # one hook overridden
+        ...
+```
+
+- **Discovery:** an installed package exposing a `garuda.strategies` entry
+  point, or a module dropped into `<app home>/plugins/`. Both register by
+  name at startup. A definition names one in `strategy_class`; null is the
+  base. An unknown name is refused at save.
+- **The same registries** take custom direction providers, strike selectors,
+  indicators and rule conditions with a decorator, so adding a provider does
+  not require a strategy.
+- **Fail closed applies.** A hook that raises, or returns a malformed value
+  (a float in a money field, an unlisted instrument), stands the entry down
+  and raises a critical alert. The Clock and `Decimal` rules are documented
+  for authors and enforced where the engine can see the result.
+- `SixthSense` and `Adaptive` are written against these hooks first, so the
+  hooks are proven on real behaviour before anyone else depends on them.
+
+## 8. Console
+
+The reference's pages, already in the tree, are routed: the definition form
+(its sections minus "Strategy Engine" and "Visibility"), Engine Monitor,
+Tranche Schedules, the config-tree page. The Templates tab goes. The
+definition page, leg editor and rules modal written for the withdrawn design
+go. The endpoints those pages call are served: definitions, resolve, dry run,
+status, schedules, breakout watches, strategy states, indicator rules.
+
+## 9. Deferred
+
+- **External signals.** The reference received them as "signal" frames from
+  its data feed. Garuda's market data is in-process, so the source will be an
+  API endpoint and in-process conditions, with the reference's `ENTRY` and
+  `EXIT` semantics and tranche selection. The `EXTERNAL_SIGNAL` event type and
+  dispatcher branch exist from the start so that adding the producer is the
+  whole job. Tracked in `TODO.md`.
+
+## 10. Build order
+
+Each step ends with a running engine and behavioural tests.
+
+1. **Schema and runtime config.** The migrations above; templates removed;
+   the runtime config built in the reference's order; the base-row seed on
+   strategy creation.
+2. **Scheduler, state, dispatcher, first trade.** Consolidated tranche
+   schedules; the scheduler with cutoff, gap, catch-up and day checks; state
+   persisted and restored; the per-subscription task; the pipeline for an
+   at-the-money option pair with hedges and the lot allocator.
+3. **Selection and direction.** The remaining strike selectors, the straddle
+   selector, the eight providers, the single-leg, futures and combo shapes.
+4. **Tick and breakout.** Combined stop, target and trail; the breakout watch
+   service with option-symbol and underlying watches, ranges and reversal.
+5. **Periodic and adaptive.** Indicator entry and exit; adaptive tranches;
+   stop rules; re-entry modes; `RECENT_DAYS_MOVE`; the custom-strategy
+   registry with `Adaptive` as its first subclass.
+6. **Hedge windows, equity, log.** Replace and recovery; equity with
+   universes and the three sizing models; the evaluation log.
+7. **Console.**

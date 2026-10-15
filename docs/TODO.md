@@ -21,3 +21,13 @@ this file holds only the items parked by an explicit decision.
   affected and there is no equity strategy running yet. Read the
   reference's table in the schema dump before designing it. Decided
   2026-10-11.
+
+## Strategy engine
+
+- [ ] **External signals.** The `EXTERNAL_SIGNAL` event type and dispatcher
+  branch exist from step 2 of `STRATEGY_ENGINE.md` §10 with no producer.
+  When needed: an API endpoint and in-process conditions posting the
+  reference's `ENTRY` and `EXIT` signals with tranche selection, the
+  two-second batching, the gap check, and `EXT_SIGNAL_EXIT` square-off.
+  `signal_trigger_enabled` is stored and refused when set until then.
+  Decided 2026-10-15.

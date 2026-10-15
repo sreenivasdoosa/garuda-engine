@@ -2,7 +2,7 @@
 
 A strategy decides whether to enter, which way, and when to get out. All three
 are lists of small pluggable rules, and the engine owns no knowledge of what
-any particular rule means. See `docs/STRATEGY_RULES.md`.
+any particular rule means. Superseded by `docs/STRATEGY_ENGINE.md`; goes with step 2.
 """
 
 from garuda.engine.rules.breakout import Breakout, Confirm, Way

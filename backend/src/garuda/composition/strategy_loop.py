@@ -4,7 +4,7 @@ The last join. On a cadence, for every active subscription and every tranche
 of it that is still open, build a view of the moment, evaluate, and deliver
 whatever comes out.
 
-**Paced by what it watches, not by a timer** in the end (`STRATEGY_RULES.md`
+**Paced by what it watches, not by a timer** in the end (the withdrawn rules design;
 §7); until rules declare their dependencies this sweeps on a short interval,
 which for inputs published about once a second is the same thing at a slightly
 higher cost.

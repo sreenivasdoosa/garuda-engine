@@ -38,6 +38,7 @@ Read the relevant one before proposing anything. They win over your priors.
 | `docs/DESIGN.md` | How is it built |
 | `docs/PROGRESS.md` | What exists today, what is named but not built, what is next |
 | `docs/TODO.md` | What is decided but parked, and what unblocks each item |
+| `docs/STRATEGY_ENGINE.md` | How strategies are configured, scheduled and evaluated, and in what order that gets built |
 | `docs/IMPLEMENTATION_PLAN.md` | What we intend to build, and in what order |
 | `ARCHITECTURE.md` | The principles the design holds to |
 
