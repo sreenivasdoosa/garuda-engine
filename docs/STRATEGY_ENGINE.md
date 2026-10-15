@@ -33,7 +33,7 @@ else is refused by name at save time, never guessed at.
 | `product` | `INTRADAY` · `POSITIONAL` · `CASHBUY` · `MTF` |
 | `underlying_type` | `INDEX` · `FUTURE` · `SYNTHETIC_FUTURE` |
 | `expiry_type` | `WEEKLY` · `MONTHLY` |
-| `direction_provider_type` | `FIXED` · `CANDLE` · `INDICATOR` · `PCR` · `IV_SKEW` · `N_BARS_BREAKOUT` · `ORB_BREAKOUT` · `RECENT_DAYS_MOVE` · any registered name |
+| `direction_provider_type` | `FIXED` · `CANDLE` · `INDICATOR` · `PCR` · `IV_SKEW` · `N_BARS_BREAKOUT` · `ORB_BREAKOUT` · any registered name |
 | `strike_type` | `MoneyNess` · `FixedPremium` · `PremiumRange` · `PremiumRange_OIRanked` · `CandleLow_NearPremium` · `FixedDelta` |
 | `strike_value` (MoneyNess) | `ATM` · `ITM-1`…`ITM-5` · `OTM+1`…`OTM+5` |
 | `day_condition` | `E` · `DT1` · `DT2` · `M` · `T` · `W` · `TH` · `F` |
@@ -47,7 +47,6 @@ else is refused by name at save time, never guessed at.
 | `breakout_range_type` | `INTRADAY_WINDOW` · `PREVIOUS_DAYS` |
 | `breakout_reversal_mode` | `NONE` · `AFTER_CLOSE` · `PARALLEL` |
 | `equity_sizing_model` | `FIXED_AMOUNT_PER_STOCK` · `MAX_POSITIONS_EQUAL_SPLIT` · `MAX_RISK_PER_TRADE` |
-| `re_entry_mode` (new) | `NONE` · `AFTER_SL_WATCH` · `NEXT_CLOSE` · `ON_SIGNAL_FLIP` |
 | `status` | `ACTIVE` · `WIND_DOWN` · `INACTIVE` |
 
 Triggers are four booleans on the definition, as in the reference:
@@ -63,9 +62,8 @@ The reference's tables, already ported, with these changes:
   with it. There is no template. The reference's template `DEFAULT_CONFIG` is
   replaced by a seeded base row in `strategy_config` for each new strategy.
 - **`strategy_definitions` gains** `strategy_class` (null = the base pipeline;
-  otherwise a registered custom strategy, §7), `use_indicator_entry`,
-  `re_entry_mode`, `always_in_position`, and loses `template_params` (its two
-  uses move into `direction_provider_params`).
+  otherwise a registered custom strategy, §7) and `use_indicator_entry`, and
+  does not gain `template_params` (only the two unported templates used it).
 - **`strategy_config` gains** the columns garuda's port missed: `target_delta`,
   `breakout_range_type`, `breakout_range_start`, `breakout_range_end`,
   `breakout_range_lookback`, `breakout_on_high_break`, `breakout_on_low_break`,
@@ -197,7 +195,10 @@ management's. **On `PERIODIC`:** with active trades, the exit rule tree when
 `TRANCH_COMPLETE`:** when `adaptive_tranches_enabled`, the next tranche fires
 unless the exit reason is one that suppresses the cascade, `max_tranches` is
 reached, `stop_after_loss_tranches` or `stop_after_profit_tranches` is hit,
-or the window has closed; then the `re_entry_mode` policy. **On
+or the window has closed. **After a stop-loss exit** the reference's re-entry
+watch is created when `re_entry` is on: an option-symbol watch below the
+original entry, up to `max_reentries`, only past `min_reentry_loss_percentage`.
+**On
 `HEDGE_WINDOW`:** replace each short's hedge at the window's distance, with
 the reference's status machine and recovery limits.
 
@@ -211,8 +212,8 @@ order, the state handling, the fail-closed behaviour or anything downstream.
 | `ADVANCED_OPTIONS` | the pipeline with its defaults |
 | `ZERODT_OPTIONS` | `adaptive_tranches_enabled` + `stop_after_loss_tranches` + `stop_after_profit_tranches` |
 | `INDICATOR_ADVANCED_OPTIONS` | `use_indicator_entry` and `use_indicator_exit`, on any strategy |
-| `SIXTH_SENSE_OPTIONS` | the `RECENT_DAYS_MOVE` direction provider, answering CE, PE or both |
-| `ADAPTIVE_OPTIONS` | `re_entry_mode` and `always_in_position`, with the provider's own state under its namespace; shipped as the first custom strategy subclass (§7) to prove the hooks |
+| `SIXTH_SENSE_OPTIONS` | **not ported now.** Its five-day-move signal is a candidate for the sample custom strategy planned after the base lands |
+| `ADAPTIVE_OPTIONS` | **not ported now.** Its always-in-position and re-entry-on-flip logic is the other candidate for that sample |
 | `COMBO_STRATEGY` | `combo_spec_json` |
 | `EQUITY` | `trade_mode = EQUITY` with a universe and a sizing model |
 
@@ -268,8 +269,10 @@ class MyExpiryScalper(BaseStrategy):
   (a float in a money field, an unlisted instrument), stands the entry down
   and raises a critical alert. The Clock and `Decimal` rules are documented
   for authors and enforced where the engine can see the result.
-- `SixthSense` and `Adaptive` are written against these hooks first, so the
-  hooks are proven on real behaviour before anyone else depends on them.
+- **Nothing in core subclasses the base.** The two reference templates that
+  would have (§5) are not ported now; a sample custom strategy is planned
+  once the base implementation is complete, and it will be the first user of
+  the hooks. Until then the hooks are tested with a test-only subclass.
 
 ## 8. Console
 
@@ -301,12 +304,12 @@ Each step ends with a running engine and behavioural tests.
    persisted and restored; the per-subscription task; the pipeline for an
    at-the-money option pair with hedges and the lot allocator.
 3. **Selection and direction.** The remaining strike selectors, the straddle
-   selector, the eight providers, the single-leg, futures and combo shapes.
+   selector, the seven providers, the single-leg, futures and combo shapes.
 4. **Tick and breakout.** Combined stop, target and trail; the breakout watch
    service with option-symbol and underlying watches, ranges and reversal.
 5. **Periodic and adaptive.** Indicator entry and exit; adaptive tranches;
-   stop rules; re-entry modes; `RECENT_DAYS_MOVE`; the custom-strategy
-   registry with `Adaptive` as its first subclass.
+   stop rules; re-entry watches after a stop; the custom-strategy registry,
+   proven with a test-only subclass.
 6. **Hedge windows, equity, log.** Replace and recovery; equity with
    universes and the three sizing models; the evaluation log.
 7. **Console.**

@@ -124,7 +124,7 @@ Redefined 2026-10-15; the design and the seven-step build order are in `STRATEGY
 - Scheduled tranches with cutoff, gap, catch-up and day checks; per-day persisted state restored
   at start; one task per subscription.
 - Strike selection by the six types with the premium-balanced straddle selector, hedge offset and
-  liquidity filters; the eight direction providers; option-pair, single-leg, futures, combo and
+  liquidity filters; the seven direction providers; option-pair, single-leg, futures, combo and
   equity shapes; lot allocation (sequential and risk-aware); freeze slicing with the reference's
   ids.
 - Tick path (combined stop, target, trail), breakout watches, periodic path (indicator entry and

@@ -65,10 +65,12 @@ What is not ported is its template table and the seven evaluator classes keyed b
 - **Four registries** — triggers, direction providers, strike selectors, indicators — so a new one
   is a registration.
 - **Template behaviours become definition fields**: adaptive tranches and the 0DTE stop rules,
-  indicator entry and exit, a re-entry mode, a direction provider for the five-day move, combo
-  legs, equity sizing. Nothing a template did is lost; it is reachable from any strategy.
+  indicator entry and exit, combo legs, equity sizing. Reachable from any strategy.
+- **The two bespoke templates (five-day move, always-in-position) are not ported now.** They
+  are candidates for the sample custom strategy planned once the base is complete.
 - **Custom strategies in code**: a subclass of the base overriding hooks, discovered by entry
-  point or a plugins directory, named on the definition, refused if unknown, fail closed.
+  point or a plugins directory, named on the definition, refused if unknown, fail closed. Core
+  ships none.
 
 An earlier design (2026-08-28 to 08-31) replaced the reference's triggers, providers and breakout
 watches with a rule engine and a leg spec. It was **withdrawn on 2026-10-15**: it dropped the

@@ -596,10 +596,11 @@ Defined in full in `STRATEGY_ENGINE.md` (decided 2026-10-15). In brief:
 - **Four registries** of pluggable parts: triggers, direction providers, strike
   selectors, indicators. A provider answers `LONG`, `SHORT`, `BOTH` or declines.
 - **Template behaviours become definition fields**: adaptive tranches and stop
-  rules, indicator entry and exit, re-entry mode, a provider for the five-day
-  move, combo legs, equity sizing.
+  rules, indicator entry and exit, combo legs, equity sizing. The two bespoke
+  templates are not ported now.
 - **Custom strategies** subclass the base and override hooks; discovered by
   entry point or a plugins directory; refused by name if unknown; fail closed.
+  Core ships none; a sample is planned after the base lands.
 - **Runtime:** one asyncio task per subscription over its own event queue;
   Clock-driven event sources; reload without restart.
 - **Configuration:** base, day, tranche, tranche-and-day scopes merged per
