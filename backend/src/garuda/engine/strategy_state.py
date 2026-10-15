@@ -132,3 +132,17 @@ class StrategyState:
         """The reference's `firingOrderTranchIndex`: how many other tranches
         have fired today, plus one."""
         return sum(1 for fired in self.signalled if fired != tranche) + 1
+
+    def signalled_again(
+        self, *, signals: int, lots: int, risk: Decimal, at: dt.datetime
+    ) -> StrategyState:
+        """A further entry for a tranche already signalled: the other leg's
+        breakout watch, or a parallel reversal. Counted, not re-marked."""
+        return replace(
+            self,
+            signals_generated_today=self.signals_generated_today + signals,
+            allocated_lots_today=self.allocated_lots_today + lots,
+            used_risk=self.used_risk + risk,
+            signal_count=self.signal_count + 1,
+            last_signal_at=at,
+        )

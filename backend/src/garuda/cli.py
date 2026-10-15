@@ -67,6 +67,7 @@ from garuda.marketdata.synthetics import (
     for_symbols,
 )
 from garuda.persistence.api_stats_store import ApiStatsStore
+from garuda.persistence.breakout_watch_store import BreakoutWatchStore
 from garuda.persistence.derived_bars import DerivedBarStore
 from garuda.persistence.engine import create_engine, create_session_factory
 from garuda.persistence.secrets import SecretBox
@@ -616,6 +617,7 @@ def _strategy_loop(assembled: _Assembled, clock: Clock) -> StrategyLoop | None:
         clock=clock,
         alerts=engine.parts.alerts,
         states=StrategyStateStore(assembled.sessions),
+        watch_store=BreakoutWatchStore(assembled.sessions),
         event_days=assembled.event_days,
         watchlist=watchlist,
         synthetics=SyntheticPublisher(sources=_synthetics(assembled)),

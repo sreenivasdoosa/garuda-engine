@@ -375,3 +375,35 @@ def test_the_day_and_counts_are_reported(
     loop = loop_for(engine, registry, venue, ReplayClock(at(9, 0)), straddle())
     assert loop.trading_day == TODAY
     assert loop.tranches_today == 0
+
+
+class TestBreakoutWatches:
+    async def test_a_watch_armed_at_its_time_enters_when_the_premium_falls(
+        self, engine: Engine, registry: InstrumentRegistry, venue: Exchange
+    ) -> None:
+        config = base_config()
+        config.breakout_enabled = True
+        loaded = assemble([definition()], [config], [], [subscription()])
+        clock = ReplayClock(at(12, 59))
+        loop = loop_for(engine, registry, venue, clock, loaded)
+        await prices(engine, clock.now())
+        await loop.run_once()
+        clock._now = at(13, 0)
+        (armed,) = await loop.run_once()
+        assert armed.outcome.armed
+        assert len([w for w in loop.watches() if w.is_live]) == 2
+        book = engine.parts.clients[APPA].book
+        assert book.signals("straddle") == []
+
+        # The call's premium falls 25% through the 20% trigger.
+        tick = Tick(
+            instrument=InstrumentId("NFO:N25000CE"), last_price=rupees("90"), timestamp=at(13, 5)
+        )
+        await engine.parts.hub.consume([TicksReceived((tick,))])
+        await engine.parts.hub.dispatch_once()
+        clock._now = at(13, 5)
+        (entered,) = await loop.run_once()
+
+        assert entered.outcome.entered, entered.outcome.stood_down
+        assert [s.instrument.value for s in book.signals("straddle")] == ["NFO:N25000CE"]
+        assert len([w for w in loop.watches() if w.is_live]) == 1

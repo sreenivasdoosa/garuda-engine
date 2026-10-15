@@ -128,6 +128,15 @@ class TrancheSchedule:
         self.slots.sort(key=lambda slot: (slot.at, slot.strategy, slot.tranche))
         return retimed
 
+    def retry(self, strategy: str, tranche: int, at: dt.datetime) -> Slot:
+        """Evaluate a tranche again at ``at``: a breakout range that had not
+        closed when the tranche came due. The reference defers such a tranche
+        to the range end the same way."""
+        slot = Slot(strategy=strategy, tranche=tranche, at=at)
+        self.slots.append(slot)
+        self.slots.sort(key=lambda each: (each.at, each.strategy, each.tranche))
+        return slot
+
     @property
     def pending(self) -> list[Slot]:
         return [slot for slot in self.slots if not slot.fired and not slot.missed]

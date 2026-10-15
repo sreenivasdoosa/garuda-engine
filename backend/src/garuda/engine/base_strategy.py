@@ -43,6 +43,7 @@ from garuda.domain.money import Money
 from garuda.domain.strikes import Moneyness, atm_strike
 from garuda.domain.trade import Relationships
 from garuda.domain.trade_signal import EntryRules, EscalationMode, SignalType, TradeSignal
+from garuda.engine.breakout import BreakoutSettings, Watch, WatchedLeg, watch_key
 from garuda.engine.config import ResolvedConfig
 from garuda.engine.daycondition import DayCondition
 from garuda.engine.direction_providers import Answer, DirectionContext, Side, applicable
@@ -57,6 +58,8 @@ from garuda.engine.lots import (
     risk_aware_lots,
 )
 from garuda.engine.protection import protection_from
+from garuda.engine.ranges import Band
+from garuda.engine.ranges import resolve as resolve_range
 from garuda.engine.runtime_config import Definition, RuntimeConfig
 from garuda.engine.strategy_state import StrategyState
 from garuda.engine.strike_selection import (
@@ -65,6 +68,11 @@ from garuda.engine.strike_selection import (
     select_strikes,
 )
 from garuda.engine.vocabulary import (
+    BreakoutDirection,
+    BreakoutReversalMode,
+    BreakoutSide,
+    BreakoutTriggerMode,
+    BreakoutWatchType,
     ExpiryType,
     OrderFillEscalationMode,
     StrategyProduct,
@@ -258,10 +266,18 @@ class Outcome:
     lots: int = 0
     legs: int = 0
     notes: tuple[str, ...] = field(default_factory=tuple)
+    #: Breakout watches armed instead of entering.
+    watches: tuple[Watch, ...] = ()
+    #: When to evaluate this tranche again, for a breakout range still open.
+    retry_at: datetime | None = None
 
     @property
     def entered(self) -> bool:
         return bool(self.signals)
+
+    @property
+    def armed(self) -> bool:
+        return bool(self.watches)
 
 
 class StandDown(Exception):  # noqa: N818 -- a decision, not an error
@@ -287,6 +303,8 @@ class BaseStrategy:
         notes: list[str] = []
         try:
             self.gate(ev)
+            if ev.config.flag("breakout_enabled"):
+                return self.arm(ev, state, notes)
             side = self.direction(ev)
             notes.append(f"direction {side.value}")
             plan = self.legs(ev, side)
@@ -315,9 +333,219 @@ class BaseStrategy:
             notes=tuple(notes),
         )
 
+    # -- breakout ----------------------------------------------------------
+
+    def arm(self, ev: Evaluation, state: StrategyState, notes: list[str]) -> Outcome:
+        """Arm the tranche's breakout watches instead of entering."""
+        env, definition, config = ev.env, ev.runtime.definition, ev.config
+        try:
+            settings = BreakoutSettings.of(config, dict(definition.direction_provider_params))
+        except DomainError as error:
+            raise StandDown(f"breakout: {error}", alert=True) from None
+        pending = settings.pending_until()
+        local = env.now.astimezone(env.timezone)
+        if pending is not None and local.time() < pending:
+            return Outcome(
+                state=state,
+                stood_down=f"breakout range open until {pending:%H:%M}",
+                retry_at=datetime.combine(env.trading_day, pending, env.timezone),
+                notes=tuple(notes),
+            )
+        valid_till = (
+            datetime.combine(env.trading_day, definition.stop_time, env.timezone)
+            if definition.stop_time is not None
+            else None
+        )
+        group = f"Tranch-{ev.tranche}|Breakout"
+        client = ev.runtime.subscription.trading_client_id
+        paper = ev.runtime.subscription.is_paper_trading
+
+        def make(suffix: str, **values: Any) -> Watch:
+            return Watch(
+                key=watch_key(client, definition.name, env.trading_day, ev.tranche, suffix),
+                trading_client=client,
+                strategy=definition.name,
+                tranche=ev.tranche,
+                kind=settings.kind,
+                mode=settings.mode,
+                valid_till=valid_till,
+                group=group,
+                is_paper=paper,
+                **values,
+            )
+
+        watches: list[Watch] = []
+        if settings.kind is BreakoutWatchType.UNDERLYING:
+            price = self.reference_price(ev).amount
+            if settings.mode is BreakoutTriggerMode.RANGE:
+                band = self.band(ev, settings, ev.underlying)
+                watches.append(
+                    make(
+                        "HIGH",
+                        watched=ev.underlying,
+                        direction=BreakoutDirection.ABOVE,
+                        reference_price=price,
+                        above=band.high,
+                        below=None,
+                    )
+                )
+                watches.append(
+                    make(
+                        "LOW",
+                        watched=ev.underlying,
+                        direction=BreakoutDirection.BELOW,
+                        reference_price=price,
+                        above=None,
+                        below=band.low,
+                    )
+                )
+            else:
+                above, below = settings.levels(price)
+                watches.append(
+                    make(
+                        "UNDERLYING",
+                        watched=ev.underlying,
+                        direction=settings.direction,
+                        reference_price=price,
+                        above=above,
+                        below=below,
+                    )
+                )
+            notes.append(f"armed {len(watches)} underlying watch(es)")
+        else:
+            side = self.direction(ev)
+            plan = self.legs(ev, side)
+            for main in plan.mains:
+                tick = env.quote(main.instrument)
+                if tick is None or tick.last_price.amount <= 0:
+                    raise StandDown(f"no premium for {main.instrument.value} to watch", alert=True)
+                premium = tick.last_price.amount
+                legs = tuple(
+                    WatchedLeg(
+                        instrument=leg.instrument,
+                        direction=leg.direction,
+                        hedge=leg.role is LegRole.HEDGE,
+                        option_type=leg.option_type,
+                        strike=leg.strike,
+                    )
+                    for leg in plan.legs
+                    if leg.group == main.group
+                )
+                if settings.mode is BreakoutTriggerMode.RANGE:
+                    band = self.band(ev, settings, main.instrument)
+                    above, below = band.high, band.low
+                elif settings.mode is BreakoutTriggerMode.CANDLE_LOW:
+                    lookback = config.whole("lookback_minutes") or 60
+                    bars = env.candles(main.instrument, BarInterval.ONE_MINUTE, lookback)
+                    if not bars:
+                        raise StandDown(f"no one-minute history for {main.instrument.value}")
+                    above, below = None, min(bar.low.amount for bar in bars)
+                else:
+                    above, below = settings.levels(premium)
+                watches.append(
+                    make(
+                        main.group,
+                        watched=main.instrument,
+                        direction=settings.direction,
+                        reference_price=premium,
+                        above=above,
+                        below=below,
+                        legs=legs,
+                    )
+                )
+            notes.append(f"armed {len(watches)} option watch(es)")
+        return Outcome(state=state, watches=tuple(watches), notes=tuple(notes))
+
+    def band(self, ev: Evaluation, settings: BreakoutSettings, instrument: InstrumentId) -> Band:
+        assert settings.range_spec is not None
+        env = ev.env
+        band = resolve_range(
+            settings.range_spec,
+            now=env.now,
+            timezone=env.timezone,
+            today=env.trading_day,
+            minute_bars=env.candles(instrument, BarInterval.ONE_MINUTE, 400),
+            day_bars=env.candles(instrument, BarInterval.ONE_DAY, settings.range_spec.lookback + 2),
+        )
+        if isinstance(band, str):
+            raise StandDown(f"breakout range: {band}", alert=True)
+        return band
+
+    def on_breakout(self, ev: Evaluation, watch: Watch, side: BreakoutSide) -> Outcome:
+        """A watch was breached: enter as the reference's `onBreakoutEvent` does."""
+        state = ev.state.evaluated(ev.env.now)
+        ev = replace(ev, state=state)
+        notes: list[str] = [f"breakout {side.value} on {watch.watched.value}"]
+        try:
+            if watch.kind is BreakoutWatchType.UNDERLYING:
+                reversal = BreakoutSettings.of(
+                    ev.config, dict(ev.runtime.definition.direction_provider_params)
+                ).reversal
+                self.gate(ev, signalled_ok=reversal is BreakoutReversalMode.PARALLEL)
+                settings = BreakoutSettings.of(ev.config)
+                trade = settings.on_high if side is BreakoutSide.LONG else settings.on_low
+                plan = self.legs(ev, Side(trade.value))
+            else:
+                self.gate(ev, signalled_ok=True)
+                plan = self.watched_plan(ev, watch)
+            notes.append(plan.because)
+            decision = self.lots(ev, plan)
+            notes.append(decision.because)
+            if not decision.tradable:
+                raise StandDown(f"zero lots: {decision.because}", alert=True)
+            signals = self.emit(ev, plan, decision.lots)
+        except StandDown as stand:
+            return Outcome(
+                state=state, stood_down=stand.because, alert=stand.alert, notes=tuple(notes)
+            )
+        if state.has_signalled(ev.tranche):
+            after = state.signalled_again(
+                signals=len(signals), lots=decision.lots, risk=decision.risk_used, at=ev.env.now
+            )
+        else:
+            after = state.tranche_signalled(
+                ev.tranche,
+                ev.env.now,
+                signals=len(signals),
+                lots=decision.lots,
+                risk=decision.risk_used,
+            )
+        return Outcome(
+            state=after,
+            signals=signals,
+            lots=decision.lots,
+            legs=len(plan.legs),
+            notes=tuple(notes),
+        )
+
+    def watched_plan(self, ev: Evaluation, watch: Watch) -> LegPlan:
+        definition = ev.runtime.definition
+        legs = tuple(
+            PlannedLeg(
+                instrument=leg.instrument,
+                direction=leg.direction,
+                role=LegRole.HEDGE if leg.hedge else LegRole.MAIN,
+                group="LEG",
+                sequence=_sequence(leg.direction, definition.entry_leg_order),
+                option_type=leg.option_type,
+                strike=leg.strike,
+                remarks=f"breakout {'hedge' if leg.hedge else 'entry'} {leg.instrument.value}",
+            )
+            for leg in watch.legs
+        )
+        if not legs:
+            raise StandDown("the watch carries no legs", alert=True)
+        listed = ev.env.instrument(legs[0].instrument)
+        return LegPlan(
+            legs=legs,
+            hedged=any(leg.role is LegRole.HEDGE for leg in legs),
+            expiry=listed.expiry if listed is not None else None,
+            because=f"watched legs {', '.join(leg.instrument.value for leg in legs)}",
+        )
+
     # -- 1. gate -----------------------------------------------------------
 
-    def gate(self, ev: Evaluation) -> None:
+    def gate(self, ev: Evaluation, *, signalled_ok: bool = False) -> None:
         """The reference's `canTradeToday`, `isWithinTradingWindow` and the
         tranche-signalled check, in that order."""
         definition = ev.runtime.definition
@@ -336,7 +564,7 @@ class BaseStrategy:
         cutoff = _clock(ev.config.text("tranch_cutoff_time")) or definition.stop_time
         if cutoff is not None and local > cutoff:
             raise StandDown(f"past the cutoff {cutoff:%H:%M}")
-        if ev.state.has_signalled(ev.tranche):
+        if not signalled_ok and ev.state.has_signalled(ev.tranche):
             raise StandDown(f"tranche {ev.tranche} has already signalled today")
         if definition.use_indicator_entry and ev.entry_gate is not None:
             blocked = ev.entry_gate(ev.config)

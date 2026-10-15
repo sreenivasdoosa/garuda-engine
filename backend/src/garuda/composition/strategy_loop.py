@@ -30,7 +30,7 @@ from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from dataclasses import replace as dataclass_replace
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, tzinfo
 from decimal import Decimal
 from typing import Protocol
 
@@ -56,6 +56,7 @@ from garuda.domain.exchange import Exchange
 from garuda.domain.instrument import InstrumentId, canonical_symbol
 from garuda.domain.market import Tick
 from garuda.engine.base_strategy import BaseStrategy, Evaluation, Outcome
+from garuda.engine.breakout import DEFAULT_TRIGGER_VALUE, Watch
 from garuda.engine.config import ResolvedConfig
 from garuda.engine.daycondition import DayCondition
 from garuda.engine.direction import first_answer
@@ -64,7 +65,12 @@ from garuda.engine.runtime_config import SubscriptionTerms
 from garuda.engine.schedule import Slot, TrancheSchedule
 from garuda.engine.signals import SignalBatch
 from garuda.engine.strategy_state import StrategyState
-from garuda.engine.vocabulary import StrategyStatus
+from garuda.engine.vocabulary import (
+    BreakoutReversalMode,
+    BreakoutSide,
+    BreakoutWatchType,
+    StrategyStatus,
+)
 from garuda.marketdata.synthetics import (
     ImpliedVolatility,
     SyntheticPublisher,
@@ -82,6 +88,11 @@ DEFAULT_INTERVAL = timedelta(seconds=1)
 STATE_FLUSH_INTERVAL = timedelta(seconds=30)
 #: How many minutes of each derived series the loop keeps.
 SERIES_MINUTES = 120
+
+
+class WatchStore(Protocol):
+    async def live_on(self, day: date, timezone: tzinfo) -> list[Watch]: ...
+    async def save(self, watch: Watch, *, trigger_value: Decimal, now: datetime) -> None: ...
 
 
 class StateStore(Protocol):
@@ -114,6 +125,8 @@ class StrategyLoop:
     #: Where strategy state is kept. None keeps it in memory only, which is a
     #: test rather than a running engine.
     states: StateStore | None = None
+    #: Where breakout watches are kept. None keeps them in memory only.
+    watch_store: WatchStore | None = None
     event_days: EventDays = NO_EVENT_DAYS
     pipeline: BaseStrategy = field(default_factory=BaseStrategy)
     watchlist: Watchlist | None = None
@@ -134,6 +147,8 @@ class StrategyLoop:
     #: Each derived series' value per minute, newest last, for providers that
     #: compare it with a while ago (PCR TREND). An hour is plenty.
     _series: dict[InstrumentId, deque[tuple[datetime, Decimal]]] = field(default_factory=dict)
+    _watches: dict[str, Watch] = field(default_factory=dict)
+    _trigger_values: dict[str, Decimal] = field(default_factory=dict)
 
     # -- status ------------------------------------------------------------
 
@@ -170,6 +185,7 @@ class StrategyLoop:
         if self._schedule is not None:
             for slot in self._schedule.due(now):
                 results.extend(await self._fire(slot, now))
+        results.extend(await self._check_watches(now))
         await self._flush(now)
         return results
 
@@ -241,6 +257,10 @@ class StrategyLoop:
         if self.states is not None:
             for state in await self.states.load_day(day):
                 self._state[(state.trading_client, state.strategy)] = state
+        self._watches = {}
+        if self.watch_store is not None:
+            for watch in await self.watch_store.live_on(day, self.venue.timezone):
+                self._watches[watch.key] = watch
         self._day = day
         self._schedule = self._build_schedule(day, now)
         logger.info(
@@ -292,7 +312,13 @@ class StrategyLoop:
         return results
 
     async def _evaluate(
-        self, strategy: Strategy, subscription: Subscription, tranche: int, now: datetime
+        self,
+        strategy: Strategy,
+        subscription: Subscription,
+        tranche: int,
+        now: datetime,
+        *,
+        breach: tuple[Watch, BreakoutSide] | None = None,
     ) -> Evaluated:
         day = self.trading_day
         key = (subscription.trading_client, strategy.name)
@@ -325,7 +351,10 @@ class StrategyLoop:
             tranche=tranche,
             entry_gate=self._entry_gate(strategy, subscription, tranche, conditions, now),
         )
-        outcome = self.pipeline.on_scheduled(evaluation)
+        if breach is None:
+            outcome = self.pipeline.on_scheduled(evaluation)
+        else:
+            outcome = self.pipeline.on_breakout(evaluation, *breach)
         self._remember(key, state, outcome.state, now)
 
         delivered, refusal = False, None
@@ -343,6 +372,15 @@ class StrategyLoop:
                 outcome.lots,
                 "" if delivered else f" -- not delivered: {refusal}",
             )
+        elif outcome.armed:
+            await self._arm(outcome.watches, runtime.tranche(tranche), now)
+            logger.info(
+                "%s tranche %d for %s: %d breakout watch(es) armed",
+                strategy.name,
+                tranche,
+                subscription.trading_client.value,
+                len(outcome.watches),
+            )
         else:
             logger.info(
                 "%s tranche %d for %s stood down: %s",
@@ -351,12 +389,116 @@ class StrategyLoop:
                 subscription.trading_client.value,
                 outcome.stood_down,
             )
+            if outcome.retry_at is not None and self._schedule is not None:
+                self._schedule.retry(strategy.name, tranche, outcome.retry_at)
             if outcome.alert:
                 await self._skipped(strategy.name, subscription, tranche, outcome.stood_down or "")
         await self._persist_if_critical(key, state, outcome.state, now)
         return Evaluated(
             strategy.name, subscription.trading_client, tranche, outcome, delivered, refusal
         )
+
+    # -- breakout watches --------------------------------------------------
+
+    async def _arm(self, watches: tuple[Watch, ...], config: ResolvedConfig, now: datetime) -> None:
+        value = config.number("breakout_trigger_value") or DEFAULT_TRIGGER_VALUE
+        for watch in watches:
+            if watch.key in self._watches and self._watches[watch.key].is_live:
+                continue  # the reference's hasActiveWatchesForTranch: never armed twice
+            self._watches[watch.key] = watch
+            self._trigger_values[watch.key] = value
+            await self._save_watch(watch, now)
+
+    async def _save_watch(self, watch: Watch, now: datetime) -> None:
+        if self.watch_store is None:
+            return
+        try:
+            await self.watch_store.save(
+                watch,
+                trigger_value=self._trigger_values.get(watch.key, DEFAULT_TRIGGER_VALUE),
+                now=now,
+            )
+        except Exception:
+            logger.exception("could not store breakout watch %s", watch.key)
+
+    def watches(self) -> list[Watch]:
+        """Every watch known today, live or done."""
+        return list(self._watches.values())
+
+    async def _check_watches(self, now: datetime) -> list[Evaluated]:
+        """Every armed watch against the live price; a breach enters."""
+        results: list[Evaluated] = []
+        for key, watch in list(self._watches.items()):
+            if not watch.is_live:
+                continue
+            if watch.due_to_lapse(now):
+                self._watches[key] = watch.lapsed(now)
+                await self._save_watch(self._watches[key], now)
+                logger.info("breakout watch %s lapsed unbreached", key)
+                continue
+            price = self._watched_price(watch)
+            if price is None:
+                continue
+            side = watch.breached(price)
+            if side is None:
+                continue
+            self._watches[key] = watch.fired(now, price)
+            await self._save_watch(self._watches[key], now)
+            await self._cancel_opposite(watch, now)
+            strategy = self.loaded.strategies.get(watch.strategy)
+            subscription = next(
+                (
+                    sub
+                    for sub in self.loaded.subscribers(watch.strategy)
+                    if sub.trading_client == watch.trading_client
+                ),
+                None,
+            )
+            if strategy is None or subscription is None:
+                logger.warning("breakout watch %s fired for a strategy no longer running", key)
+                continue
+            try:
+                results.append(
+                    await self._evaluate(
+                        strategy, subscription, watch.tranche, now, breach=(watch, side)
+                    )
+                )
+            except Exception as error:
+                await self._failed(strategy.name, subscription, watch.tranche, error)
+        return results
+
+    async def _cancel_opposite(self, fired: Watch, now: datetime) -> None:
+        """An underlying range breaks once: the other side's watch goes, unless
+        the strategy allows parallel reversals."""
+        if fired.kind is not BreakoutWatchType.UNDERLYING:
+            return
+        strategy = self.loaded.strategies.get(fired.strategy)
+        if strategy is None:
+            return
+        layers_config = strategy.runtime(
+            _SCHEDULING_TERMS, self._conditions(strategy, self.trading_day)
+        ).tranche(fired.tranche)
+        reversal = (layers_config.text("breakout_reversal_mode") or "AFTER_CLOSE").upper()
+        if reversal == BreakoutReversalMode.PARALLEL.value:
+            return
+        for key, other in list(self._watches.items()):
+            if (
+                other.is_live
+                and other.key != fired.key
+                and other.trading_client == fired.trading_client
+                and other.strategy == fired.strategy
+                and other.tranche == fired.tranche
+                and other.kind is BreakoutWatchType.UNDERLYING
+            ):
+                self._watches[key] = other.lapsed(now)
+                await self._save_watch(self._watches[key], now)
+
+    def _watched_price(self, watch: Watch) -> Decimal | None:
+        if watch.kind is BreakoutWatchType.UNDERLYING:
+            price = self.market.spot_price(watch.watched, self.trading_day)
+            return price.amount if price is not None else None
+        tick = self.market.hub.latest(watch.watched)
+        return tick.last_price.amount if tick is not None else None
 
     def _entry_gate(
         self,
@@ -519,7 +661,7 @@ class StrategyLoop:
             trade.instrument
             for client in self.engine.parts.clients.values()
             for trade in client.book.live_trades()
-        }
+        } | {watch.watched for watch in self._watches.values() if watch.is_live}
         try:
             await self.watchlist.ensure(
                 self.loaded.underlyings(),

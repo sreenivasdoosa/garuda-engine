@@ -39,7 +39,7 @@ from garuda.engine.config import ConfigLayer
 from garuda.engine.daycondition import DayCondition
 from garuda.engine.runtime_config import Definition, SubscriptionTerms, build_runtime_config
 from garuda.engine.strategy_state import StrategyState
-from garuda.engine.vocabulary import StrategyProduct, StrategyStatus, TradeMode
+from garuda.engine.vocabulary import BreakoutSide, StrategyProduct, StrategyStatus, TradeMode
 
 IST = ZoneInfo("Asia/Kolkata")
 DAY = dt.date(2026, 10, 15)
@@ -542,3 +542,83 @@ class TestRiskAwareSizing:
         )
         assert outcome.lots == 6
         assert outcome.state.used_risk == Decimal(27000)
+
+
+class TestBreakout:
+    def test_an_option_breakout_arms_a_watch_per_leg_instead_of_entering(
+        self, env: FakeEnvironment
+    ) -> None:
+        outcome = evaluate(env, layers=(base(breakout_enabled=True),))
+        assert not outcome.entered
+        assert outcome.armed
+        assert {w.watched.value for w in outcome.watches} == {
+            "NFO:NIFTY26OCT22500CE",
+            "NFO:NIFTY26OCT22500PE",
+        }
+        assert {(w.above, w.below) for w in outcome.watches} == {(Decimal(120), Decimal(80))}
+        assert not outcome.state.has_signalled(1)
+
+    def test_a_breached_option_watch_enters_its_leg_with_its_hedge(
+        self, env: FakeEnvironment
+    ) -> None:
+        armed = evaluate(env, layers=(base(breakout_enabled=True, hedging_enabled=True),))
+        call = next(w for w in armed.watches if w.watched.value.endswith("CE"))
+        runtime = build_runtime_config(
+            definition(),
+            SubscriptionTerms(trading_client_id=APPA, capital=Decimal(300000)),
+            (base(breakout_enabled=True, hedging_enabled=True),),
+            conditions=env.conditions,
+        )
+        entered = BaseStrategy().on_breakout(
+            Evaluation(runtime=runtime, state=armed.state, env=env, tranche=1),
+            call,
+            BreakoutSide.SHORT,
+        )
+        assert entered.entered, entered.stood_down
+        assert {s.instrument.value for s in entered.signals} == {
+            "NFO:NIFTY26OCT22500CE",
+            "NFO:NIFTY26OCT23400CE",
+        }
+        assert entered.state.has_signalled(1)
+
+    def test_an_underlying_breakout_trades_the_side_it_broke(self, env: FakeEnvironment) -> None:
+        layers = (
+            base(
+                breakout_enabled=True,
+                breakout_watch_type="UNDERLYING",
+                breakout_direction="EITHER",
+                breakout_trigger_mode="ABSOLUTE",
+                breakout_trigger_value=100,
+            ),
+        )
+        armed = evaluate(env, layers=layers)
+        (watch,) = armed.watches
+        assert (watch.above, watch.below) == (Decimal(22612), Decimal(22412))
+        runtime = build_runtime_config(
+            definition(),
+            SubscriptionTerms(trading_client_id=APPA, capital=Decimal(300000)),
+            layers,
+            conditions=env.conditions,
+        )
+        entered = BaseStrategy().on_breakout(
+            Evaluation(runtime=runtime, state=armed.state, env=env, tranche=1),
+            watch,
+            BreakoutSide.LONG,
+        )
+        # Broke high -> LONG -> an option seller sells the put.
+        assert [s.instrument.value for s in entered.signals] == ["NFO:NIFTY26OCT22500PE"]
+
+    def test_a_range_still_open_waits_and_says_when(self, env: FakeEnvironment) -> None:
+        outcome = evaluate(
+            env,
+            layers=(
+                base(
+                    breakout_enabled=True,
+                    breakout_trigger_mode="RANGE",
+                    breakout_range_start="09:15",
+                    breakout_range_end="09:45",
+                ),
+            ),
+        )
+        assert outcome.retry_at == dt.datetime(2026, 10, 15, 9, 45, tzinfo=IST)
+        assert not outcome.alert
