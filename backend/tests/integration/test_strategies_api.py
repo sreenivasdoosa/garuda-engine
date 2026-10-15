@@ -492,3 +492,49 @@ class TestTheReferencesRules:
         assert [d["strategyName"] for d in by_symbol] == ["crude"]
         by_exchange = (await client.get("/api/engine/definitions?exchange=NSE")).json()["data"]
         assert [d["strategyName"] for d in by_exchange] == ["nifty"]
+
+
+class TestTheReferenceFields:
+    async def test_day_lists_and_provider_params_are_stored_as_written(
+        self, client: httpx.AsyncClient
+    ) -> None:
+        created = await define(
+            client,
+            tradableDays=["E", "dt1"],
+            excludedDays="F",
+            directionProviderType="FIXED",
+            directionProviderParams='{"direction": "LONG"}',
+            legs=None,
+        )
+        assert json.loads(created["tradableDays"]) == ["E", "DT1"]
+        assert json.loads(created["excludedDays"]) == ["F"]
+        assert json.loads(created["directionProviderParams"]) == {"direction": "LONG"}
+
+    async def test_a_bad_day_code_or_params_shape_is_refused(
+        self, client: httpx.AsyncClient
+    ) -> None:
+        base = {"strategyName": "x", "underlyingSymbol": "NIFTY", "exchange": "NSE"}
+        days = await client.post("/api/engine/definitions", json={**base, "tradableDays": ["SAT"]})
+        assert days.status_code == 400
+        params = await client.post(
+            "/api/engine/definitions", json={**base, "directionProviderParams": "[1, 2]"}
+        )
+        assert params.status_code == 400
+
+    async def test_a_combo_can_be_cleared(self, client: httpx.AsyncClient) -> None:
+        created = await define(client)
+        cleared = await client.put(
+            f"/api/engine/definitions/{created['strategyId']}", json={"comboSpecJson": None}
+        )
+        assert cleared.status_code == 200, cleared.text
+        assert cleared.json()["data"]["comboSpecJson"] is None
+
+    async def test_the_catalog_offers_providers_and_trade_modes(
+        self, client: httpx.AsyncClient
+    ) -> None:
+        body = (await client.get("/api/engine/catalog")).json()["data"]
+        assert "N_BARS_BREAKOUT" in body["directionProviders"]
+        assert "EQUITY" in body["tradeModes"]
+
+    async def test_the_monitor_needs_a_running_engine(self, client: httpx.AsyncClient) -> None:
+        assert (await client.get("/api/engine/monitor")).status_code == 503

@@ -82,6 +82,7 @@ def create_app(
     reload_sessions: Any = None,
     reload_protection: Any = None,
     reload_strategies: Any = None,
+    strategy_monitor: Any = None,
     reload_limits: Any = None,
     reload_kill_switches: Any = None,
     validate_strategy: Any = None,
@@ -140,6 +141,7 @@ def create_app(
     # and a definition is built the engine's way before it is saved, so what
     # the engine would refuse is refused at the form.
     app.state.reload_strategies = reload_strategies
+    app.state.strategy_monitor = strategy_monitor
     app.state.validate_strategy = validate_strategy
     # The risk pages: a limit written is read by the next order, and a kill
     # switch set stops the next one. Both swap a book the gate reads.

@@ -59,27 +59,36 @@ export interface StrategyDefinitionLive {
   absoluteMaxRisk: number | null;
   comboSpecJson: string | null;
   legs: Leg[];
+  tradeMode: string;
+  strategyClass: string | null;
+  useIndicatorEntry: boolean;
+  hedgeReplaceEnabled: boolean | null;
+  hedgeMorningStartOffset: number | null;
+  hedgeMorningEndOffset: number | null;
+  hedgeEveningStartOffset: number | null;
+  hedgeEveningEndOffset: number | null;
+  minRiskPercentage: number | null;
+  maxRiskPercentage: number | null;
+  leverage: number | null;
+  minLeverage: number | null;
+  maxLeverage: number | null;
+  universeId: number | null;
+  equitySizingModel: string | null;
+  fixedAmountPerStock: number | null;
+  maxActivePositions: number | null;
+  maxRiskPctPerTrade: number | null;
+  onIndexRemoval: string | null;
+  entryLegOrder: string | null;
+  exitLegOrder: string | null;
   subscriptions?: number;
   createdAt: string | null;
   updatedAt: string | null;
 }
 
-export interface StrategyDefinitionEdit {
-  strategyName?: string;
-  displayName?: string | null;
-  underlyingSymbol?: string;
-  exchange?: string;
-  product?: DefinitionProduct;
-  expiryType?: 'WEEKLY' | 'MONTHLY' | null;
-  startTime?: string | null;
-  stopTime?: string | null;
-  isDirectional?: boolean;
-  capitalPerLot?: number | null;
-  riskPercentage?: number | null;
-  absoluteMaxRisk?: number | null;
-  status?: StrategyStatus;
-  legs?: Leg[];
-}
+/** Every editable column, by its wire name; absent leaves it unchanged. */
+export type StrategyDefinitionEdit = Partial<
+  Omit<StrategyDefinitionLive, 'strategyId' | 'legs' | 'subscriptions' | 'createdAt' | 'updatedAt'>
+> & { legs?: Leg[] };
 
 export interface StrategyRulesLive {
   strategyName: string;
@@ -144,4 +153,55 @@ export interface StrategyCatalog {
   optionTypes: string[];
   expiryTypes: string[];
   statuses: string[];
+  tradeModes: string[];
+  strategyClasses: string[];
+  directionProviders: string[];
+  underlyingTypes: string[];
+  equitySizingModels: string[];
+  onIndexRemoval: string[];
+  dayCodes: string[];
+  legOrders: string[];
+}
+
+export interface DayAllocation {
+  strategyName: string;
+  monday: number;
+  tuesday: number;
+  wednesday: number;
+  thursday: number;
+  friday: number;
+  expiryDay: number;
+  dt1Day: number;
+  dt2Day: number;
+}
+
+export interface EngineMonitor {
+  tradingDay: string;
+  schedule: { strategy: string; tranche: number; at: string; status: 'PENDING' | 'FIRED' | 'MISSED' }[];
+  unscheduled: { strategy: string; tranche: number; because: string }[];
+  watches: {
+    key: string;
+    tradingClientId: string;
+    strategy: string;
+    tranche: number;
+    kind: string;
+    watched: string;
+    direction: string;
+    above: string | null;
+    below: string | null;
+    status: 'LIVE' | 'FIRED' | 'LAPSED';
+    triggeredAt: string | null;
+    triggeredPrice: string | null;
+  }[];
+  states: {
+    tradingClientId: string;
+    strategy: string;
+    signalled: Record<string, string>;
+    signalsToday: number;
+    lotsToday: number;
+    usedRisk: string;
+    evaluations: number;
+    lastEvaluationAt: string | null;
+  }[];
+  refused: Record<string, string>;
 }

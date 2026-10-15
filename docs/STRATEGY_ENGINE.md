@@ -276,12 +276,24 @@ class MyExpiryScalper(BaseStrategy):
 
 ## 8. Console
 
-The reference's pages, already in the tree, are routed: the definition form
-(its sections minus "Strategy Engine" and "Visibility"), Engine Monitor,
-Tranche Schedules, the config-tree page. The Templates tab goes. The
-definition page, leg editor and rules modal written for the withdrawn design
-go. The endpoints those pages call are served: definitions, resolve, dry run,
-status, schedules, breakout watches, strategy states, indicator rules.
+The Strategy Engine page has three tabs. **Definitions** edits a strategy in
+the reference form's sections -- basic information and a custom class, what
+it trades (trade mode, underlying, product, expiry, the price strikes come
+off, combo legs through the reference's combo editor), direction and leg
+order, triggers, timing and day lists, capital and hedge (with the hedge
+replace windows), risk, equity sizing, lifecycle -- with a Rules dialog for
+the entry, direction and exit trees and a Days dialog for day allocation.
+**Subscriptions** puts a strategy on a trading client. **Engine Monitor**
+shows today as the running engine sees it: the tranche schedule, armed and
+finished breakout watches, and each account's strategy state. Per-tranche
+settings stay on the Strategy Config page.
+
+*Decided while building, 2026-10-15:* the reference's own definition page was
+not routed. Its template derivation runs through fifty-odd checks of a
+template name across six thousand lines; with no templates, adapting it would
+have been rewriting it. The routed page was brought to the reference form's
+fields instead, reusing its combo editor and rule builder. The reference's
+copied pages remain in the tree, unrouted, for reference.
 
 ## 9. Deferred
 

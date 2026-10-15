@@ -1,19 +1,17 @@
 /**
  * The Strategy Engine: what to trade, under which rules, on whose account.
  *
- * A strategy here is a spec, not a template: its underlying, its product and
- * its legs, each leg a selector the engine's registry knows -- a strike by
- * moneyness, a strike by premium, the near-month future. Rules say when it
- * enters, which way, and when it leaves, through the rule builder the engine
- * reads as it is. A subscription puts the strategy on a trading client with
- * capital, live or paper.
+ * A definition carries what the reference's template used to decide -- trade
+ * mode, direction provider, triggers, combo legs, equity sizing -- as fields
+ * (STRATEGY_ENGINE.md §5). Per-tranche settings live on Strategy Config. The
+ * monitor shows today as the running engine sees it: the tranche schedule,
+ * armed breakout watches, and each account's strategy state.
  *
  * **A strategy the engine would refuse is refused at the save**, with the
- * reason the morning's log would otherwise give. And every write reaches the
- * running engine: a subscription made at ten is swept at ten.
+ * reason the morning's log would otherwise give.
  */
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'react-toastify';
 import { BsDiagram3, BsGear, BsPencil, BsPlus, BsTrash } from 'react-icons/bs';
@@ -30,20 +28,20 @@ import {
   Spinner,
 } from '@/components/ui/rbShim';
 import { ConfirmModal, PageHeader } from '@/components/common';
-import { symbolService } from '@/services/admin/v2AdminService';
 import { strategyLiveService } from '@/services/admin/strategyLiveService';
 import { tradingClientService } from '@/services/admin/tradingClientService';
 import type { RuleNode } from '@/types/strategy-engine';
 import type {
-  Leg,
   StrategyDefinitionEdit,
   StrategyDefinitionLive,
   SubscriptionEdit,
   SubscriptionLive,
 } from '@/types/strategy-live';
+import DefinitionForm from './DefinitionForm';
 import IndicatorRuleBuilder from './IndicatorRuleBuilder';
+import { DayAllocationModal, EngineMonitorTab } from './EngineMonitorTab';
 
-type Tab = 'definitions' | 'subscriptions';
+type Tab = 'definitions' | 'subscriptions' | 'monitor';
 
 const money = (value: number | null) =>
   value === null ? '—' : value.toLocaleString('en-IN', { maximumFractionDigits: 0 });
@@ -64,8 +62,13 @@ const StrategyEnginePage: React.FC = () => {
         <Nav.Item>
           <Nav.Link eventKey="subscriptions">Subscriptions</Nav.Link>
         </Nav.Item>
+        <Nav.Item>
+          <Nav.Link eventKey="monitor">Engine Monitor</Nav.Link>
+        </Nav.Item>
       </Nav>
-      {tab === 'definitions' ? <Definitions /> : <Subscriptions />}
+      {tab === 'definitions' && <Definitions />}
+      {tab === 'subscriptions' && <Subscriptions />}
+      {tab === 'monitor' && <EngineMonitorTab />}
     </div>
   );
 };
@@ -74,24 +77,27 @@ const StrategyEnginePage: React.FC = () => {
 // Definitions
 // ---------------------------------------------------------------------------
 
-const emptyLeg = (): Leg => ({
-  instrument: { type: 'option_strike', option_type: 'CALL', moneyness: 'ATM' },
-  side: 'ALWAYS_SHORT',
-  role: 'MAIN',
-});
-
 const blankDefinition = (): StrategyDefinitionEdit => ({
   strategyName: '',
   displayName: '',
   underlyingSymbol: '',
   exchange: 'NSE',
   product: 'INTRADAY',
+  tradeMode: 'OPTION_SELLING',
   expiryType: 'WEEKLY',
-  startTime: '09:20:00',
-  stopTime: '15:10:00',
+  startTime: '09:20',
+  stopTime: '15:15',
   isDirectional: false,
-  legs: [emptyLeg()],
+  scheduledTriggerEnabled: true,
+  usePremiumBalancing: true,
+  catchUpMissedTranches: true,
 });
+
+/** The editable fields of a definition, copied off what the server sent. */
+const editable = (d: StrategyDefinitionLive): StrategyDefinitionEdit => {
+  const { strategyId: _id, legs: _legs, subscriptions: _subs, createdAt: _c, updatedAt: _u, ...rest } = d;
+  return rest;
+};
 
 const Definitions: React.FC = () => {
   const queryClient = useQueryClient();
@@ -99,6 +105,7 @@ const Definitions: React.FC = () => {
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState<StrategyDefinitionEdit>(blankDefinition());
   const [rulesFor, setRulesFor] = useState<StrategyDefinitionLive | null>(null);
+  const [allocationFor, setAllocationFor] = useState<StrategyDefinitionLive | null>(null);
   const [deleting, setDeleting] = useState<StrategyDefinitionLive | null>(null);
 
   const definitions = useQuery({
@@ -110,12 +117,6 @@ const Definitions: React.FC = () => {
     queryFn: () => strategyLiveService.catalog(),
     staleTime: 10 * 60 * 1000,
   });
-  const symbols = useQuery({
-    queryKey: ['symbols'],
-    queryFn: () => symbolService.getAll(),
-    staleTime: 5 * 60 * 1000,
-  });
-
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['strategies'] });
 
   const save = useMutation({
@@ -158,29 +159,8 @@ const Definitions: React.FC = () => {
   const openEdit = (d: StrategyDefinitionLive) => {
     setCreating(false);
     setEditing(d);
-    setForm({
-      displayName: d.displayName ?? '',
-      underlyingSymbol: d.underlyingSymbol,
-      exchange: d.exchange,
-      product: d.product,
-      expiryType: d.expiryType,
-      startTime: d.startTime,
-      stopTime: d.stopTime,
-      isDirectional: Boolean(d.isDirectional),
-      capitalPerLot: d.capitalPerLot,
-      riskPercentage: d.riskPercentage,
-      absoluteMaxRisk: d.absoluteMaxRisk,
-      legs: d.legs.length ? d.legs : [emptyLeg()],
-    });
+    setForm(editable(d));
   };
-
-  const underlyings = useMemo(() => {
-    const rows = (symbols.data ?? []) as { symbol: string; exchange: string }[];
-    return rows.filter((s) => !form.exchange || s.exchange === form.exchange);
-  }, [symbols.data, form.exchange]);
-
-  const setLeg = (index: number, leg: Leg) =>
-    setForm((f) => ({ ...f, legs: (f.legs ?? []).map((l, i) => (i === index ? leg : l)) }));
 
   return (
     <>
@@ -208,7 +188,7 @@ const Definitions: React.FC = () => {
                     <th className="py-1 text-left">Strategy</th>
                     <th className="py-1 text-left">Underlying</th>
                     <th className="py-1 text-left">Product</th>
-                    <th className="py-1 text-left">Legs</th>
+                    <th className="py-1 text-left">Trades</th>
                     <th className="py-1 text-left">Status</th>
                     <th className="py-1 text-right">Subscribed</th>
                     <th className="py-1 text-right" />
@@ -230,16 +210,11 @@ const Definitions: React.FC = () => {
                         {d.isDirectional && <Badge bg="info" className="ms-1">directional</Badge>}
                       </td>
                       <td className="py-2 pr-3 text-xs">
-                        {d.legs.map((l, i) => (
-                          <div key={i} className="font-mono">
-                            {l.side ?? 'ALWAYS_SHORT'} {l.instrument.type}
-                            {Object.entries(l.instrument)
-                              .filter(([k]) => k !== 'type')
-                              .map(([k, v]) => ` ${k}=${String(v)}`)
-                              .join('')}
-                            {l.role && l.role !== 'MAIN' ? ` (${l.role})` : ''}
-                          </div>
-                        ))}
+                        <div className="font-mono">{d.tradeMode}</div>
+                        {d.directionProviderType && <div className="text-ink-faint">{d.directionProviderType}</div>}
+                        {d.comboSpecJson && <Badge bg="secondary">combo</Badge>}
+                        {d.adaptiveTranchesEnabled && <Badge bg="info" className="ms-1">adaptive</Badge>}
+                        {d.strategyClass && <Badge bg="warning" className="ms-1">{d.strategyClass}</Badge>}
                       </td>
                       <td className="py-2 pr-3">
                         <Badge bg={d.status === 'ACTIVE' ? 'success' : d.status === 'WIND_DOWN' ? 'warning' : 'secondary'}>
@@ -270,6 +245,9 @@ const Definitions: React.FC = () => {
                             <BsDiagram3 className="me-1" />
                             Rules
                           </Button>
+                          <Button variant="outline-secondary" size="sm" onClick={() => setAllocationFor(d)}>
+                            Days
+                          </Button>
                           <Button variant="outline-primary" size="sm" onClick={() => openEdit(d)}>
                             <BsPencil />
                           </Button>
@@ -293,191 +271,15 @@ const Definitions: React.FC = () => {
           setCreating(false);
           setEditing(null);
         }}
-        size="lg"
+        size="xl"
         backdrop="static"
+        scrollable
       >
         <Modal.Header closeButton>
           <Modal.Title>{editing ? editing.strategyName : 'New strategy'}</Modal.Title>
         </Modal.Header>
         <Modal.Body>
-          <Form>
-            <Row>
-              {creating && (
-                <Col md={4}>
-                  <Form.Group className="mb-3">
-                    <Form.Label>Name</Form.Label>
-                    <Form.Control
-                      value={form.strategyName ?? ''}
-                      onChange={(e) => setForm({ ...form, strategyName: e.target.value })}
-                      placeholder="nifty-straddle"
-                    />
-                    <small className="text-ink-faint">Fixed once saved; every trade carries it.</small>
-                  </Form.Group>
-                </Col>
-              )}
-              <Col md={creating ? 4 : 6}>
-                <Form.Group className="mb-3">
-                  <Form.Label>Display name</Form.Label>
-                  <Form.Control
-                    value={form.displayName ?? ''}
-                    onChange={(e) => setForm({ ...form, displayName: e.target.value })}
-                  />
-                </Form.Group>
-              </Col>
-              <Col md={creating ? 4 : 6}>
-                <Form.Group className="mb-3">
-                  <Form.Label>Product</Form.Label>
-                  <Form.Select
-                    value={form.product ?? 'INTRADAY'}
-                    onChange={(e) =>
-                      setForm({ ...form, product: e.target.value as StrategyDefinitionEdit['product'] })
-                    }
-                  >
-                    {(catalog.data?.definitionProducts ?? ['INTRADAY', 'POSITIONAL']).map((p) => (
-                      <option key={p} value={p}>
-                        {p}
-                      </option>
-                    ))}
-                  </Form.Select>
-                </Form.Group>
-              </Col>
-            </Row>
-            <Row>
-              <Col md={3}>
-                <Form.Group className="mb-3">
-                  <Form.Label>Exchange</Form.Label>
-                  <Form.Select
-                    value={form.exchange ?? 'NSE'}
-                    onChange={(e) => setForm({ ...form, exchange: e.target.value, underlyingSymbol: '' })}
-                  >
-                    {[...new Set(((symbols.data ?? []) as { exchange: string }[]).map((s) => s.exchange))].map(
-                      (x) => (
-                        <option key={x} value={x}>
-                          {x}
-                        </option>
-                      ),
-                    )}
-                  </Form.Select>
-                </Form.Group>
-              </Col>
-              <Col md={3}>
-                <Form.Group className="mb-3">
-                  <Form.Label>Underlying</Form.Label>
-                  <Form.Select
-                    value={form.underlyingSymbol ?? ''}
-                    onChange={(e) => setForm({ ...form, underlyingSymbol: e.target.value })}
-                  >
-                    <option value="">Choose…</option>
-                    {underlyings.map((s) => (
-                      <option key={s.symbol} value={s.symbol}>
-                        {s.symbol}
-                      </option>
-                    ))}
-                  </Form.Select>
-                  <small className="text-ink-faint">A symbol curated on the Symbols page.</small>
-                </Form.Group>
-              </Col>
-              <Col md={2}>
-                <Form.Group className="mb-3">
-                  <Form.Label>Expiry</Form.Label>
-                  <Form.Select
-                    value={form.expiryType ?? 'WEEKLY'}
-                    onChange={(e) =>
-                      setForm({ ...form, expiryType: e.target.value as 'WEEKLY' | 'MONTHLY' })
-                    }
-                  >
-                    <option value="WEEKLY">Weekly</option>
-                    <option value="MONTHLY">Monthly</option>
-                  </Form.Select>
-                </Form.Group>
-              </Col>
-              <Col md={2}>
-                <Form.Group className="mb-3">
-                  <Form.Label>Start</Form.Label>
-                  <Form.Control
-                    value={form.startTime ?? ''}
-                    onChange={(e) => setForm({ ...form, startTime: e.target.value })}
-                    placeholder="09:20:00"
-                  />
-                </Form.Group>
-              </Col>
-              <Col md={2}>
-                <Form.Group className="mb-3">
-                  <Form.Label>Stop</Form.Label>
-                  <Form.Control
-                    value={form.stopTime ?? ''}
-                    onChange={(e) => setForm({ ...form, stopTime: e.target.value })}
-                    placeholder="15:10:00"
-                  />
-                </Form.Group>
-              </Col>
-            </Row>
-            <Row>
-              <Col md={4}>
-                <Form.Check
-                  type="switch"
-                  label="Directional"
-                  checked={form.isDirectional ?? false}
-                  onChange={(e) => setForm({ ...form, isDirectional: e.target.checked })}
-                  className="mb-1"
-                />
-                <small className="text-ink-faint">
-                  A directional strategy needs direction rules before it can go active; its legs
-                  take the side the rules decide.
-                </small>
-              </Col>
-              <Col md={4}>
-                <Form.Group className="mb-3">
-                  <Form.Label>Risk % of capital per day</Form.Label>
-                  <Form.Control
-                    type="number"
-                    value={form.riskPercentage ?? ''}
-                    onChange={(e) =>
-                      setForm({ ...form, riskPercentage: e.target.value ? Number(e.target.value) : null })
-                    }
-                  />
-                </Form.Group>
-              </Col>
-              <Col md={4}>
-                <Form.Group className="mb-3">
-                  <Form.Label>Absolute max risk</Form.Label>
-                  <Form.Control
-                    type="number"
-                    value={form.absoluteMaxRisk ?? ''}
-                    onChange={(e) =>
-                      setForm({ ...form, absoluteMaxRisk: e.target.value ? Number(e.target.value) : null })
-                    }
-                  />
-                </Form.Group>
-              </Col>
-            </Row>
-
-            <h6 className="mt-2">Legs</h6>
-            <small className="text-ink-faint">
-              Each leg is a selector the engine knows. A straddle is two option_strike legs, a call
-              and a put, both ALWAYS_SHORT. Fields the selector does not take are refused at the save.
-            </small>
-            {(form.legs ?? []).map((leg, index) => (
-              <LegEditor
-                key={index}
-                leg={leg}
-                index={index}
-                catalog={catalog.data}
-                onChange={(next) => setLeg(index, next)}
-                onRemove={() =>
-                  setForm((f) => ({ ...f, legs: (f.legs ?? []).filter((_, i) => i !== index) }))
-                }
-              />
-            ))}
-            <Button
-              variant="outline-secondary"
-              size="sm"
-              className="mt-2"
-              onClick={() => setForm((f) => ({ ...f, legs: [...(f.legs ?? []), emptyLeg()] }))}
-            >
-              <BsPlus /> Add leg
-            </Button>
-          </Form>
+          <DefinitionForm form={form} setForm={setForm} catalog={catalog.data} creating={creating} />
         </Modal.Body>
         <Modal.Footer>
           <Button
@@ -500,6 +302,9 @@ const Definitions: React.FC = () => {
       </Modal>
 
       {rulesFor && <RulesModal definition={rulesFor} onClose={() => setRulesFor(null)} />}
+      {allocationFor && (
+        <DayAllocationModal strategy={allocationFor.strategyName} onClose={() => setAllocationFor(null)} />
+      )}
 
       <ConfirmModal
         show={deleting !== null}
@@ -512,88 +317,6 @@ const Definitions: React.FC = () => {
         loading={remove.isPending}
       />
     </>
-  );
-};
-
-const LegEditor: React.FC<{
-  leg: Leg;
-  index: number;
-  catalog: { selectors: { type: string; fields: string[] }[]; sideRules: string[]; legRoles: string[] } | undefined;
-  onChange: (leg: Leg) => void;
-  onRemove: () => void;
-}> = ({ leg, index, catalog, onChange, onRemove }) => {
-  const selector = catalog?.selectors.find((s) => s.type === leg.instrument.type);
-  const fields = (selector?.fields ?? []).filter((f) => f !== 'type');
-  const setField = (name: string, value: string) => {
-    const instrument = { ...leg.instrument };
-    if (value === '') delete instrument[name];
-    else instrument[name] = /^-?\d+(\.\d+)?$/.test(value) ? Number(value) : value;
-    onChange({ ...leg, instrument });
-  };
-  return (
-    <div className="mt-2 rounded border border-hairline p-2">
-      <Row>
-        <Col md={2}>
-          <Form.Label className="text-xs">Leg {index + 1}: role</Form.Label>
-          <Form.Select
-            value={leg.role ?? 'MAIN'}
-            onChange={(e) => onChange({ ...leg, role: e.target.value })}
-          >
-            {(catalog?.legRoles ?? ['MAIN', 'HEDGE']).map((r) => (
-              <option key={r} value={r}>
-                {r}
-              </option>
-            ))}
-          </Form.Select>
-        </Col>
-        <Col md={3}>
-          <Form.Label className="text-xs">Side</Form.Label>
-          <Form.Select
-            value={leg.side ?? 'ALWAYS_SHORT'}
-            onChange={(e) => onChange({ ...leg, side: e.target.value as Leg['side'] })}
-          >
-            {(catalog?.sideRules ?? ['ALWAYS_SHORT', 'ALWAYS_LONG', 'SAME_AS_SIGNAL', 'OPPOSITE']).map(
-              (s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ),
-            )}
-          </Form.Select>
-        </Col>
-        <Col md={3}>
-          <Form.Label className="text-xs">Instrument</Form.Label>
-          <Form.Select
-            value={leg.instrument.type}
-            onChange={(e) => onChange({ ...leg, instrument: { type: e.target.value } })}
-          >
-            {(catalog?.selectors ?? [{ type: 'option_strike', fields: [] }]).map((s) => (
-              <option key={s.type} value={s.type}>
-                {s.type}
-              </option>
-            ))}
-          </Form.Select>
-        </Col>
-        <Col md={3} className="flex flex-wrap gap-2">
-          {fields.map((f) => (
-            <div key={f}>
-              <Form.Label className="text-xs">{f}</Form.Label>
-              <Form.Control
-                size="sm"
-                value={leg.instrument[f] === undefined ? '' : String(leg.instrument[f])}
-                onChange={(e) => setField(f, e.target.value)}
-                placeholder="default"
-              />
-            </div>
-          ))}
-        </Col>
-        <Col md={1} className="flex items-end justify-end">
-          <Button variant="outline-danger" size="sm" onClick={onRemove}>
-            <BsTrash />
-          </Button>
-        </Col>
-      </Row>
-    </div>
   );
 };
 

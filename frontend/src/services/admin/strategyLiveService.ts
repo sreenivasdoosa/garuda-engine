@@ -1,6 +1,8 @@
 import { api } from '@/api/client';
 import { API_ENDPOINTS } from '@/api/endpoints';
 import type {
+  DayAllocation,
+  EngineMonitor,
   NewSubscription,
   StrategyCatalog,
   StrategyDefinitionEdit,
@@ -38,4 +40,9 @@ export const strategyLiveService = {
   activate: (id: number) => api.put<SubscriptionLive>(E.ACTIVATE(id), {}),
   deactivate: (id: number) => api.put<SubscriptionLive>(E.DEACTIVATE(id), {}),
   unsubscribe: (id: number) => api.delete(E.SUBSCRIPTION(id)),
+
+  monitor: () => api.get<EngineMonitor>(E.MONITOR),
+  dayAllocation: (name: string) => api.get<DayAllocation>(E.DAY_ALLOCATION(name)),
+  saveDayAllocation: (name: string, data: Omit<DayAllocation, 'strategyName'>) =>
+    api.put<DayAllocation>(E.DAY_ALLOCATION(name), data),
 };

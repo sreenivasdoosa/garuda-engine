@@ -58,6 +58,7 @@ from garuda.domain.intent import LegRole
 from garuda.engine.custom_strategies import is_registered as is_custom
 from garuda.engine.custom_strategies import registered as custom_registered
 from garuda.engine.direction import registered as direction_rules_registered
+from garuda.engine.direction_providers import registered as providers_registered
 from garuda.engine.rules.registry import registered as rules_registered
 from garuda.engine.selectors import registered as selectors_registered
 from garuda.engine.spec import SideRule
@@ -384,6 +385,12 @@ def catalog() -> dict[str, Any]:
         "definitionProducts": list(PRODUCTS),
         "tradeModes": list(TRADE_MODES),
         "strategyClasses": list(custom_registered()),
+        "directionProviders": list(providers_registered()),
+        "underlyingTypes": list(DEFINITION_CHOICES["underlying_type"]),
+        "equitySizingModels": list(DEFINITION_CHOICES["equity_sizing_model"]),
+        "onIndexRemoval": list(DEFINITION_CHOICES["on_index_removal"]),
+        "dayCodes": sorted(_DAY_CODES),
+        "legOrders": ["PROTECTION_FIRST", "EXPOSURE_FIRST", "DERIVATIVE_FIRST"],
         "orderTypes": [member.value for member in OrderType],
         "optionTypes": [member.value for member in OptionType],
         "expiryTypes": list(EXPIRY_TYPES),
@@ -510,14 +517,31 @@ def build(
             elif column in _REQUIRED_BOOLEANS:
                 setattr(row, column, bool(value))
             elif column == "combo_spec_json":
+                # No combo is the ordinary case: the legs come from the trade
+                # mode. A combo, when given, is the reference's ComboSpec.
+                row.combo_spec_json = _json_text(value, wire)
+            elif column == "direction_provider_params":
                 text = _json_text(value, wire)
-                if text is None:
-                    raise HTTPException(status_code=400, detail="a strategy needs its legs")
-                row.combo_spec_json = text
+                if text is not None and not isinstance(json.loads(text), dict):
+                    raise HTTPException(
+                        status_code=400, detail="directionProviderParams must be a JSON object"
+                    )
+                row.direction_provider_params = text
+            elif column in ("tradable_days", "excluded_days"):
+                setattr(row, column, _day_list(value, wire))
             else:
                 setattr(row, column, value)
 
     # -- definitions ----------------------------------------------------------
+
+    @router.get("/monitor")
+    async def the_monitor(request: Request) -> dict[str, Any]:
+        """Today, as the running engine sees it: the tranche schedule, the
+        breakout watches, and each account's strategy state."""
+        snapshot = getattr(request.app.state, "strategy_monitor", None)
+        if snapshot is None:
+            raise HTTPException(status_code=503, detail="the engine is not running strategies")
+        return ok(snapshot())
 
     @router.get("/catalog")
     async def the_catalog() -> dict[str, Any]:
@@ -891,6 +915,34 @@ def build(
         return ok(None, message=f"{row.trading_client_id} unsubscribed from {row.strategy_name}")
 
     return router
+
+
+#: The day codes a tradable or excluded day list may hold.
+_DAY_CODES = frozenset({"E", "DT1", "DT2", "DT3", "DT4", "DT5", "M", "T", "W", "TH", "F"})
+
+
+def _day_list(value: Any, wire: str) -> str | None:
+    """A day list as the reference stores it: a JSON array of day codes."""
+    if value is None or value == "" or value == []:
+        return None
+    if isinstance(value, str):
+        text = value.strip()
+        codes = (
+            json.loads(text) if text.startswith("[") else [c for c in text.split(",") if c.strip()]
+        )
+    elif isinstance(value, list):
+        codes = value
+    else:
+        raise HTTPException(status_code=400, detail=f"{wire} must be a list of day codes")
+    cleaned = [str(code).strip().upper() for code in codes]
+    unknown = [code for code in cleaned if code not in _DAY_CODES]
+    if unknown:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{wire}: {', '.join(unknown)} not day codes; "
+            f"one of {', '.join(sorted(_DAY_CODES))}",
+        )
+    return json.dumps(cleaned)
 
 
 def _refuse_bad_window(row: models.StrategyDefinitionsRow) -> None:

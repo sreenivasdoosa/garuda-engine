@@ -31,3 +31,13 @@ this file holds only the items parked by an explicit decision.
   two-second batching, the gap check, and `EXT_SIGNAL_EXIT` square-off.
   `signal_trigger_enabled` is stored and refused when set until then.
   Decided 2026-10-15.
+
+- [ ] **AFTER_CLOSE breakout re-arming.** With `breakout_reversal_mode`
+  AFTER_CLOSE the reference re-arms the opposite side once the first
+  position closes; garuda cancels the opposite side on the first break, as
+  NONE does. PARALLEL works.
+- [ ] **Breakout watches checked per tick.** The loop checks armed watches
+  once a second; the reference checks on every tick.
+- [ ] **A sample custom strategy.** Planned once the base is complete; the
+  reference's five-day-move and always-in-position templates are the
+  candidates (`STRATEGY_ENGINE.md` §5).

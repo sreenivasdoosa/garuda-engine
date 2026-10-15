@@ -610,6 +610,8 @@ export const API_ENDPOINTS = {
     SUBSCRIPTION: (id: number) => `/api/engine/subscriptions/${id}`,
     ACTIVATE: (id: number) => `/api/engine/subscriptions/${id}/activate`,
     DEACTIVATE: (id: number) => `/api/engine/subscriptions/${id}/deactivate`,
+    MONITOR: '/api/engine/monitor',
+    DAY_ALLOCATION: (name: string) => `/api/strategy-days-allocation/${encodeURIComponent(name)}`,
   },
 
   // The Terminal as garuda serves it: per trading client. Served.
