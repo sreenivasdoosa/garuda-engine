@@ -31,6 +31,7 @@ from garuda.domain.errors import DomainError
 from garuda.domain.instrument import InstrumentId
 from garuda.engine.base_strategy import parse_combo
 from garuda.engine.config import ConfigLayer
+from garuda.engine.custom_strategies import is_registered as is_custom
 from garuda.engine.daycondition import DayCondition
 from garuda.engine.direction import DirectionRule
 from garuda.engine.direction import build_all as build_directions
@@ -242,6 +243,11 @@ def _strategy(
         )
     if definition.combo_spec:
         parse_combo(definition.name, definition.combo_spec)
+    if definition.strategy_class and not is_custom(definition.strategy_class):
+        raise DomainError(
+            f"{definition.name} names strategy class {definition.strategy_class!r}, which is "
+            "not registered; it is left out rather than run as the configured base"
+        )
     entry = _optional_rules(definition.name, "entry", rules)
     if definition.use_indicator_entry and entry is None:
         raise DomainError(
@@ -251,7 +257,13 @@ def _strategy(
         definition=definition,
         layers=layers,
         entry_rules=entry,
-        exit_rules=_optional_rules(definition.name, "exit", rules),
+        # The reference reads exit rules only when the strategy says to use
+        # them; stored rules with the switch off must not exit anything.
+        exit_rules=(
+            _optional_rules(definition.name, "exit", rules)
+            if rules is not None and rules.use_indicator_exit
+            else None
+        ),
         direction_rules=_direction_json(definition.name, rules),
         day_allocation=_allocation(allocation),
     )

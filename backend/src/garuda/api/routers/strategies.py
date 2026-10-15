@@ -55,6 +55,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from garuda.api.envelope import ok
 from garuda.domain.enums import OptionType, OrderType, ProductType
 from garuda.domain.intent import LegRole
+from garuda.engine.custom_strategies import is_registered as is_custom
+from garuda.engine.custom_strategies import registered as custom_registered
 from garuda.engine.direction import registered as direction_rules_registered
 from garuda.engine.rules.registry import registered as rules_registered
 from garuda.engine.selectors import registered as selectors_registered
@@ -381,6 +383,7 @@ def catalog() -> dict[str, Any]:
         "products": [member.value for member in ProductType],
         "definitionProducts": list(PRODUCTS),
         "tradeModes": list(TRADE_MODES),
+        "strategyClasses": list(custom_registered()),
         "orderTypes": [member.value for member in OrderType],
         "optionTypes": [member.value for member in OptionType],
         "expiryTypes": list(EXPIRY_TYPES),
@@ -487,15 +490,16 @@ def build(
                 setattr(row, column, text)
             elif column == "strategy_class":
                 text = (value or "").strip() or None
-                if text is not None:
-                    # No custom strategy is registered yet (`STRATEGY_ENGINE.md`
-                    # §7); naming one would be a strategy nothing can run.
+                if text is not None and not is_custom(text):
+                    # `STRATEGY_ENGINE.md` §7: naming a class that is not
+                    # registered would be a strategy nothing can run.
+                    known = ", ".join(custom_registered()) or "none are registered"
                     raise HTTPException(
                         status_code=400,
                         detail=f"strategyClass {text!r} is not a registered custom strategy; "
-                        "none are registered",
+                        f"known: {known}",
                     )
-                row.strategy_class = None
+                row.strategy_class = text.upper() if text else None
             elif column in ("underlying_symbol", "exchange"):
                 text = (value or "").strip().upper()
                 if not text:

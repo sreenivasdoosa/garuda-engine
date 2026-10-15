@@ -174,7 +174,7 @@ class TestDefinitions:
             },
         )
         assert response.status_code == 400
-        assert "none are registered" in response.json()["message"]
+        assert "none are registered" in response.json()["message"]  # nothing registered in tests
 
     async def test_the_catalog_names_what_a_leg_can_be(self, client: httpx.AsyncClient) -> None:
         body = (await client.get("/api/engine/catalog")).json()["data"]

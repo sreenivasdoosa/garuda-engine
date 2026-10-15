@@ -40,6 +40,7 @@ from garuda.composition.derived_series import DerivedSeriesRecorder
 from garuda.composition.engine import Engine, build_engine
 from garuda.composition.event_days import load_event_days
 from garuda.composition.instruments import SymbolBook, build_loader, load_symbols
+from garuda.composition.plugins import discover as discover_plugins
 from garuda.composition.protection import ProtectionBook, load_protection
 from garuda.composition.risk import load_kill_switches, load_limits
 from garuda.composition.runtime import Runtime, start
@@ -413,6 +414,7 @@ async def _build(
     )
     record.end(step, f"-- {engine.describe()}")
     step = record.begin("strategies load")
+    discover_plugins(Path(settings.app_home))
     strategies = await load_strategies(sessions)
     _report(strategies)
     record.end(

@@ -41,8 +41,9 @@ from garuda.domain.intent import LegRole
 from garuda.domain.market import Bar, BarInterval, Tick
 from garuda.domain.money import Money
 from garuda.domain.strikes import Moneyness, atm_strike
-from garuda.domain.trade import Relationships
+from garuda.domain.trade import Relationships, Trade
 from garuda.domain.trade_signal import EntryRules, EscalationMode, SignalType, TradeSignal
+from garuda.engine.adaptive import TrancheResult
 from garuda.engine.breakout import BreakoutSettings, Watch, WatchedLeg, watch_key
 from garuda.engine.config import ResolvedConfig
 from garuda.engine.daycondition import DayCondition
@@ -146,6 +147,8 @@ class Evaluation:
     #: Supplied by the loop, which owns the rule context; None for a
     #: strategy without `use_indicator_entry`.
     entry_gate: Callable[[ResolvedConfig], str | None] | None = None
+    #: Why the exit rule tree says an open trade should come off, or None.
+    exit_gate: Callable[[Trade], str | None] | None = None
 
     @property
     def definition(self) -> Definition:
@@ -332,6 +335,26 @@ class BaseStrategy:
             legs=len(plan.legs),
             notes=tuple(notes),
         )
+
+    def on_periodic(self, ev: Evaluation) -> Outcome:
+        """A periodic tick with nothing on: try the next tranche. The
+        configured behaviour is the scheduled one; a custom strategy can
+        treat the two differently."""
+        return self.on_scheduled(ev)
+
+    def on_tranche_complete(self, ev: Evaluation, result: TrancheResult) -> Outcome:
+        """An adaptive cascade: ``ev.tranche`` is the tranche to enter now
+        that ``result``'s trades have all closed."""
+        del result
+        return self.on_scheduled(ev)
+
+    def should_exit(self, ev: Evaluation, trade: Trade) -> str | None:
+        """Why this open position should come off now, or None. The
+        configured behaviour is the indicator exit rules, when
+        `use_indicator_exit` is on."""
+        if ev.exit_gate is None:
+            return None
+        return ev.exit_gate(trade)
 
     # -- breakout ----------------------------------------------------------
 

@@ -30,7 +30,7 @@ from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from dataclasses import replace as dataclass_replace
-from datetime import date, datetime, timedelta, tzinfo
+from datetime import date, datetime, time, timedelta, tzinfo
 from decimal import Decimal
 from typing import Protocol
 
@@ -55,9 +55,13 @@ from garuda.domain.enums import Direction
 from garuda.domain.exchange import Exchange
 from garuda.domain.instrument import InstrumentId, canonical_symbol
 from garuda.domain.market import Tick
+from garuda.domain.trade import Trade
+from garuda.domain.trade_state import TradeExitReason, TradeState
+from garuda.engine.adaptive import DEFAULT_MAX_TRANCHES, TrancheResult, next_after, re_entry_for
 from garuda.engine.base_strategy import BaseStrategy, Evaluation, Outcome
-from garuda.engine.breakout import DEFAULT_TRIGGER_VALUE, Watch
+from garuda.engine.breakout import DEFAULT_TRIGGER_VALUE, Watch, WatchedLeg, watch_key
 from garuda.engine.config import ResolvedConfig
+from garuda.engine.custom_strategies import instance as custom_strategy
 from garuda.engine.daycondition import DayCondition
 from garuda.engine.direction import first_answer
 from garuda.engine.rules.evaluate import RuleRunner, blocking_reason
@@ -66,8 +70,10 @@ from garuda.engine.schedule import Slot, TrancheSchedule
 from garuda.engine.signals import SignalBatch
 from garuda.engine.strategy_state import StrategyState
 from garuda.engine.vocabulary import (
+    BreakoutDirection,
     BreakoutReversalMode,
     BreakoutSide,
+    BreakoutTriggerMode,
     BreakoutWatchType,
     StrategyStatus,
 )
@@ -88,6 +94,9 @@ DEFAULT_INTERVAL = timedelta(seconds=1)
 STATE_FLUSH_INTERVAL = timedelta(seconds=30)
 #: How many minutes of each derived series the loop keeps.
 SERIES_MINUTES = 120
+#: Where adaptive-tranche and re-entry bookkeeping lives in strategy state.
+ADAPTIVE_KEY = "adaptive"
+REENTRY_KEY = "reentry"
 
 
 class WatchStore(Protocol):
@@ -148,6 +157,7 @@ class StrategyLoop:
     #: compare it with a while ago (PCR TREND). An hour is plenty.
     _series: dict[InstrumentId, deque[tuple[datetime, Decimal]]] = field(default_factory=dict)
     _watches: dict[str, Watch] = field(default_factory=dict)
+    _periodic_done: set[tuple[str, int]] = field(default_factory=set)
     _trigger_values: dict[str, Decimal] = field(default_factory=dict)
 
     # -- status ------------------------------------------------------------
@@ -186,6 +196,8 @@ class StrategyLoop:
             for slot in self._schedule.due(now):
                 results.extend(await self._fire(slot, now))
         results.extend(await self._check_watches(now))
+        results.extend(await self._periodic(now))
+        results.extend(await self._after_exits(now))
         await self._flush(now)
         return results
 
@@ -258,6 +270,7 @@ class StrategyLoop:
             for state in await self.states.load_day(day):
                 self._state[(state.trading_client, state.strategy)] = state
         self._watches = {}
+        self._periodic_done = set()
         if self.watch_store is not None:
             for watch in await self.watch_store.live_on(day, self.venue.timezone):
                 self._watches[watch.key] = watch
@@ -282,13 +295,20 @@ class StrategyLoop:
                 continue
             conditions = self._conditions(strategy, day)
             runtime = strategy.runtime(_SCHEDULING_TERMS, conditions)
+            # Adaptive: tranche 1 is scheduled and the rest come from the
+            # cascade when the one before closes, as the reference does.
+            numbers = (
+                runtime.tranche_numbers[:1]
+                if strategy.definition.adaptive_tranches_enabled
+                else runtime.tranche_numbers
+            )
             timings[name] = [
                 (
                     number,
                     runtime.tranche(number).text("tranch_timing"),
                     runtime.tranche(number).text("tranch_cutoff_time"),
                 )
-                for number in runtime.tranche_numbers
+                for number in numbers
             ]
         return TrancheSchedule.build(day, self.venue.timezone, timings, now=now)
 
@@ -319,6 +339,8 @@ class StrategyLoop:
         now: datetime,
         *,
         breach: tuple[Watch, BreakoutSide] | None = None,
+        completed: TrancheResult | None = None,
+        periodic: bool = False,
     ) -> Evaluated:
         day = self.trading_day
         key = (subscription.trading_client, strategy.name)
@@ -351,10 +373,15 @@ class StrategyLoop:
             tranche=tranche,
             entry_gate=self._entry_gate(strategy, subscription, tranche, conditions, now),
         )
-        if breach is None:
-            outcome = self.pipeline.on_scheduled(evaluation)
+        pipeline = self._pipeline_for(strategy)
+        if breach is not None:
+            outcome = pipeline.on_breakout(evaluation, *breach)
+        elif completed is not None:
+            outcome = pipeline.on_tranche_complete(evaluation, completed)
+        elif periodic:
+            outcome = pipeline.on_periodic(evaluation)
         else:
-            outcome = self.pipeline.on_breakout(evaluation, *breach)
+            outcome = pipeline.on_scheduled(evaluation)
         self._remember(key, state, outcome.state, now)
 
         delivered, refusal = False, None
@@ -397,6 +424,261 @@ class StrategyLoop:
         return Evaluated(
             strategy.name, subscription.trading_client, tranche, outcome, delivered, refusal
         )
+
+    def _pipeline_for(self, strategy: Strategy) -> BaseStrategy:
+        custom = custom_strategy(strategy.definition.strategy_class)
+        return custom if custom is not None else self.pipeline
+
+    # -- periodic ----------------------------------------------------------
+
+    async def _periodic(self, now: datetime) -> list[Evaluated]:
+        """The reference's PERIODIC event: on each interval boundary, inside the
+        strategy's window, exit what the exit rules say should go -- or, with
+        nothing on, try the next tranche."""
+        results: list[Evaluated] = []
+        local = now.astimezone(self.venue.timezone)
+        minute = local.hour * 60 + local.minute
+        for name, strategy in self.loaded.strategies.items():
+            definition = strategy.definition
+            interval = definition.periodic_interval_minutes
+            if not definition.periodic_trigger or not interval:
+                continue
+            if minute % interval or local.second < (definition.periodic_offset_seconds or 0):
+                continue
+            mark = (name, minute)
+            if mark in self._periodic_done:
+                continue
+            self._periodic_done.add(mark)
+            if not self._within_window(strategy, local.time()):
+                continue
+            for subscription in self.loaded.subscribers(name):
+                try:
+                    result = await self._periodic_for(strategy, subscription, now)
+                except Exception as error:
+                    await self._failed(name, subscription, 0, error)
+                    continue
+                if result is not None:
+                    results.append(result)
+        return results
+
+    async def _periodic_for(
+        self, strategy: Strategy, subscription: Subscription, now: datetime
+    ) -> Evaluated | None:
+        client = self.engine.parts.clients.get(subscription.trading_client)
+        if client is None:
+            return None
+        live = [trade for trade in client.book.trades_for(strategy.name) if trade.is_active]
+        if live:
+            if strategy.exit_rules is not None:
+                await self._exit_by_rules(strategy, subscription, live, now)
+            return None
+        state = self._state_for(subscription, strategy)
+        conditions = self._conditions(strategy, self.trading_day)
+        runtime = strategy.runtime(subscription.terms, conditions)
+        cap = runtime.base.whole("max_tranches") or DEFAULT_MAX_TRANCHES
+        tranche = next((n for n in range(1, cap + 1) if not state.has_signalled(n)), None)
+        if tranche is None:
+            return None
+        return await self._evaluate(strategy, subscription, tranche, now, periodic=True)
+
+    async def _exit_by_rules(
+        self,
+        strategy: Strategy,
+        subscription: Subscription,
+        trades: list[Trade],
+        now: datetime,
+    ) -> None:
+        client = self.engine.parts.clients[subscription.trading_client]
+        rules = strategy.exit_rules
+        if rules is None:
+            return
+        conditions = self._conditions(strategy, self.trading_day)
+        runtime = strategy.runtime(subscription.terms, conditions)
+        for trade in trades:
+            context = LiveContext(
+                market=self.market,
+                book=client.book,
+                now=now,
+                trading_day=self.trading_day,
+                strategy=strategy.name,
+                trading_client=subscription.trading_client,
+                tranche=max(trade.tranche, 1),
+                config=runtime.tranche(max(trade.tranche, 1)),
+                underlying=strategy.underlying,
+                day_conditions=conditions,
+                trade=trade,
+            )
+            evaluation = self.rules.evaluate(rules, context, label=strategy.name)
+            if blocking_reason(evaluation) is not None:
+                continue
+            logger.info("%s: exit rules say %s should come off", strategy.name, trade.instrument)
+            await client.square_off.request(trade, TradeExitReason.EXIT_SIGNAL)
+
+    def _within_window(self, strategy: Strategy, local: time) -> bool:
+        definition = strategy.definition
+        if definition.start_time is not None and local < definition.start_time:
+            return False
+        return not (definition.stop_time is not None and local > definition.stop_time)
+
+    # -- after an exit -------------------------------------------------------
+
+    async def _after_exits(self, now: datetime) -> list[Evaluated]:
+        """Adaptive tranches and re-entry watches, both started by a trade
+        closing rather than by a time."""
+        results: list[Evaluated] = []
+        for name, strategy in self.loaded.strategies.items():
+            adaptive = strategy.definition.adaptive_tranches_enabled
+            for subscription in self.loaded.subscribers(name):
+                client = self.engine.parts.clients.get(subscription.trading_client)
+                if client is None:
+                    continue
+                today = [
+                    trade
+                    for trade in client.book.trades_for(name)
+                    if trade.started_at is not None
+                    and self.venue.trading_day_for(trade.started_at) == self.trading_day
+                ]
+                if not today:
+                    continue
+                try:
+                    await self._re_entries(strategy, subscription, today, now)
+                    if adaptive:
+                        result = await self._cascade(strategy, subscription, today, now)
+                        if result is not None:
+                            results.append(result)
+                except Exception as error:
+                    await self._failed(name, subscription, 0, error)
+        return results
+
+    async def _cascade(
+        self, strategy: Strategy, subscription: Subscription, trades: list[Trade], now: datetime
+    ) -> Evaluated | None:
+        state = self._state_for(subscription, strategy)
+        memory = dict(state.data.get(ADAPTIVE_KEY) or {})
+        done = set(memory.get("completed") or [])
+        for tranche in sorted(state.signalled):
+            if tranche in done:
+                continue
+            result = TrancheResult.of(tranche, [t for t in trades if t.tranche == tranche])
+            if result is None:
+                continue
+            done.add(tranche)
+            losses = int(memory.get("losses") or 0) + (1 if result.pnl < 0 else 0)
+            profits = int(memory.get("profits") or 0) + (1 if result.pnl > 0 else 0)
+            memory.update(completed=sorted(done), losses=losses, profits=profits)
+            await self._update_memory(subscription, strategy, ADAPTIVE_KEY, memory, now)
+            conditions = self._conditions(strategy, self.trading_day)
+            runtime = strategy.runtime(subscription.terms, conditions)
+            local = now.astimezone(self.venue.timezone).time()
+            cascade = next_after(
+                result,
+                runtime.base,
+                losses=losses,
+                profits=profits,
+                signalled=frozenset(state.signalled),
+                past_stop=(
+                    strategy.definition.stop_time is not None
+                    and local > strategy.definition.stop_time
+                ),
+            )
+            logger.info(
+                "%s on %s: %s", strategy.name, subscription.trading_client.value, cascade.because
+            )
+            if cascade.next_tranche is None:
+                continue
+            return await self._evaluate(
+                strategy, subscription, cascade.next_tranche, now, completed=result
+            )
+        return None
+
+    async def _re_entries(
+        self, strategy: Strategy, subscription: Subscription, trades: list[Trade], now: datetime
+    ) -> None:
+        state = self._state_for(subscription, strategy)
+        memory = dict(state.data.get(REENTRY_KEY) or {})
+        seen = set(memory.get("seen") or [])
+        counts = dict(memory.get("count") or {})
+        changed = False
+        conditions = self._conditions(strategy, self.trading_day)
+        runtime = strategy.runtime(subscription.terms, conditions)
+        for trade in trades:
+            if trade.state is not TradeState.COMPLETED or trade.id.value in seen:
+                continue
+            seen.add(trade.id.value)
+            changed = True
+            tranche = max(trade.tranche, 1)
+            config = runtime.tranche(tranche)
+            cutoff_text = config.text("tranch_cutoff_time")
+            cutoff_time = (
+                time.fromisoformat(cutoff_text) if cutoff_text else strategy.definition.stop_time
+            )
+            cutoff = (
+                datetime.combine(self.trading_day, cutoff_time, self.venue.timezone)
+                if cutoff_time is not None
+                else None
+            )
+            decision = re_entry_for(
+                trade, config, done=int(counts.get(str(tranche), 0)), now=now, cutoff=cutoff
+            )
+            if isinstance(decision, str):
+                continue
+            counts[str(tranche)] = decision.attempt
+            watch = Watch(
+                key=watch_key(
+                    subscription.trading_client,
+                    strategy.name,
+                    self.trading_day,
+                    tranche,
+                    f"RE{decision.attempt}-{trade.instrument.value}",
+                ),
+                trading_client=subscription.trading_client,
+                strategy=strategy.name,
+                tranche=tranche,
+                kind=BreakoutWatchType.OPTION_SYMBOL,
+                watched=trade.instrument,
+                direction=BreakoutDirection.BELOW,
+                mode=BreakoutTriggerMode.ABSOLUTE,
+                reference_price=decision.trigger,
+                above=None,
+                below=decision.trigger,
+                valid_till=cutoff,
+                group=f"Tranch-{tranche}|RE-{decision.attempt}",
+                is_paper=subscription.is_paper,
+                legs=(WatchedLeg(trade.instrument, Direction.SHORT, False),),
+            )
+            await self._arm((watch,), config, now)
+            logger.info(
+                "%s: re-entry %d armed for %s at %s",
+                strategy.name,
+                decision.attempt,
+                trade.instrument,
+                decision.trigger,
+            )
+        if changed:
+            memory.update(seen=sorted(seen), count=counts)
+            await self._update_memory(subscription, strategy, REENTRY_KEY, memory, now)
+
+    def _state_for(self, subscription: Subscription, strategy: Strategy) -> StrategyState:
+        key = (subscription.trading_client, strategy.name)
+        return self._state.get(key) or StrategyState(
+            trading_client=subscription.trading_client,
+            strategy=strategy.name,
+            trading_day=self.trading_day,
+        )
+
+    async def _update_memory(
+        self,
+        subscription: Subscription,
+        strategy: Strategy,
+        namespace: str,
+        memory: dict[str, object],
+        now: datetime,
+    ) -> None:
+        key = (subscription.trading_client, strategy.name)
+        before = self._state_for(subscription, strategy)
+        after = dataclass_replace(before, data={**before.data, namespace: memory})
+        self._remember(key, before, after, now)
+        await self._persist_if_critical(key, before, after, now)
 
     # -- breakout watches --------------------------------------------------
 

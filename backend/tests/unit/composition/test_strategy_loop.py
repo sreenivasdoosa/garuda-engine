@@ -407,3 +407,124 @@ class TestBreakoutWatches:
         assert entered.outcome.entered, entered.outcome.stood_down
         assert [s.instrument.value for s in book.signals("straddle")] == ["NFO:N25000CE"]
         assert len([w for w in loop.watches() if w.is_live]) == 1
+
+
+class TestCustomStrategies:
+    async def test_a_definition_naming_a_class_runs_that_class(
+        self, engine: Engine, registry: InstrumentRegistry, venue: Exchange
+    ) -> None:
+        from garuda.engine import strategy as register
+        from garuda.engine.custom_strategies import unregister
+        from garuda.engine.direction_providers import Side
+
+        @register("PUTS_ONLY_TEST")
+        class PutsOnly(BaseStrategy):
+            def direction(self, ev: Evaluation) -> Side:
+                return Side.LONG
+
+        try:
+            loaded = assemble(
+                [definition(strategy_class="PUTS_ONLY_TEST")], [base_config()], [], [subscription()]
+            )
+            assert "straddle" in loaded.strategies, loaded.refused
+            clock = ReplayClock(at(12, 59))
+            loop = loop_for(engine, registry, venue, clock, loaded)
+            await prices(engine, clock.now())
+            await loop.run_once()
+            clock._now = at(13, 0)
+            (result,) = await loop.run_once()
+            assert [s.instrument.value for s in result.outcome.signals] == ["NFO:N25000PE"]
+        finally:
+            unregister("PUTS_ONLY_TEST")
+
+    def test_an_unregistered_class_is_refused_at_load(self) -> None:
+        loaded = assemble(
+            [definition(strategy_class="NOBODY")], [base_config()], [], [subscription()]
+        )
+        assert "not registered" in loaded.refused["straddle"]
+
+
+class TestPeriodic:
+    async def test_with_nothing_on_it_tries_the_next_tranche_on_the_boundary(
+        self, engine: Engine, registry: InstrumentRegistry, venue: Exchange
+    ) -> None:
+        loaded = assemble(
+            [
+                definition(
+                    periodic_trigger_enabled=True,
+                    periodic_interval_minutes=15,
+                    scheduled_trigger_enabled=False,
+                )
+            ],
+            [base_config(timing="")],
+            [],
+            [subscription()],
+        )
+        clock = ReplayClock(at(13, 14, 59))
+        loop = loop_for(engine, registry, venue, clock, loaded)
+        await prices(engine, clock.now())
+        assert await loop.run_once() == []
+        clock._now = at(13, 15)
+        (result,) = await loop.run_once()
+        assert result.outcome.entered, result.outcome.stood_down
+        clock._now = at(13, 15, 30)
+        assert await loop.run_once() == []  # once per boundary
+
+
+class TestAfterExits:
+    async def test_a_closed_tranche_cascades_and_a_stopped_short_arms_a_re_entry(
+        self,
+        engine: Engine,
+        registry: InstrumentRegistry,
+        venue: Exchange,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from garuda.domain.enums import Direction, ProductType
+        from garuda.domain.trade import Trade, TradeId
+        from garuda.domain.trade_state import TradeExitReason, TradeState
+
+        config = base_config()
+        config.max_tranches = 3
+        config.re_entry = True
+        config.max_reentries = 1
+        loaded = assemble(
+            [definition(adaptive_tranches_enabled=True)],
+            [config],
+            [],
+            [subscription(capital="600000")],
+        )
+        clock = ReplayClock(at(12, 59))
+        loop = loop_for(engine, registry, venue, clock, loaded)
+        await prices(engine, clock.now())
+        await loop.run_once()
+        clock._now = at(13, 0)
+        (first,) = await loop.run_once()
+        assert first.outcome.entered
+
+        stopped = Trade(
+            id=TradeId("t-1"),
+            trading_client=APPA,
+            instrument=InstrumentId("NFO:N25000CE"),
+            strategy="straddle",
+            direction=Direction.SHORT,
+            product=ProductType.MIS,
+            quantity=75,
+            filled_quantity=75,
+            state=TradeState.COMPLETED,
+            entry=rupees("120"),
+            exit=rupees("156"),
+            exit_reason=TradeExitReason.STOP_LOSS,
+            tranche=1,
+            started_at=at(13, 0),
+            ended_at=at(13, 20),
+        )
+        book = engine.parts.clients[APPA].book
+        monkeypatch.setattr(book, "trades_for", lambda strategy, group=None: [stopped])
+        clock._now = at(13, 20)
+        results = await loop.run_once()
+
+        assert [r.tranche for r in results] == [2]  # the cascade
+        assert results[0].outcome.entered
+        re_entries = [w for w in loop.watches() if "RE1" in w.key]
+        assert len(re_entries) == 1
+        assert re_entries[0].below == Decimal(120)
