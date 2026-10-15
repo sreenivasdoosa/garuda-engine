@@ -54,16 +54,21 @@ from garuda.domain.client import TradingClientId
 from garuda.domain.enums import Direction
 from garuda.domain.exchange import Exchange
 from garuda.domain.instrument import InstrumentId, canonical_symbol
+from garuda.domain.intent import LegRole
 from garuda.domain.market import Tick
-from garuda.domain.trade import Trade
+from garuda.domain.trade import Relationships, Trade
+from garuda.domain.trade_signal import EntryRules, SignalType, TradeSignal
 from garuda.domain.trade_state import TradeExitReason, TradeState
 from garuda.engine.adaptive import DEFAULT_MAX_TRANCHES, TrancheResult, next_after, re_entry_for
-from garuda.engine.base_strategy import BaseStrategy, Evaluation, Outcome
+from garuda.engine.base_strategy import SIGNAL_VALIDITY, BaseStrategy, Evaluation, Outcome
 from garuda.engine.breakout import DEFAULT_TRIGGER_VALUE, Watch, WatchedLeg, watch_key
 from garuda.engine.config import ResolvedConfig
 from garuda.engine.custom_strategies import instance as custom_strategy
 from garuda.engine.daycondition import DayCondition
 from garuda.engine.direction import first_answer
+from garuda.engine.hedge_windows import RECOVERY_INTERVAL as HEDGE_RECOVERY_INTERVAL
+from garuda.engine.hedge_windows import HedgeWindow, windows_for
+from garuda.engine.hedging import hedge_strike
 from garuda.engine.rules.evaluate import RuleRunner, blocking_reason
 from garuda.engine.runtime_config import SubscriptionTerms
 from garuda.engine.schedule import Slot, TrancheSchedule
@@ -75,6 +80,7 @@ from garuda.engine.vocabulary import (
     BreakoutSide,
     BreakoutTriggerMode,
     BreakoutWatchType,
+    StrategyProduct,
     StrategyStatus,
 )
 from garuda.marketdata.synthetics import (
@@ -85,6 +91,7 @@ from garuda.marketdata.synthetics import (
 )
 from garuda.protocols.clock import Clock
 from garuda.protocols.feed import TicksReceived
+from garuda.trademgmt.legs import find_hedge
 
 logger = logging.getLogger(__name__)
 
@@ -97,11 +104,28 @@ SERIES_MINUTES = 120
 #: Where adaptive-tranche and re-entry bookkeeping lives in strategy state.
 ADAPTIVE_KEY = "adaptive"
 REENTRY_KEY = "reentry"
+HEDGE_KEY = "hedge"
 
 
 class WatchStore(Protocol):
     async def live_on(self, day: date, timezone: tzinfo) -> list[Watch]: ...
     async def save(self, watch: Watch, *, trigger_value: Decimal, now: datetime) -> None: ...
+
+
+class EvaluationLog(Protocol):
+    async def record(
+        self,
+        *,
+        trading_client: TradingClientId,
+        strategy: str,
+        event: str,
+        at: datetime,
+        signals: int,
+        took_ms: int,
+        summary: dict[str, object],
+        event_data: dict[str, object] | None = None,
+        error: str | None = None,
+    ) -> None: ...
 
 
 class StateStore(Protocol):
@@ -136,6 +160,8 @@ class StrategyLoop:
     states: StateStore | None = None
     #: Where breakout watches are kept. None keeps them in memory only.
     watch_store: WatchStore | None = None
+    #: Where each evaluation is logged. None logs nothing.
+    evaluation_log: EvaluationLog | None = None
     event_days: EventDays = NO_EVENT_DAYS
     pipeline: BaseStrategy = field(default_factory=BaseStrategy)
     watchlist: Watchlist | None = None
@@ -158,6 +184,7 @@ class StrategyLoop:
     _series: dict[InstrumentId, deque[tuple[datetime, Decimal]]] = field(default_factory=dict)
     _watches: dict[str, Watch] = field(default_factory=dict)
     _periodic_done: set[tuple[str, int]] = field(default_factory=set)
+    _hedge_checked: dict[tuple[str, str], datetime] = field(default_factory=dict)
     _trigger_values: dict[str, Decimal] = field(default_factory=dict)
 
     # -- status ------------------------------------------------------------
@@ -177,6 +204,69 @@ class StrategyLoop:
     @property
     def tranches_today(self) -> int:
         return len(self._schedule.slots) if self._schedule else 0
+
+    def snapshot(self) -> dict[str, object]:
+        """Today for the Console: the schedule, the watches, the states."""
+        schedule = self._schedule
+
+        def iso(moment: datetime | None) -> str | None:
+            return moment.isoformat() if moment is not None else None
+
+        return {
+            "tradingDay": self.trading_day.isoformat(),
+            "schedule": [
+                {
+                    "strategy": slot.strategy,
+                    "tranche": slot.tranche,
+                    "at": slot.at.isoformat(),
+                    "status": "FIRED" if slot.fired else "MISSED" if slot.missed else "PENDING",
+                }
+                for slot in (schedule.slots if schedule else [])
+            ],
+            "unscheduled": [
+                {"strategy": u.strategy, "tranche": u.tranche, "because": u.because}
+                for u in (schedule.unscheduled if schedule else [])
+            ],
+            "watches": [
+                {
+                    "key": watch.key,
+                    "tradingClientId": watch.trading_client.value,
+                    "strategy": watch.strategy,
+                    "tranche": watch.tranche,
+                    "kind": watch.kind.value,
+                    "watched": watch.watched.value,
+                    "direction": watch.direction.value,
+                    "above": str(watch.above) if watch.above is not None else None,
+                    "below": str(watch.below) if watch.below is not None else None,
+                    "status": "LIVE"
+                    if watch.is_live
+                    else "FIRED"
+                    if watch.triggered_at
+                    else "LAPSED",
+                    "triggeredAt": iso(watch.triggered_at),
+                    "triggeredPrice": (
+                        str(watch.triggered_price) if watch.triggered_price is not None else None
+                    ),
+                }
+                for watch in self._watches.values()
+            ],
+            "states": [
+                {
+                    "tradingClientId": state.trading_client.value,
+                    "strategy": state.strategy,
+                    "signalled": {
+                        str(n): at.isoformat() for n, at in sorted(state.signalled.items())
+                    },
+                    "signalsToday": state.signals_generated_today,
+                    "lotsToday": state.allocated_lots_today,
+                    "usedRisk": str(state.used_risk),
+                    "evaluations": state.evaluation_count,
+                    "lastEvaluationAt": iso(state.last_evaluation_at),
+                }
+                for state in self._state.values()
+            ],
+            "refused": dict(self.loaded.refused),
+        }
 
     def state_of(self, client: TradingClientId, strategy: str) -> StrategyState | None:
         return self._state.get((client, strategy))
@@ -198,6 +288,8 @@ class StrategyLoop:
         results.extend(await self._check_watches(now))
         results.extend(await self._periodic(now))
         results.extend(await self._after_exits(now))
+        await self._hedge_windows(now)
+        await self._finish_hedge_rolls()
         await self._flush(now)
         return results
 
@@ -271,6 +363,7 @@ class StrategyLoop:
                 self._state[(state.trading_client, state.strategy)] = state
         self._watches = {}
         self._periodic_done = set()
+        self._hedge_checked = {}
         if self.watch_store is not None:
             for watch in await self.watch_store.live_on(day, self.venue.timezone):
                 self._watches[watch.key] = watch
@@ -365,6 +458,7 @@ class StrategyLoop:
             memory=state.data,
             history=self._history_at,
             indicator=self._indicator_direction(strategy, subscription, tranche, conditions, now),
+            universes=self.loaded.universes,
         )
         evaluation = Evaluation(
             runtime=runtime,
@@ -421,9 +515,54 @@ class StrategyLoop:
             if outcome.alert:
                 await self._skipped(strategy.name, subscription, tranche, outcome.stood_down or "")
         await self._persist_if_critical(key, state, outcome.state, now)
+        event = (
+            "BREAKOUT"
+            if breach is not None
+            else "TRANCH_COMPLETE"
+            if completed is not None
+            else "PERIODIC"
+            if periodic
+            else "SCHEDULED"
+        )
+        await self._log(strategy, subscription, tranche, event, now, outcome, delivered, refusal)
         return Evaluated(
             strategy.name, subscription.trading_client, tranche, outcome, delivered, refusal
         )
+
+    async def _log(
+        self,
+        strategy: Strategy,
+        subscription: Subscription,
+        tranche: int,
+        event: str,
+        started: datetime,
+        outcome: Outcome,
+        delivered: bool,
+        refusal: str | None,
+    ) -> None:
+        if self.evaluation_log is None:
+            return
+        try:
+            await self.evaluation_log.record(
+                trading_client=subscription.trading_client,
+                strategy=strategy.name,
+                event=event,
+                at=started,
+                signals=len(outcome.signals),
+                took_ms=max(0, int((self.clock.now() - started).total_seconds() * 1000)),
+                summary={
+                    "tranche": tranche,
+                    "entered": outcome.entered,
+                    "delivered": delivered,
+                    "refusal": refusal,
+                    "stoodDown": outcome.stood_down,
+                    "lots": outcome.lots,
+                    "watches": len(outcome.watches),
+                    "notes": list(outcome.notes),
+                },
+            )
+        except Exception:
+            logger.exception("could not log the evaluation of %s", strategy.name)
 
     def _pipeline_for(self, strategy: Strategy) -> BaseStrategy:
         custom = custom_strategy(strategy.definition.strategy_class)
@@ -679,6 +818,156 @@ class StrategyLoop:
         after = dataclass_replace(before, data={**before.data, namespace: memory})
         self._remember(key, before, after, now)
         await self._persist_if_critical(key, before, after, now)
+
+    # -- hedge windows -----------------------------------------------------
+
+    async def _hedge_windows(self, now: datetime) -> None:
+        """Inside a morning or evening window, move each positional short's
+        hedge to the window's distance -- on entering the window and every two
+        minutes after, as the reference's recovery checks do."""
+        windows = self.venue.calendar.windows_on(self.trading_day)
+        if not windows:
+            return
+        opens, closes = windows[0].start, windows[-1].end
+        for name, strategy in self.loaded.strategies.items():
+            definition = strategy.definition
+            if (
+                not definition.hedge_replace_enabled
+                or definition.product is not StrategyProduct.POSITIONAL
+            ):
+                continue
+            conditions = self._conditions(strategy, self.trading_day)
+            for window in windows_for(
+                definition,
+                opens=opens,
+                closes=closes,
+                expiry_day=DayCondition.EXPIRY in conditions,
+            ):
+                if not window.contains(now):
+                    continue
+                mark = (name, window.kind.value)
+                last = self._hedge_checked.get(mark)
+                if last is not None and now - last < HEDGE_RECOVERY_INTERVAL:
+                    continue
+                self._hedge_checked[mark] = now
+                for subscription in self.loaded.subscribers(name):
+                    try:
+                        await self._roll_hedges(strategy, subscription, window, now)
+                    except Exception as error:
+                        await self._failed(name, subscription, 0, error)
+
+    async def _roll_hedges(
+        self, strategy: Strategy, subscription: Subscription, window: HedgeWindow, now: datetime
+    ) -> None:
+        client = self.engine.parts.clients.get(subscription.trading_client)
+        if client is None:
+            return
+        state = self._state_for(subscription, strategy)
+        memory = dict(state.data.get(HEDGE_KEY) or {})
+        attempted = set(memory.get("attempted") or [])
+        trades = list(client.book.trades_for(strategy.name))
+        registry = self.market.registry()
+        gap = self.market.symbols.get(strategy.definition.underlying_symbol)
+        if gap is None:
+            return
+        changed = False
+        for short in trades:
+            if (
+                not short.is_active
+                or short.direction is not Direction.SHORT
+                or short.relationships.leg_role is LegRole.HEDGE
+                or short.relationships.hedge_correlation_id is None
+            ):
+                continue
+            hedge = find_hedge(short, trades).trade
+            if hedge is None or not hedge.is_active or hedge.id.value in attempted:
+                continue
+            main, current = registry.get(short.instrument), registry.get(hedge.instrument)
+            if (
+                main is None
+                or current is None
+                or main.strike is None
+                or main.option_type is None
+                or main.expiry is None
+                or main.underlying is None
+            ):
+                continue
+            target = hedge_strike(
+                main.strike,
+                window.distance,
+                main.option_type,
+                strike_gap=gap.strike_gap,
+                rounding_multiple=gap.hedge_strike_rounding or None,
+                rounding_min_distance=strategy.runtime(subscription.terms, frozenset())
+                .tranche(max(short.tranche, 1))
+                .number("hedge_strike_rounding_min_distance"),
+            )
+            if target == current.strike:
+                continue
+            listed = registry.option_at(main.underlying, main.expiry, target, main.option_type)
+            if listed is None:
+                logger.warning(
+                    "%s: no listed hedge at %s for %s", strategy.name, target, short.instrument
+                )
+                continue
+            attempted.add(hedge.id.value)
+            changed = True
+            signal = TradeSignal(
+                id=f"{strategy.name[:14]}-{now:%y%m%d%H%M}-HR-{hedge.id.value[-16:]}"[:50],
+                trading_client=subscription.trading_client,
+                instrument=listed.id,
+                strategy=strategy.name,
+                signal_type=SignalType.LONG_ENTRY,
+                product=hedge.product,
+                quantity=hedge.quantity,
+                generated_at=now,
+                quantity_per_lot=listed.lot_size,
+                contract_multiplier=listed.multiplier,
+                entry=EntryRules(place_market_order=True, valid_till=now + SIGNAL_VALIDITY),
+                relationships=Relationships(
+                    combo_id=hedge.relationships.combo_id,
+                    hedge_correlation_id=short.relationships.hedge_correlation_id,
+                    pair_correlation_id=hedge.relationships.pair_correlation_id,
+                    leg_role=LegRole.HEDGE,
+                    entry_sequence=1,
+                    hedge_distance_percent=window.distance,
+                    hedge_trade_id_to_square_off=hedge.id,
+                ),
+                group=hedge.group,
+                tranche=hedge.tranche,
+                slice=hedge.slice,
+                is_paper=hedge.is_paper,
+                expiry=listed.expiry.isoformat() if listed.expiry else None,
+                remarks=f"{window.kind.value} hedge replace {current.strike} -> {target}",
+            )
+            delivery = await deliver(self.engine, SignalBatch(signals=(signal,), legs=1))
+            logger.info(
+                "%s: %s hedge for %s moves %s -> %s%s",
+                strategy.name,
+                window.kind.value.lower(),
+                short.instrument,
+                current.strike,
+                target,
+                "" if delivery.delivered else f" -- not delivered: {delivery.refusal}",
+            )
+        if changed:
+            memory["attempted"] = sorted(attempted)
+            await self._update_memory(subscription, strategy, HEDGE_KEY, memory, now)
+
+    async def _finish_hedge_rolls(self) -> None:
+        """A replacement hedge that is on takes the old one off -- the
+        reference's NEW_HEDGE_FILLED to OLD_HEDGE_EXIT step."""
+        for client in self.engine.parts.clients.values():
+            trades = list(client.book.live_trades())
+            by_id = {trade.id: trade for trade in trades}
+            for trade in trades:
+                old_id = trade.relationships.hedge_trade_id_to_square_off
+                if old_id is None or trade.state is not TradeState.ACTIVE:
+                    continue
+                old = by_id.get(old_id)
+                if old is None or not old.is_active or old.exiting_for is not None:
+                    continue
+                await client.square_off.request(old, TradeExitReason.HEDGE_REPLACE)
 
     # -- breakout watches --------------------------------------------------
 

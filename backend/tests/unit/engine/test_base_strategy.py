@@ -71,6 +71,7 @@ class FakeEnvironment:
     day_percent: int = 100
     event_percent: int = 100
     monthly_week: bool = False
+    universe_members: tuple[str, ...] = ()
     memory: Mapping[str, Any] = field(default_factory=dict)
 
     @property
@@ -137,6 +138,8 @@ class FakeEnvironment:
                 lot_size=1,
                 tick_size=Decimal("0.05"),
             )
+        if not symbol.startswith("NIFTY26OCT") or symbol[-2:] not in ("CE", "PE"):
+            return None
         strike = Decimal(symbol[len("NIFTY26OCT") : -2])
         return Instrument(
             id=instrument,
@@ -189,6 +192,9 @@ class FakeEnvironment:
 
     def indicator_direction(self) -> Direction | None:
         return None
+
+    def universe(self, universe_id: int) -> tuple[str, ...]:
+        return self.universe_members
 
     def day_allocation_percent(self, strategy: str) -> int:
         return self.day_percent
@@ -622,3 +628,30 @@ class TestBreakout:
         )
         assert outcome.retry_at == dt.datetime(2026, 10, 15, 9, 45, tzinfo=IST)
         assert not outcome.alert
+
+
+class TestEquity:
+    def test_each_universe_member_is_sized_and_entered_one_way(self, env: FakeEnvironment) -> None:
+        from garuda.engine.vocabulary import EquitySizingModel
+
+        env.universe_members = ("NIFTY", "CASHONLY")
+        outcome = evaluate(
+            env,
+            layers=(base(),),
+            capital="300000",
+            trade_mode=TradeMode.EQUITY,
+            universe_id=7,
+            direction_provider_type="FIXED",
+            direction_provider_params={"direction": "LONG"},
+            equity_sizing_model=EquitySizingModel.MAX_POSITIONS_EQUAL_SPLIT,
+            max_active_positions=3,
+        )
+        assert outcome.entered, outcome.stood_down
+        (signal,) = outcome.signals  # CASHONLY is not in the master
+        assert signal.instrument == CASH
+        assert signal.quantity == 1000  # 300000 / 3 / premium 100
+        assert signal.product is ProductType.MIS
+
+    def test_without_a_provider_it_does_not_trade(self, env: FakeEnvironment) -> None:
+        outcome = evaluate(env, layers=(base(),), trade_mode=TradeMode.EQUITY)
+        assert "provider" in (outcome.stood_down or "")

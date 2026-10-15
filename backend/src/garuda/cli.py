@@ -71,6 +71,7 @@ from garuda.persistence.api_stats_store import ApiStatsStore
 from garuda.persistence.breakout_watch_store import BreakoutWatchStore
 from garuda.persistence.derived_bars import DerivedBarStore
 from garuda.persistence.engine import create_engine, create_session_factory
+from garuda.persistence.evaluation_log_store import EvaluationLogStore
 from garuda.persistence.secrets import SecretBox
 from garuda.persistence.seed import load_seed
 from garuda.persistence.single_engine import SingleEngineLock
@@ -300,6 +301,11 @@ async def _serve_with_engine(settings: Settings, host: str | None, port: int | N
                     reload_sessions=reload_sessions,
                     reload_protection=reload_protection,
                     reload_strategies=reload_strategies,
+                    strategy_monitor=(
+                        (lambda: runtime.strategies.snapshot())
+                        if runtime is not None and runtime.strategies is not None
+                        else None
+                    ),
                     reload_limits=reload_limits,
                     reload_kill_switches=reload_kill_switches,
                     validate_strategy=validate_strategy,
@@ -620,6 +626,7 @@ def _strategy_loop(assembled: _Assembled, clock: Clock) -> StrategyLoop | None:
         alerts=engine.parts.alerts,
         states=StrategyStateStore(assembled.sessions),
         watch_store=BreakoutWatchStore(assembled.sessions),
+        evaluation_log=EvaluationLogStore(assembled.sessions),
         event_days=assembled.event_days,
         watchlist=watchlist,
         synthetics=SyntheticPublisher(sources=_synthetics(assembled)),

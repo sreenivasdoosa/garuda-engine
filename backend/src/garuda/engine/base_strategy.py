@@ -49,6 +49,7 @@ from garuda.engine.config import ResolvedConfig
 from garuda.engine.daycondition import DayCondition
 from garuda.engine.direction_providers import Answer, DirectionContext, Side, applicable
 from garuda.engine.direction_providers import build as build_provider
+from garuda.engine.equity import equity_quantity
 from garuda.engine.exit_timing import ExitTiming, exit_at
 from garuda.engine.hedging import hedge_strike
 from garuda.engine.lots import (
@@ -74,6 +75,7 @@ from garuda.engine.vocabulary import (
     BreakoutSide,
     BreakoutTriggerMode,
     BreakoutWatchType,
+    EquitySizingModel,
     ExpiryType,
     OrderFillEscalationMode,
     StrategyProduct,
@@ -128,6 +130,7 @@ class StrategyEnvironment(DirectionContext, Protocol):
     def straddle_max_diff(self, underlying: InstrumentId) -> Decimal | None: ...
     def near_future(self, underlying: InstrumentId) -> InstrumentId | None: ...
     def option_chain_levels(self, underlying: InstrumentId) -> int: ...
+    def universe(self, universe_id: int) -> tuple[str, ...]: ...
     def day_allocation_percent(self, strategy: str) -> int: ...
     def event_day_percent(self, strategy: str, exchange: str) -> int: ...
 
@@ -306,6 +309,8 @@ class BaseStrategy:
         notes: list[str] = []
         try:
             self.gate(ev)
+            if ev.runtime.definition.trade_mode is TradeMode.EQUITY:
+                return self.equity_entries(ev, state, notes)
             if ev.config.flag("breakout_enabled"):
                 return self.arm(ev, state, notes)
             side = self.direction(ev)
@@ -355,6 +360,105 @@ class BaseStrategy:
         if ev.exit_gate is None:
             return None
         return ev.exit_gate(trade)
+
+    # -- equity ------------------------------------------------------------
+
+    def equity_entries(self, ev: Evaluation, state: StrategyState, notes: list[str]) -> Outcome:
+        """The reference's `EquityStrategyEvaluator`: one direction from the
+        provider for the whole universe, then each member sized by the
+        equity model, shorts only for intraday, up to the position cap."""
+        env, runtime, config = ev.env, ev.runtime, ev.config
+        definition = runtime.definition
+        if not definition.direction_provider_type:
+            raise StandDown("an equity strategy trades only on a provider's direction")
+        params = definition.direction_provider_params
+        answer = build_provider(definition.direction_provider_type, params).decide(env)
+        side = applicable(answer.side, params, provider_name=definition.direction_provider_type)
+        if side is None or side is Side.BOTH:
+            raise StandDown(f"no direction: {answer.because}")
+        direction = Direction(side.value)
+        notes.append(f"direction {direction.value}")
+        if direction is Direction.SHORT and definition.product is not StrategyProduct.INTRADAY:
+            raise StandDown("a short equity entry is intraday only")
+        model = definition.equity_sizing_model or EquitySizingModel.MAX_POSITIONS_EQUAL_SPLIT
+        members = env.universe(definition.universe_id) if definition.universe_id else ()
+        symbols = members or (definition.underlying_symbol,)
+        capital = runtime.capital or Decimal(0)
+        stop = config.percent("sl_percentage")
+        cap = runtime.max_active_positions
+        product = _product(definition.product, TradeMode.EQUITY)
+        prefix = (
+            ""
+            if definition.product is StrategyProduct.INTRADAY
+            else f"{env.trading_day.isoformat()}|"
+        )
+        entry_rules = self.entry_rules(ev)
+        base = _correlation(ev)
+        signals: list[TradeSignal] = []
+        for symbol in symbols:
+            if model is EquitySizingModel.MAX_POSITIONS_EQUAL_SPLIT and cap and len(signals) >= cap:
+                break
+            instrument_id = InstrumentId(f"{definition.exchange}:{symbol}")
+            instrument = env.instrument(instrument_id)
+            tick = env.quote(instrument_id)
+            if instrument is None or tick is None or tick.last_price.amount <= 0:
+                continue
+            price = tick.last_price.amount
+            stop_price = None
+            if stop is not None and stop > 0:
+                factor = (100 - stop) / 100 if direction is Direction.LONG else (100 + stop) / 100
+                stop_price = price * factor
+            quantity = equity_quantity(
+                model,
+                product=definition.product,
+                capital=capital,
+                leverage=runtime.leverage,
+                price=price,
+                fixed_amount=definition.fixed_amount_per_stock,
+                max_positions=cap,
+                risk_percent=definition.max_risk_pct_per_trade,
+                stop_price=stop_price,
+            )
+            if quantity <= 0:
+                continue
+            number = len(signals) + 1
+            signals.append(
+                TradeSignal(
+                    id=_signal_id(definition.name, env.trading_day, ev.tranche, base, number, 0),
+                    trading_client=runtime.subscription.trading_client_id,
+                    instrument=instrument_id,
+                    strategy=definition.name,
+                    signal_type=(
+                        SignalType.LONG_ENTRY
+                        if direction is Direction.LONG
+                        else SignalType.SHORT_ENTRY
+                    ),
+                    product=product,
+                    quantity=quantity,
+                    generated_at=env.now,
+                    quantity_per_lot=instrument.lot_size,
+                    contract_multiplier=instrument.multiplier,
+                    entry=entry_rules,
+                    protection=protection_from(
+                        config, direction=direction, instrument=instrument, entry=tick.last_price
+                    ),
+                    relationships=Relationships(leg_role=LegRole.MAIN),
+                    group=f"{prefix}Tranch-{ev.tranche}|Slice-{number}",
+                    tranche=ev.tranche,
+                    slice=number,
+                    is_paper=runtime.subscription.is_paper_trading,
+                    remarks=f"equity entry [{direction.value}] - {symbol}",
+                )
+            )
+        if not signals:
+            return Outcome(
+                state=state,
+                stood_down=f"no member of {len(symbols)} sized to a share",
+                alert=True,
+                notes=tuple(notes),
+            )
+        after = state.tranche_signalled(ev.tranche, env.now, signals=len(signals), lots=0)
+        return Outcome(state=after, signals=tuple(signals), legs=1, notes=tuple(notes))
 
     # -- breakout ----------------------------------------------------------
 

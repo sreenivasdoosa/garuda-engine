@@ -327,6 +327,11 @@ class LiveEnvironment:
     #: The strategy's indicator direction rules, evaluated in a rule
     #: context. None when it has none.
     indicator: Callable[[], Direction | None] | None = None
+    #: Stock universes by id, as loaded with the strategies.
+    universes: Mapping[int, tuple[str, ...]] = field(default_factory=dict)
+
+    def universe(self, universe_id: int) -> tuple[str, ...]:
+        return self.universes.get(universe_id, ())
 
     def synthetic(self, kind: str) -> Decimal | None:
         quote = self.market.hub.latest(synthetic_id(kind, self.underlying))

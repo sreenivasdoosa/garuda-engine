@@ -20,7 +20,7 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -116,14 +116,24 @@ class Loaded:
     subscriptions: tuple[Subscription, ...]
     #: Strategy name to the reason it was left out.
     refused: Mapping[str, str]
+    #: Active stock universes by id: their member symbols, in order.
+    universes: Mapping[int, tuple[str, ...]] = field(default_factory=dict)
 
     def underlyings(self) -> set[InstrumentId]:
         """What the feed must quote for the subscribed strategies."""
-        return {
-            self.strategies[sub.strategy].underlying
-            for sub in self.subscriptions
-            if sub.strategy in self.strategies
-        }
+        wanted: set[InstrumentId] = set()
+        for sub in self.subscriptions:
+            strategy = self.strategies.get(sub.strategy)
+            if strategy is None:
+                continue
+            wanted.add(strategy.underlying)
+            universe = strategy.definition.universe_id
+            if strategy.definition.is_equity and universe is not None:
+                wanted.update(
+                    InstrumentId(f"{strategy.definition.exchange}:{symbol}")
+                    for symbol in self.universes.get(universe, ())
+                )
+        return wanted
 
     def subscribers(self, strategy: str) -> tuple[Subscription, ...]:
         return tuple(sub for sub in self.subscriptions if sub.strategy == strategy)
@@ -140,7 +150,20 @@ async def load_strategies(sessions: async_sessionmaker[AsyncSession]) -> Loaded:
         rules = await uow.repositories.strategy_indicator_rules.all()
         allocations = await uow.repositories.strategy_days_allocation.all()
         subscriptions = await uow.repositories.subscriptions.all()
-    return assemble(definitions, configs, rules, subscriptions, allocations)
+        universes = await uow.repositories.stock_universes.all()
+        members = await uow.repositories.stock_universe_members.all()
+    loaded = assemble(definitions, configs, rules, subscriptions, allocations)
+    active = {row.universe_id for row in universes if row.is_active}
+    by_universe: dict[int, list[str]] = {}
+    for member in sorted(members, key=lambda m: (m.universe_id, m.symbol)):
+        if member.universe_id in active:
+            by_universe.setdefault(member.universe_id, []).append(member.symbol)
+    return Loaded(
+        strategies=loaded.strategies,
+        subscriptions=loaded.subscriptions,
+        refused=loaded.refused,
+        universes={key: tuple(value) for key, value in by_universe.items()},
+    )
 
 
 def assemble(

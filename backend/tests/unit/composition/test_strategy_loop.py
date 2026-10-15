@@ -528,3 +528,85 @@ class TestAfterExits:
         re_entries = [w for w in loop.watches() if "RE1" in w.key]
         assert len(re_entries) == 1
         assert re_entries[0].below == Decimal(120)
+
+
+class TestHedgeWindows:
+    async def test_in_the_morning_window_a_hedge_moves_out_and_the_old_one_comes_off(
+        self,
+        engine: Engine,
+        registry: InstrumentRegistry,
+        venue: Exchange,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from garuda.domain.enums import Direction, ProductType
+        from garuda.domain.intent import LegRole
+        from garuda.domain.trade import Relationships, Trade, TradeId
+        from garuda.domain.trade_state import TradeExitReason, TradeState
+
+        loaded = assemble(
+            [
+                definition(
+                    product="POSITIONAL",
+                    hedge_replace_enabled=True,
+                    hedge_distance_percentage_intraday=Decimal(4),
+                )
+            ],
+            [base_config()],
+            [],
+            [subscription()],
+        )
+
+        def leg(
+            number: int, instrument: str, direction: Direction, role: LegRole, **extra: object
+        ) -> Trade:
+            return Trade(
+                id=TradeId(f"t-{number}"),
+                trading_client=APPA,
+                instrument=InstrumentId(instrument),
+                strategy="straddle",
+                direction=direction,
+                product=ProductType.NRML,
+                quantity=75,
+                filled_quantity=75,
+                state=TradeState.ACTIVE,
+                entry=rupees("100"),
+                relationships=Relationships(hedge_correlation_id="h-1", leg_role=role, **extra),  # type: ignore[arg-type]
+                tranche=1,
+                started_at=at(9, 0),
+            )
+
+        short = leg(1, "NFO:N25000CE", Direction.SHORT, LegRole.MAIN)
+        old_hedge = leg(2, "NFO:N25100CE", Direction.LONG, LegRole.HEDGE)
+        book = engine.parts.clients[APPA].book
+        monkeypatch.setattr(book, "trades_for", lambda strategy, group=None: [short, old_hedge])
+
+        clock = ReplayClock(at(9, 20))
+        loop = loop_for(engine, registry, venue, clock, loaded)
+        await prices(engine, clock.now())
+        await loop.run_once()
+
+        (replacement,) = book.signals("straddle")
+        assert replacement.instrument == InstrumentId("NFO:N26000CE")  # 4% of 25000 out
+        assert replacement.relationships.hedge_trade_id_to_square_off == old_hedge.id
+
+        # The replacement fills; the old hedge is asked to come off.
+        new_hedge = leg(
+            3,
+            "NFO:N26000CE",
+            Direction.LONG,
+            LegRole.HEDGE,
+            hedge_trade_id_to_square_off=old_hedge.id,
+        )
+        requested: list[tuple[str, TradeExitReason]] = []
+
+        async def request(
+            trade: Trade, reason: TradeExitReason, *, by_operator: bool = False
+        ) -> bool:
+            requested.append((trade.id.value, reason))
+            return True
+
+        monkeypatch.setattr(book, "live_trades", lambda: [short, old_hedge, new_hedge])
+        monkeypatch.setattr(engine.parts.clients[APPA].square_off, "request", request)
+        clock._now = at(9, 21)
+        await loop.run_once()
+        assert requested == [("t-2", TradeExitReason.HEDGE_REPLACE)]
