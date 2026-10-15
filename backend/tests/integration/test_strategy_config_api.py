@@ -255,7 +255,8 @@ class TestTellingTheEngine:
     async def test_the_catalog_says_what_the_engine_reads(self, client: httpx.AsyncClient) -> None:
         body = (await client.get("/api/strategy-config-tree/catalog")).json()["data"]
         assert body["fields"]["slPercentage"]["readByEngine"] is True
-        assert body["fields"]["strikeType"]["readByEngine"] is False
+        assert body["fields"]["strikeType"]["readByEngine"] is True
+        assert body["fields"]["breakoutRangeType"]["readByEngine"] is False
         assert body["fields"]["maxTranches"]["baseOnly"] is True
         assert "MoneyNess" in body["fields"]["strikeType"]["choices"]
         assert any(g["name"] == "Trailing" for g in body["groups"])

@@ -1,50 +1,65 @@
 """Running the strategies.
 
-The last join. On a cadence, for every active subscription and every tranche
-of it that is still open, build a view of the moment, evaluate, and deliver
-whatever comes out.
+`STRATEGY_ENGINE.md` §3. Every second the loop does its housekeeping -- keep
+the feed quoting what the strategies need, price the synthetic series, bring
+candle history up to date -- and then asks the day's tranche schedule what is
+due. Each due tranche is evaluated for every account subscribed to it,
+through the pipeline in `garuda.engine.base_strategy`, and whatever comes out
+is delivered to that account's book.
 
-**Paced by what it watches, not by a timer** in the end (the withdrawn rules design;
-§7); until rules declare their dependencies this sweeps on a short interval,
-which for inputs published about once a second is the same thing at a slightly
-higher cost.
+Three things this owns that nothing below it can:
 
-Two things this owns that nothing below it can:
+* **The day.** At the first pass of a trading day it reads the strategy
+  state rows for that day -- a restart at 13:05 knows the 13:00 tranche went
+  on -- and builds the tranche schedule. A new day rebuilds both.
+* **Writing state.** A tranche signalled is written at once; counters are
+  flushed every thirty seconds, the reference's rule.
+* **Containment.** One strategy that fails must not stop the others.
+  Trade management is still running positions that are already on, and a
+  strategy raising on the way in is no reason to stop looking after them.
 
-* **The tranche ledger**, restored at day-init so a restart at 13:05 does not
-  re-enter a tranche that fired at 13:00.
-* **Containment.** One strategy that fails must not stop the sweep. Trade
-  management is still running positions that are already on, and a strategy
-  raising on the way in is no reason to stop looking after them.
+Evaluations for one subscription never overlap: tranches due together are
+evaluated one after another, which is the reference's per-subscription
+serialisation without its striped locks.
 """
 
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field, replace
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from dataclasses import replace as dataclass_replace
 from datetime import date, datetime, timedelta
+from typing import Protocol
 
 from garuda.alerts.manager import AlertManager
+from garuda.capital.event_days import NO_EVENT_DAYS, EventDays
 from garuda.composition.derived_series import DerivedSeriesRecorder
-from garuda.composition.engine import ClientParts, Engine
+from garuda.composition.engine import Engine
 from garuda.composition.instruments import SymbolBook
 from garuda.composition.routing import deliver
-from garuda.composition.strategies import Loaded, Strategy
+from garuda.composition.strategies import NOTHING_LOADED, Loaded, Strategy, Subscription
 from garuda.composition.strategy_context import (
     ChainOnly,
     LiveContext,
+    LiveEnvironment,
     MarketView,
     day_conditions_for,
 )
 from garuda.composition.watchlist import Watchlist
 from garuda.domain.alert import EntityType
+from garuda.domain.client import TradingClientId
 from garuda.domain.exchange import Exchange
 from garuda.domain.instrument import InstrumentId, canonical_symbol
-from garuda.domain.trade import Trade
+from garuda.engine.base_strategy import BaseStrategy, Evaluation, Outcome
+from garuda.engine.config import ResolvedConfig
 from garuda.engine.daycondition import DayCondition
+from garuda.engine.rules.evaluate import RuleRunner, blocking_reason
+from garuda.engine.runtime_config import SubscriptionTerms
+from garuda.engine.schedule import Slot, TrancheSchedule
 from garuda.engine.signals import SignalBatch
-from garuda.engine.strategy import Result, StrategyRunner, StrategySubscription
-from garuda.engine.tranches import TrancheLedger
+from garuda.engine.strategy_state import StrategyState
+from garuda.engine.vocabulary import StrategyStatus
 from garuda.marketdata.synthetics import (
     ImpliedVolatility,
     SyntheticPublisher,
@@ -56,15 +71,32 @@ from garuda.protocols.feed import TicksReceived
 
 logger = logging.getLogger(__name__)
 
-#: How often the strategies are swept. Short enough that a condition met at
-#: 13:00:00 is acted on by 13:00:01, which is well inside the resolution
-#: anything here is configured at.
+#: How often the loop looks at the clock.
 DEFAULT_INTERVAL = timedelta(seconds=1)
+#: How often counters that changed without a critical change are written.
+STATE_FLUSH_INTERVAL = timedelta(seconds=30)
+
+
+class StateStore(Protocol):
+    async def load_day(self, trading_day: date) -> list[StrategyState]: ...
+    async def save(self, state: StrategyState, *, now: datetime) -> None: ...
+
+
+@dataclass(frozen=True, slots=True)
+class Evaluated:
+    """One subscription's evaluation of one tranche, for the log and tests."""
+
+    strategy: str
+    trading_client: TradingClientId
+    tranche: int
+    outcome: Outcome
+    delivered: bool = False
+    refusal: str | None = None
 
 
 @dataclass
 class StrategyLoop:
-    """Every subscribed strategy, evaluated until the day ends."""
+    """Every subscribed strategy, evaluated as its tranches come due."""
 
     engine: Engine
     loaded: Loaded
@@ -72,52 +104,63 @@ class StrategyLoop:
     venue: Exchange
     clock: Clock
     alerts: AlertManager
-    runner: StrategyRunner
-    ledger: TrancheLedger
-    #: Keeps the feed quoting what the strategies need. None when nothing is
-    #: subscribing, which is a test rather than a running engine.
+    #: Where strategy state is kept. None keeps it in memory only, which is a
+    #: test rather than a running engine.
+    states: StateStore | None = None
+    event_days: EventDays = NO_EVENT_DAYS
+    pipeline: BaseStrategy = field(default_factory=BaseStrategy)
     watchlist: Watchlist | None = None
-    #: Prices the series nobody publishes. None when none are declared.
     synthetics: SyntheticPublisher | None = None
-    #: Folds those synthetics into minute bars and keeps them, so the
-    #: Console can chart a past the feed does not carry. None means the
-    #: series are published and not stored, which is what an install with
-    #: nothing switched on gets.
     derived: DerivedSeriesRecorder | None = None
-    #: The curated symbols, swappable. Held so the loop can notice that the
-    #: configuration changed and rebuild what depends on it -- which is what
-    #: makes turning a series on take effect without a restart.
     symbols: SymbolBook | None = None
     _symbols_version: int = -1
     interval: timedelta = DEFAULT_INTERVAL
+    rules: RuleRunner = field(default_factory=RuleRunner)
     _stopping: bool = False
-    #: Strategies that raised on the way in, so the alert is raised once and
-    #: not once a second.
+    _day: date | None = None
+    _schedule: TrancheSchedule | None = None
+    _state: dict[tuple[TradingClientId, str], StrategyState] = field(default_factory=dict)
+    _unsaved: set[tuple[TradingClientId, str]] = field(default_factory=set)
+    _last_flush: datetime | None = None
+    #: Keys of alerts already raised, so one is raised once and not each second.
     _reported: set[str] = field(default_factory=set)
+
+    # -- status ------------------------------------------------------------
 
     @property
     def trading_day(self) -> date:
-        return self.ledger.trading_day
+        return self._day or self.venue.trading_day_for(self.clock.now())
 
-    async def run_once(self) -> list[Result]:
-        """One sweep of everything subscribed.
+    @property
+    def schedule(self) -> TrancheSchedule | None:
+        return self._schedule
 
-        History first, so a rule reading candles sees what the last sweep asked
-        for. A rule cannot wait on a broker, so this is where the waiting
-        happens.
-        """
+    @property
+    def tranches_pending(self) -> int:
+        return len(self._schedule.pending) if self._schedule else 0
+
+    @property
+    def tranches_today(self) -> int:
+        return len(self._schedule.slots) if self._schedule else 0
+
+    def state_of(self, client: TradingClientId, strategy: str) -> StrategyState | None:
+        return self._state.get((client, strategy))
+
+    # -- running -----------------------------------------------------------
+
+    async def run_once(self) -> list[Evaluated]:
         now = self.clock.now()
-        # Before the watchlist, so a series enabled a moment ago has its chain
-        # subscribed in the same sweep rather than the next one.
         self._refresh_series()
         await self._watch()
         await self._publish_synthetics(now)
         await self._refresh_history()
-        self.ledger.expire_due(now)
+        await self._roll(now)
 
-        results: list[Result] = []
-        for subscription in self.loaded.subscriptions:
-            results.extend(await self._sweep(subscription, now))
+        results: list[Evaluated] = []
+        if self._schedule is not None:
+            for slot in self._schedule.due(now):
+                results.extend(await self._fire(slot, now))
+        await self._flush(now)
         return results
 
     async def run_forever(self) -> None:
@@ -126,10 +169,7 @@ class StrategyLoop:
             try:
                 await self.run_once()
             except Exception:
-                # The sweep itself came apart, which is different from one
-                # strategy failing. Reported and retried: positions already on
-                # are still being managed, and stopping helps nobody.
-                logger.exception("the strategy sweep failed")
+                logger.exception("the strategy loop pass failed")
             await self.clock.sleep(self.interval)
 
     def stop(self) -> None:
@@ -142,28 +182,274 @@ class StrategyLoop:
     def replace(self, loaded: Loaded) -> None:
         """Take a fresh reading of the strategy tables, whole.
 
-        Read on every sweep rather than captured, so a subscription made at
-        ten is swept at ten. The tranche ledger is keyed by strategy, account,
-        tranche and day, not by this object, so a tranche that fired this
-        morning stays fired across the swap.
+        The schedule is rebuilt for the new definitions, keeping what has
+        already fired today. A strategy that just became ACTIVE with
+        `catch_up_missed_tranches` has its missed tranches re-timed from now,
+        a minute apart; any it already signalled stay signalled.
         """
-        before = len(self.loaded.subscriptions)
+        before = self.loaded
         self.loaded = loaded
         logger.info(
             "strategies reloaded: %d strategies, %d subscriptions (was %d), %d left out",
             len(loaded.strategies),
             len(loaded.subscriptions),
-            before,
+            len(before.subscriptions),
             len(loaded.refused),
         )
+        if self._schedule is None or self._day is None:
+            return
+        now = self.clock.now()
+        fired = {slot.key for slot in self._schedule.fired}
+        rebuilt = self._build_schedule(self._day, now)
+        for index, slot in enumerate(rebuilt.slots):
+            if slot.key in fired:
+                rebuilt.slots[index] = dataclass_replace(slot, fired=True, missed=False)
+        for name, strategy in loaded.strategies.items():
+            was = before.strategies.get(name)
+            reactivated = strategy.definition.status is StrategyStatus.ACTIVE and (
+                was is None or was.definition.status is not StrategyStatus.ACTIVE
+            )
+            if reactivated and strategy.definition.catch_up_missed_tranches and was is not None:
+                retimed = rebuilt.catch_up(name, now)
+                if retimed:
+                    logger.info(
+                        "%s reactivated: catching up tranche(s) %s",
+                        name,
+                        ", ".join(str(slot.tranche) for slot in retimed),
+                    )
+        self._schedule = rebuilt
+
+    # -- the day -----------------------------------------------------------
+
+    async def _roll(self, now: datetime) -> None:
+        day = self.venue.trading_day_for(now)
+        if day == self._day:
+            return
+        await self._flush(now, force=True)
+        self._state = {}
+        self._unsaved = set()
+        if self.states is not None:
+            for state in await self.states.load_day(day):
+                self._state[(state.trading_client, state.strategy)] = state
+        self._day = day
+        self._schedule = self._build_schedule(day, now)
+        logger.info(
+            "strategy day %s: %d tranche(s) scheduled, %d already past, %d without a time",
+            day,
+            len(self._schedule.slots),
+            len(self._schedule.missed),
+            len(self._schedule.unscheduled),
+        )
+
+    def _build_schedule(self, day: date, now: datetime) -> TrancheSchedule:
+        if not self.venue.calendar.is_trading_day(day):
+            return TrancheSchedule(day)
+        timings: dict[str, list[tuple[int, str | None, str | None]]] = {}
+        for name, strategy in self.loaded.strategies.items():
+            if not self.loaded.subscribers(name):
+                continue
+            if not strategy.definition.scheduled_trigger:
+                continue
+            conditions = self._conditions(strategy, day)
+            runtime = strategy.runtime(_SCHEDULING_TERMS, conditions)
+            timings[name] = [
+                (
+                    number,
+                    runtime.tranche(number).text("tranch_timing"),
+                    runtime.tranche(number).text("tranch_cutoff_time"),
+                )
+                for number in runtime.tranche_numbers
+            ]
+        return TrancheSchedule.build(day, self.venue.timezone, timings, now=now)
+
+    def _conditions(self, strategy: Strategy, day: date) -> frozenset[DayCondition]:
+        return day_conditions_for(
+            strategy.underlying, day, self.market.registry(), self.venue.calendar
+        )
+
+    # -- one tranche -------------------------------------------------------
+
+    async def _fire(self, slot: Slot, now: datetime) -> list[Evaluated]:
+        strategy = self.loaded.strategies.get(slot.strategy)
+        if strategy is None:
+            return []
+        results: list[Evaluated] = []
+        for subscription in self.loaded.subscribers(slot.strategy):
+            try:
+                results.append(await self._evaluate(strategy, subscription, slot.tranche, now))
+            except Exception as error:
+                await self._failed(strategy.name, subscription, slot.tranche, error)
+        return results
+
+    async def _evaluate(
+        self, strategy: Strategy, subscription: Subscription, tranche: int, now: datetime
+    ) -> Evaluated:
+        day = self.trading_day
+        key = (subscription.trading_client, strategy.name)
+        state = self._state.get(key) or StrategyState(
+            trading_client=subscription.trading_client, strategy=strategy.name, trading_day=day
+        )
+        if not self.venue.is_open(now):
+            outcome = Outcome(state=state, stood_down=f"{self.venue.code} is not open")
+            return Evaluated(strategy.name, subscription.trading_client, tranche, outcome)
+
+        conditions = self._conditions(strategy, day)
+        runtime = strategy.runtime(subscription.terms, conditions)
+        env = LiveEnvironment(
+            market=self.market,
+            venue=self.venue,
+            now=now,
+            trading_day=day,
+            conditions=conditions,
+            day_allocation=strategy.day_allocation,
+            event_days=self.event_days,
+            memory=state.data,
+        )
+        evaluation = Evaluation(
+            runtime=runtime,
+            state=state,
+            env=env,
+            tranche=tranche,
+            entry_gate=self._entry_gate(strategy, subscription, tranche, conditions, now),
+        )
+        outcome = self.pipeline.on_scheduled(evaluation)
+        self._remember(key, state, outcome.state, now)
+
+        delivered, refusal = False, None
+        if outcome.entered:
+            delivery = await deliver(
+                self.engine, SignalBatch(signals=outcome.signals, legs=outcome.legs)
+            )
+            delivered, refusal = delivery.delivered, delivery.refusal
+            logger.info(
+                "%s tranche %d for %s: %d signal(s), %d lot(s)%s",
+                strategy.name,
+                tranche,
+                subscription.trading_client.value,
+                len(outcome.signals),
+                outcome.lots,
+                "" if delivered else f" -- not delivered: {refusal}",
+            )
+        else:
+            logger.info(
+                "%s tranche %d for %s stood down: %s",
+                strategy.name,
+                tranche,
+                subscription.trading_client.value,
+                outcome.stood_down,
+            )
+            if outcome.alert:
+                await self._skipped(strategy.name, subscription, tranche, outcome.stood_down or "")
+        await self._persist_if_critical(key, state, outcome.state, now)
+        return Evaluated(
+            strategy.name, subscription.trading_client, tranche, outcome, delivered, refusal
+        )
+
+    def _entry_gate(
+        self,
+        strategy: Strategy,
+        subscription: Subscription,
+        tranche: int,
+        conditions: frozenset[DayCondition],
+        now: datetime,
+    ) -> Callable[[ResolvedConfig], str | None] | None:
+        rules = strategy.entry_rules
+        client = self.engine.parts.clients.get(subscription.trading_client)
+        if rules is None or client is None:
+            return None
+
+        def blocked(config: ResolvedConfig) -> str | None:
+            context = LiveContext(
+                market=self.market,
+                book=client.book,
+                now=now,
+                trading_day=self.trading_day,
+                strategy=strategy.name,
+                trading_client=subscription.trading_client,
+                tranche=tranche,
+                config=config,
+                underlying=strategy.underlying,
+                day_conditions=conditions,
+            )
+            return blocking_reason(self.rules.evaluate(rules, context, label=strategy.name))
+
+        return blocked
+
+    # -- state -------------------------------------------------------------
+
+    def _remember(
+        self,
+        key: tuple[TradingClientId, str],
+        before: StrategyState,
+        after: StrategyState,
+        now: datetime,
+    ) -> None:
+        del before, now
+        self._state[key] = after
+        self._unsaved.add(key)
+
+    async def _persist_if_critical(
+        self,
+        key: tuple[TradingClientId, str],
+        before: StrategyState,
+        after: StrategyState,
+        now: datetime,
+    ) -> None:
+        if self.states is None or not after.critical_change(before):
+            return
+        await self.states.save(after, now=now)
+        self._unsaved.discard(key)
+
+    async def _flush(self, now: datetime, *, force: bool = False) -> None:
+        if self.states is None or not self._unsaved:
+            self._last_flush = self._last_flush or now
+            return
+        if not force and self._last_flush and now - self._last_flush < STATE_FLUSH_INTERVAL:
+            return
+        for key in list(self._unsaved):
+            state = self._state.get(key)
+            if state is None:
+                continue
+            try:
+                await self.states.save(state, now=now)
+                self._unsaved.discard(key)
+            except Exception:
+                logger.exception("could not write strategy state for %s %s", *key)
+        self._last_flush = now
+
+    # -- reporting ---------------------------------------------------------
+
+    async def _skipped(
+        self, strategy: str, subscription: Subscription, tranche: int, because: str
+    ) -> None:
+        key = f"tranche-skipped:{strategy}:{tranche}:{subscription.trading_client.value}"
+        await self.alerts.warning(
+            EntityType.STRATEGY,
+            strategy,
+            "tranche-skipped",
+            f"{strategy} tranche {tranche} did not enter for "
+            f"{subscription.trading_client.value}: {because}",
+            key=key,
+        )
+
+    async def _failed(
+        self, strategy: str, subscription: Subscription, tranche: int, error: Exception
+    ) -> None:
+        logger.exception("%s tranche %d could not be evaluated", strategy, tranche)
+        await self.alerts.critical(
+            EntityType.STRATEGY,
+            strategy,
+            "strategy-evaluation",
+            f"{strategy} tranche {tranche} could not be evaluated for "
+            f"{subscription.trading_client.value} ({type(error).__name__}: {error}). It did "
+            "not enter; positions already on are still managed.",
+            key=f"strategy-evaluation:{strategy}:{tranche}",
+        )
+
+    # -- housekeeping ------------------------------------------------------
 
     async def _watch(self) -> None:
-        """Keep the feed quoting what the strategies need. Never raises.
-
-        Before the history refresh and the sweep, because a chain subscribed
-        this second is quoted for the next one — and a selector choosing on
-        premium can only see what is quoted.
-        """
+        """Keep the feed quoting what the strategies need. Never raises."""
         if self.watchlist is None:
             return
         held = {
@@ -173,7 +459,7 @@ class StrategyLoop:
         }
         try:
             await self.watchlist.ensure(
-                self.loaded.subscriptions,
+                self.loaded.underlyings(),
                 self.market.registry(),
                 self.trading_day,
                 held=held,
@@ -255,121 +541,10 @@ class StrategyLoop:
         except Exception:
             logger.exception("could not refresh candle history")
 
-    async def _sweep(self, subscription: StrategySubscription, now: datetime) -> list[Result]:
-        strategy = self.loaded.strategies.get(subscription.spec.name)
-        client = self.engine.parts.clients.get(subscription.trading_client)
-        if strategy is None or client is None:
-            return []
 
-        conditions = day_conditions_for(
-            subscription.spec.underlying,
-            self.trading_day,
-            self.market.registry(),
-            self.venue.calendar,
-        )
-
-        results: list[Result] = []
-        await self._consider_exits(subscription, client, conditions)
-        if subscription.winding_down:
-            # The reference's WIND_DOWN: exits above still run, entries do
-            # not. Reported once, not on every sweep.
-            key = f"winding-down:{subscription.spec.name}:{subscription.trading_client}"
-            if key not in self._reported:
-                self._reported.add(key)
-                logger.info(
-                    "%s on %s is winding down: no new entries",
-                    subscription.spec.name,
-                    subscription.trading_client,
-                )
-            return results
-        for tranche in subscription.tranches:
-            state = self.ledger.get(subscription.identity(tranche, now))
-            if state is not None and not state.is_open:
-                continue
-            try:
-                results.append(
-                    await self.runner.evaluate(
-                        subscription,
-                        tranche,
-                        self._context(subscription, strategy, tranche, conditions, client, now=now),
-                    )
-                )
-            except Exception as error:
-                await self._failed(subscription, tranche, error)
-        return results
-
-    def _context(
-        self,
-        subscription: StrategySubscription,
-        strategy: Strategy,
-        tranche: int,
-        conditions: frozenset[DayCondition],
-        client: ClientParts,
-        *,
-        now: datetime | None = None,
-        trade: Trade | None = None,
-    ) -> LiveContext:
-        """One evaluation's view. Built fresh, because it holds a moment."""
-        return LiveContext(
-            market=self.market,
-            book=client.book,
-            now=now or self.clock.now(),
-            trading_day=self.trading_day,
-            strategy=subscription.spec.name,
-            trading_client=subscription.trading_client,
-            tranche=tranche,
-            config=strategy.configuration(tranche, conditions),
-            underlying=subscription.spec.underlying,
-            day_conditions=conditions,
-            trade=trade,
-        )
-
-    async def _consider_exits(
-        self,
-        subscription: StrategySubscription,
-        client: ClientParts,
-        conditions: frozenset[DayCondition],
-    ) -> None:
-        """Whether anything already on should come off early.
-
-        Before the entries, because a strategy that wants out and back in on
-        the same sweep should get out first — and because a position leaving
-        frees the capital the entry will size against.
-        """
-        # Whether there are exit rules at all is the runner's to decide, and
-        # having it in two places is having it disagree in one of them.
-        strategy = self.loaded.strategies.get(subscription.spec.name)
-        if strategy is None:
-            return
-
-        def context_for(trade: Trade) -> LiveContext:
-            return self._context(subscription, strategy, 0, conditions, client, trade=trade)
-
-        runner = replace(self.runner, request_exit=client.square_off.request)
-        try:
-            await runner.consider_exits(
-                subscription, client.book.trades_for(subscription.spec.name), context_for
-            )
-        except Exception:
-            logger.exception("%s: exit rules could not be evaluated", subscription.spec.name)
-
-    async def _failed(
-        self, subscription: StrategySubscription, tranche: int, error: Exception
-    ) -> None:
-        name = subscription.spec.name
-        logger.exception("%s tranche %d could not be evaluated", name, tranche)
-        if name in self._reported:
-            return
-        self._reported.add(name)
-        await self.alerts.critical(
-            EntityType.STRATEGY,
-            name,
-            "strategy-evaluation",
-            f"{name} could not be evaluated for {subscription.trading_client.value} "
-            f"({type(error).__name__}: {error}). It will not enter until this is fixed; "
-            "positions already on are still managed.",
-            key=f"strategy-evaluation:{name}",
-        )
+#: Scheduling reads only the strategy's own configuration, which does not
+#: vary by account; the terms are a placeholder the timing never consults.
+_SCHEDULING_TERMS = SubscriptionTerms(trading_client_id=TradingClientId("schedule"))
 
 
 async def deliver_for(engine: Engine, batch: SignalBatch) -> bool:
@@ -378,3 +553,6 @@ async def deliver_for(engine: Engine, batch: SignalBatch) -> bool:
     if not delivery.delivered and delivery.refusal is not None:
         logger.info("signals not delivered: %s", delivery.refusal)
     return delivery.delivered
+
+
+__all__ = ["NOTHING_LOADED", "Evaluated", "StateStore", "StrategyLoop", "deliver_for"]

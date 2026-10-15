@@ -1,22 +1,18 @@
 """Reading strategies out of the database.
 
-Rows in, runnable subscriptions out. Three tables meet here:
+Rows in, strategies the loop can run out (`STRATEGY_ENGINE.md` §2). Five
+tables meet here:
 
-* **definitions** say what a strategy is — its underlying, its product, its
-  legs;
-* **configuration** says how it behaves today, merged across its scopes;
-* **subscriptions** say which account runs it, with how much capital.
-
-No new tables were needed. Legs live in the definition's combo column, which
-was built for multi-leg strategies and turns out to be the general case — a
-single-leg strategy is a combo with one leg, and ``N = 1`` is not special.
-Rules live in the rules table beside the indicator rules it was named for;
-both names are now narrower than what they hold, and renaming them is a
-migration worth doing on its own rather than in passing.
+* **definitions** -- what a strategy is, parsed through the vocabulary;
+* **configuration** -- how it behaves, as layers merged per column per day;
+* **indicator rules** -- entry, exit and direction trees, when it uses them;
+* **day allocation** -- its share of lots by kind of day;
+* **subscriptions** -- which account runs it, with what capital, paper or live.
 
 **A strategy that cannot be read is left out, by name.** One malformed rule
-tree must not stop the others loading, and a strategy silently absent is worse
-than one reported absent — so every refusal is logged with the strategy on it.
+tree must not stop the others loading, and a strategy silently absent is
+worse than one reported absent -- so every refusal is logged with the
+strategy on it, and the Console refuses the save that would cause it.
 """
 
 from __future__ import annotations
@@ -29,18 +25,16 @@ from decimal import Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from garuda.composition.runtime_config import layer_of
+from garuda.composition.runtime_config import definition_of, layer_of, terms_of
 from garuda.domain.client import TradingClientId
-from garuda.domain.enums import Direction, OrderType, ProductType
 from garuda.domain.errors import DomainError
 from garuda.domain.instrument import InstrumentId
-from garuda.domain.intent import LegRole
-from garuda.domain.money import Currency, Money
-from garuda.engine.config import ConfigLayer, ResolvedConfig, resolve
+from garuda.engine.config import ConfigLayer
 from garuda.engine.daycondition import DayCondition
 from garuda.engine.direction import DirectionRule
 from garuda.engine.direction import build_all as build_directions
-from garuda.engine.rules.compose import AllOf
+from garuda.engine.direction_providers import build as build_provider
+from garuda.engine.lots import FULL_SIZE_EVERY_DAY, DayAllocation
 from garuda.engine.rules.registry import Rule
 from garuda.engine.rules.registry import build as build_rule
 from garuda.engine.rules.translate import (
@@ -49,17 +43,16 @@ from garuda.engine.rules.translate import (
     translate,
     translate_directions,
 )
-from garuda.engine.selectors import build as build_selector
-from garuda.engine.spec import (
-    DirectionProvider,
-    FixedDirection,
-    LegSpec,
-    SideRule,
-    StrategySpec,
+from garuda.engine.runtime_config import (
+    Definition,
+    RuntimeConfig,
+    SubscriptionTerms,
+    build_runtime_config,
 )
-from garuda.engine.strategy import StrategySubscription
+from garuda.engine.vocabulary import CONFIG_CHOICES, StrategyStatus
 from garuda.persistence.models import (
     StrategyConfigRow,
+    StrategyDaysAllocationRow,
     StrategyDefinitionsRow,
     StrategyIndicatorRulesRow,
     SubscriptionsRow,
@@ -68,33 +61,49 @@ from garuda.persistence.uow import UnitOfWork
 
 logger = logging.getLogger(__name__)
 
-#: What a strategy enters when its rules say nothing. An empty conjunction
-#: passes, which is a strategy with no conditions -- a real thing to configure.
-NO_CONDITIONS = AllOf(())
-
 
 @dataclass(frozen=True)
 class Strategy:
     """One strategy, ready to be subscribed to."""
 
-    spec: StrategySpec
-    entry_rules: Rule
-    exit_rules: Rule | None
-    direction_rules: tuple[DirectionRule, ...]
+    definition: Definition
     layers: tuple[ConfigLayer, ...]
-    tranches: tuple[int, ...]
-    #: WIND_DOWN: open positions are managed to their end and nothing new is
-    #: entered. Built rather than dropped, because dropping it would also drop
-    #: the exit rules its open positions still need.
-    winding_down: bool = False
+    entry_rules: Rule | None = None
+    exit_rules: Rule | None = None
+    direction_rules: tuple[DirectionRule, ...] = ()
+    day_allocation: DayAllocation = FULL_SIZE_EVERY_DAY
 
     @property
     def name(self) -> str:
-        return self.spec.name
+        return self.definition.name
 
-    def configuration(self, tranche: int, conditions: frozenset[DayCondition]) -> ResolvedConfig:
+    @property
+    def underlying(self) -> InstrumentId:
+        return InstrumentId(f"{self.definition.exchange}:{self.definition.underlying_symbol}")
 
-        return resolve(self.name, self.layers, tranche=tranche, conditions=conditions)
+    @property
+    def winding_down(self) -> bool:
+        """WIND_DOWN: open positions are managed to their end and nothing new
+        is entered."""
+        return self.definition.status is StrategyStatus.WIND_DOWN
+
+    def runtime(
+        self, terms: SubscriptionTerms, conditions: frozenset[DayCondition]
+    ) -> RuntimeConfig:
+        return build_runtime_config(self.definition, terms, self.layers, conditions=conditions)
+
+
+@dataclass(frozen=True)
+class Subscription:
+    """One account running one strategy."""
+
+    trading_client: TradingClientId
+    strategy: str
+    terms: SubscriptionTerms
+
+    @property
+    def is_paper(self) -> bool:
+        return self.terms.is_paper_trading
 
 
 @dataclass(frozen=True)
@@ -102,22 +111,34 @@ class Loaded:
     """Everything read, and everything refused."""
 
     strategies: Mapping[str, Strategy]
-    subscriptions: tuple[StrategySubscription, ...]
+    subscriptions: tuple[Subscription, ...]
     #: Strategy name to the reason it was left out.
     refused: Mapping[str, str]
 
+    def underlyings(self) -> set[InstrumentId]:
+        """What the feed must quote for the subscribed strategies."""
+        return {
+            self.strategies[sub.strategy].underlying
+            for sub in self.subscriptions
+            if sub.strategy in self.strategies
+        }
 
-async def load_strategies(
-    sessions: async_sessionmaker[AsyncSession], *, currency: Currency = Currency.INR
-) -> Loaded:
-    """Read every active strategy and the subscriptions to it."""
+    def subscribers(self, strategy: str) -> tuple[Subscription, ...]:
+        return tuple(sub for sub in self.subscriptions if sub.strategy == strategy)
+
+
+NOTHING_LOADED = Loaded(strategies={}, subscriptions=(), refused={})
+
+
+async def load_strategies(sessions: async_sessionmaker[AsyncSession]) -> Loaded:
+    """Read every running strategy and the subscriptions to it."""
     async with UnitOfWork(sessions) as uow:
         definitions = await uow.repositories.strategy_definitions.all()
         configs = await uow.repositories.strategy_config.all()
         rules = await uow.repositories.strategy_indicator_rules.all()
+        allocations = await uow.repositories.strategy_days_allocation.all()
         subscriptions = await uow.repositories.subscriptions.all()
-
-    return assemble(definitions, configs, rules, subscriptions, currency=currency)
+    return assemble(definitions, configs, rules, subscriptions, allocations)
 
 
 def assemble(
@@ -125,35 +146,34 @@ def assemble(
     configs: Sequence[StrategyConfigRow],
     rules: Sequence[StrategyIndicatorRulesRow],
     subscriptions: Sequence[SubscriptionsRow],
-    *,
-    currency: Currency = Currency.INR,
+    allocations: Sequence[StrategyDaysAllocationRow] = (),
 ) -> Loaded:
-    """Turn rows into strategies. The whole mapping, and nothing else."""
     by_strategy_config: dict[str, list[StrategyConfigRow]] = {}
-    for row in configs:
-        by_strategy_config.setdefault(row.strategy_name, []).append(row)
+    for config in configs:
+        by_strategy_config.setdefault(config.strategy_name, []).append(config)
     by_strategy_rules = {row.strategy_name: row for row in rules}
+    by_strategy_allocation = {row.strategy_name: row for row in allocations}
 
     built: dict[str, Strategy] = {}
     refused: dict[str, str] = {}
-    for definition in definitions:
-        status = (definition.status or "").upper()
-        if status not in ("ACTIVE", "WIND_DOWN"):
+    for row in definitions:
+        status = (row.status or "").strip().upper()
+        if status not in (StrategyStatus.ACTIVE.value, StrategyStatus.WIND_DOWN.value):
             continue
         try:
-            built[definition.strategy_name] = _strategy(
-                definition,
-                by_strategy_config.get(definition.strategy_name, []),
-                by_strategy_rules.get(definition.strategy_name),
-                winding_down=status == "WIND_DOWN",
+            built[row.strategy_name] = _strategy(
+                row,
+                by_strategy_config.get(row.strategy_name, []),
+                by_strategy_rules.get(row.strategy_name),
+                by_strategy_allocation.get(row.strategy_name),
             )
         except DomainError as error:
-            refused[definition.strategy_name] = str(error)
-            logger.error("%s will not be traded: %s", definition.strategy_name, error)
+            refused[row.strategy_name] = str(error)
+            logger.error("%s will not be traded: %s", row.strategy_name, error)
 
     return Loaded(
         strategies=built,
-        subscriptions=_subscriptions(subscriptions, built, refused, currency),
+        subscriptions=_subscriptions(subscriptions, built, refused),
         refused=refused,
     )
 
@@ -162,14 +182,12 @@ def _subscriptions(
     rows: Sequence[SubscriptionsRow],
     strategies: Mapping[str, Strategy],
     refused: Mapping[str, str],
-    currency: Currency,
-) -> tuple[StrategySubscription, ...]:
-    out: list[StrategySubscription] = []
+) -> tuple[Subscription, ...]:
+    out: list[Subscription] = []
     for row in rows:
         if not row.is_active:
             continue
-        strategy = strategies.get(row.strategy_name)
-        if strategy is None:
+        if row.strategy_name not in strategies:
             if row.strategy_name in refused:
                 logger.warning(
                     "%s is subscribed to %s, which will not be traded",
@@ -184,89 +202,78 @@ def _subscriptions(
                 row.strategy_name,
             )
             continue
-
         out.append(
-            StrategySubscription(
+            Subscription(
                 trading_client=TradingClientId(row.trading_client_id),
-                spec=strategy.spec,
-                capital=Money(Decimal(row.capital), currency),
-                entry_rules=strategy.entry_rules,
-                direction_rules=strategy.direction_rules,
-                exit_rules=strategy.exit_rules,
-                tranches=strategy.tranches,
-                is_paper=bool(row.is_paper_trading),
-                winding_down=strategy.winding_down,
+                strategy=row.strategy_name,
+                terms=terms_of(row),
             )
         )
     return tuple(out)
 
 
 def _strategy(
-    definition: StrategyDefinitionsRow,
+    row: StrategyDefinitionsRow,
     configs: Sequence[StrategyConfigRow],
     rules: StrategyIndicatorRulesRow | None,
-    *,
-    winding_down: bool = False,
+    allocation: StrategyDaysAllocationRow | None,
 ) -> Strategy:
-    underlying = InstrumentId(f"{definition.exchange}:{definition.underlying_symbol}")
-    layers = tuple(layer_of(row) for row in configs)
-
-    spec = StrategySpec(
-        name=definition.strategy_name,
-        underlying=underlying,
-        direction=_direction(definition),
-        legs=_legs(definition),
-    )
-    return Strategy(
-        spec=spec,
-        entry_rules=_rules(definition.strategy_name, "entry", rules),
-        exit_rules=_optional_rules(definition.strategy_name, "exit", rules),
-        direction_rules=_direction_rules(definition, rules),
-        layers=layers,
-        tranches=_tranches(configs),
-        winding_down=winding_down,
-    )
-
-
-def _tranches(configs: Sequence[StrategyConfigRow]) -> tuple[int, ...]:
-    """Which tranches this strategy has, from the rows configuring them.
-
-    A strategy with no tranche-scoped configuration has one tranche, numbered
-    zero — which is the single-entry case wearing the same clothes as the
-    multi-entry one, rather than a special case beside it.
-    """
-    numbered = sorted({row.tranch_number for row in configs if row.tranch_number is not None})
-    return tuple(numbered) if numbered else (0,)
-
-
-def _direction(definition: StrategyDefinitionsRow) -> DirectionProvider:
-    """The fallback for a strategy with no direction rules.
-
-    An undirectional strategy takes a fixed side and its legs read it — a short
-    strangle sells both, so which side it is told hardly matters. A directional
-    one without rules is refused (see :func:`_direction_rules`), so this is
-    never the answer for one that needs a real opinion.
-    """
-    del definition
-    return FixedDirection(Direction.SHORT)
-
-
-def _direction_rules(
-    definition: StrategyDefinitionsRow, rules: StrategyIndicatorRulesRow | None
-) -> tuple[DirectionRule, ...]:
-    """The rules that decide which way, in the order they are asked.
-
-    A directional strategy with none is refused rather than traded: trading it
-    in a direction nobody chose is worse than not trading it, and the only
-    other option is to guess.
-    """
-    configured = _direction_json(definition.strategy_name, rules)
-    if definition.is_directional and not configured:
+    definition = definition_of(row)
+    if definition.signal_trigger:
         raise DomainError(
-            f"{definition.strategy_name} is directional but has no direction rules; "
-            "it is left out rather than traded in a direction nobody chose"
+            f"{definition.name} has the signal trigger on; external signals are not built "
+            "yet (TODO.md), so it is left out rather than waiting on signals that never come"
         )
-    return configured
+    layers = tuple(layer_of(config) for config in configs)
+    for layer in layers:
+        _check_choices(definition.name, layer)
+    # Built once so a configuration that cannot resolve is refused here, at
+    # load, and not at 09:20 on the first tranche.
+    build_runtime_config(
+        definition,
+        SubscriptionTerms(trading_client_id=TradingClientId("validation"), capital=Decimal(1)),
+        layers,
+        conditions=frozenset(),
+    )
+    if definition.is_directional:
+        build_provider(
+            definition.direction_provider_type or "", definition.direction_provider_params
+        )
+    entry = _optional_rules(definition.name, "entry", rules)
+    if definition.use_indicator_entry and entry is None:
+        raise DomainError(
+            f"{definition.name} gates entries on indicator rules but has no entry rules"
+        )
+    return Strategy(
+        definition=definition,
+        layers=layers,
+        entry_rules=entry,
+        exit_rules=_optional_rules(definition.name, "exit", rules),
+        direction_rules=_direction_json(definition.name, rules),
+        day_allocation=_allocation(allocation),
+    )
+
+
+def _check_choices(strategy: str, layer: ConfigLayer) -> None:
+    for column, choices in CONFIG_CHOICES.items():
+        value = layer.values.get(column)
+        if value is not None and str(value) not in choices:
+            raise DomainError(f"{strategy}: {column} {value!r} is not one of {', '.join(choices)}")
+
+
+def _allocation(row: StrategyDaysAllocationRow | None) -> DayAllocation:
+    if row is None:
+        return FULL_SIZE_EVERY_DAY
+    return DayAllocation(
+        monday=row.monday,
+        tuesday=row.tuesday,
+        wednesday=row.wednesday,
+        thursday=row.thursday,
+        friday=row.friday,
+        expiry_day=row.expiry_day,
+        dt1_day=row.dt1_day,
+        dt2_day=row.dt2_day,
+    )
 
 
 def _direction_json(
@@ -285,72 +292,10 @@ def _direction_json(
         ) from None
     try:
         if is_console_directions(parsed):
-            # The frontend is the reference engine's Console with its rule
-            # builder kept, so what it writes has to be read rather than
-            # rewritten. See `engine/rules/translate.py`.
             return build_directions(translate_directions(parsed))
         return build_directions(parsed if isinstance(parsed, list) else [parsed])
     except DomainError as error:
         raise DomainError(f"{strategy}: its direction rules are not usable — {error}") from None
-
-
-def _legs(definition: StrategyDefinitionsRow) -> tuple[LegSpec, ...]:
-    """The legs a strategy enters, from its combo column."""
-    raw = (definition.combo_spec_json or "").strip()
-    if not raw:
-        raise DomainError(
-            f"{definition.strategy_name} describes no legs; nothing can be entered for it"
-        )
-
-    try:
-        parsed = json.loads(raw)
-    except json.JSONDecodeError as error:
-        raise DomainError(
-            f"{definition.strategy_name}: its legs are not readable JSON ({error})"
-        ) from None
-
-    entries = parsed.get("legs") if isinstance(parsed, Mapping) else parsed
-    if not isinstance(entries, Sequence) or isinstance(entries, str) or not entries:
-        raise DomainError(f"{definition.strategy_name}: expected a list of legs")
-
-    return tuple(_leg(definition, index, entry) for index, entry in enumerate(entries))
-
-
-def _leg(definition: StrategyDefinitionsRow, index: int, entry: object) -> LegSpec:
-    if not isinstance(entry, Mapping):
-        raise DomainError(f"{definition.strategy_name}: leg {index} is not an object")
-
-    try:
-        return LegSpec(
-            selector=build_selector(entry.get("instrument")),
-            side=SideRule(str(entry.get("side", SideRule.ALWAYS_SHORT.value))),
-            role=LegRole(str(entry.get("role", LegRole.MAIN.value))),
-            product=_product(definition, entry),
-            order_type=OrderType(str(entry.get("order_type", OrderType.MARKET.value))),
-            ratio_numerator=int(entry.get("ratio_numerator", 1)),
-            ratio_denominator=int(entry.get("ratio_denominator", 1)),
-            sequence=int(entry.get("sequence", index)),
-        )
-    except ValueError as error:
-        raise DomainError(f"{definition.strategy_name}: leg {index} — {error}") from None
-
-
-def _product(definition: StrategyDefinitionsRow, entry: Mapping[str, object]) -> ProductType:
-    """A leg's product, or the strategy's if the leg does not say.
-
-    The definition's product is the reference engine's vocabulary — intraday
-    or positional — and a leg may override it, because a cash-and-futures pair
-    is two products in one position.
-    """
-    named = entry.get("product")
-    if named is not None:
-        return ProductType(str(named))
-    return ProductType.MIS if (definition.product or "").upper() == "INTRADAY" else ProductType.NRML
-
-
-def _rules(strategy: str, which: str, rules: StrategyIndicatorRulesRow | None) -> Rule:
-    parsed = _optional_rules(strategy, which, rules)
-    return parsed if parsed is not None else NO_CONDITIONS
 
 
 def _optional_rules(
@@ -377,7 +322,7 @@ def validate_strategy(
     configs: Sequence[StrategyConfigRow],
     rules: StrategyIndicatorRulesRow | None,
 ) -> str | None:
-    """Why the engine would refuse this strategy at startup, or None.
+    """Why the engine would refuse this strategy at load, or None.
 
     Built exactly the way :func:`load_strategies` builds it, so the Console
     can refuse a save for the reason the morning's log would otherwise give.

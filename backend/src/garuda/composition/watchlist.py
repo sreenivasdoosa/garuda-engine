@@ -46,7 +46,7 @@ heard of and never ticks.
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from datetime import date
 
@@ -54,7 +54,6 @@ from garuda.domain.enums import OptionType
 from garuda.domain.instrument import InstrumentId
 from garuda.domain.strikes import atm_strike
 from garuda.domain.symbol import SymbolInfo
-from garuda.engine.strategy import StrategySubscription
 from garuda.marketdata.hub import TickHub
 from garuda.marketdata.reference import reference_for, underlying_instrument
 from garuda.marketdata.registry import InstrumentRegistry
@@ -85,7 +84,7 @@ class Watchlist:
 
     async def ensure(
         self,
-        subscriptions: Sequence[StrategySubscription],
+        underlyings: Iterable[InstrumentId],
         registry: InstrumentRegistry,
         trading_day: date,
         *,
@@ -93,8 +92,7 @@ class Watchlist:
     ) -> int:
         """Subscribe to anything newly needed. Returns how many were added."""
         wanted: set[InstrumentId] = set(held) | self.indices(registry, trading_day)
-        for subscription in subscriptions:
-            underlying = subscription.spec.underlying
+        for underlying in underlyings:
             wanted.add(underlying)
             wanted.update(self._chain(underlying, registry, trading_day))
         for info in self.configured_indices():

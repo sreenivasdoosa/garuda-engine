@@ -15,7 +15,7 @@ import pytest
 from garuda.composition.watchlist import Watchlist
 from garuda.core.bus import InProcessEventBus
 from garuda.core.clock import ReplayClock
-from garuda.domain import Currency, Direction, Money, ProductType
+from garuda.domain import Currency, Money
 from garuda.domain.client import TradingClientId
 from garuda.domain.enums import (
     ExerciseStyle,
@@ -28,10 +28,6 @@ from garuda.domain.exchange import Exchange
 from garuda.domain.instrument import Instrument, InstrumentId
 from garuda.domain.market import Tick
 from garuda.domain.symbol import SymbolInfo
-from garuda.engine.rules.compose import AllOf
-from garuda.engine.selectors import OptionStrikeSelector
-from garuda.engine.spec import FixedDirection, LegSpec, SideRule, StrategySpec
-from garuda.engine.strategy import StrategySubscription
 from garuda.marketdata.hub import TickHub
 from garuda.marketdata.registry import InstrumentRegistry
 from garuda.protocols.feed import TicksReceived
@@ -97,24 +93,9 @@ def watchlist(hub: TickHub) -> Watchlist:
     )
 
 
-def subscribed() -> StrategySubscription:
-    return StrategySubscription(
-        trading_client=CLIENT,
-        spec=StrategySpec(
-            name="straddle",
-            underlying=NIFTY,
-            direction=FixedDirection(Direction.SHORT),
-            legs=(
-                LegSpec(
-                    selector=OptionStrikeSelector(OptionType.CALL),
-                    side=SideRule.ALWAYS_SHORT,
-                    product=ProductType.NRML,
-                ),
-            ),
-        ),
-        capital=rupees("500000"),
-        entry_rules=AllOf(()),
-    )
+def subscribed() -> InstrumentId:
+    """What a subscribed straddle on NIFTY asks the feed to quote."""
+    return NIFTY
 
 
 async def quote(hub: TickHub, instrument: InstrumentId, price: str) -> None:

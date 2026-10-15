@@ -242,6 +242,18 @@ class RuntimeConfig:
             numbered.update(range(1, cap + 1))
         return tuple(sorted(numbered)) or (1,)
 
+    @property
+    def allocation_tranches(self) -> tuple[int, ...]:
+        """The tranches capital is spread across: every tranche with a row,
+        extended to `max_tranches`. Empty when neither is configured, which
+        the reference reads as "trade the configured lots" rather than
+        "spread the capital"."""
+        numbered = set(self.tranche_configs)
+        cap = self.base.whole("max_tranches")
+        if cap is not None and cap > 0:
+            numbered.update(range(1, cap + 1))
+        return tuple(sorted(numbered))
+
     def tranche(self, number: int) -> ResolvedConfig:
         """One tranche's configuration, or the default when it has no row."""
         if number < 1:

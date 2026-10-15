@@ -1,30 +1,27 @@
-"""Sweeping the strategies.
+"""Running the strategies: the schedule, the state, the delivery.
 
-Two things this owns that nothing below it can: the tranche ledger across a
-day, and containment — one strategy failing must not stop the sweep, because
-trade management is still running positions that are already on.
+Behavioural: a tranche fires at its time and its signals land in the
+account's book; the firing is written to strategy state at once; a restart
+does not fire it again; a time already past when the day starts is missed;
+one strategy failing does not stop another; a reactivated strategy catches
+up what it missed.
 """
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
-from dataclasses import dataclass, field, replace
-from datetime import UTC, date, datetime, timedelta
+from dataclasses import dataclass, field
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 import pytest
 
-from garuda.alerts.manager import AlertManager
-from garuda.capital import FixedLotAllocator, Sizer
 from garuda.composition.engine import Engine
-from garuda.composition.strategies import Loaded, Strategy
+from garuda.composition.strategies import Loaded, assemble
 from garuda.composition.strategy_context import MarketView
 from garuda.composition.strategy_loop import StrategyLoop
-from garuda.core.bus import InProcessEventBus
 from garuda.core.clock import ReplayClock
-from garuda.domain import Currency, Direction, Money, ProductType
-from garuda.domain.alert import Alert, AlertLevel
+from garuda.domain import Currency, Money
 from garuda.domain.calendar import TradingCalendar
 from garuda.domain.enums import (
     ExerciseStyle,
@@ -36,55 +33,28 @@ from garuda.domain.enums import (
 )
 from garuda.domain.exchange import Exchange
 from garuda.domain.instrument import Instrument, InstrumentId
-from garuda.domain.market import Bar, BarInterval, Tick
+from garuda.domain.market import Tick
 from garuda.domain.symbol import SymbolInfo
-from garuda.domain.trade import Trade, TradeId
-from garuda.domain.trade_state import TradeExitReason, TradeState
-from garuda.engine.rules.compose import AllOf
-from garuda.engine.rules.outcome import RuleOutcome, failed, passed
-from garuda.engine.selectors import OptionStrikeSelector
-from garuda.engine.signals import SignalBatch, SignalFactory
-from garuda.engine.spec import FixedDirection, LegSpec, SideRule, StrategySpec
-from garuda.engine.strategy import (
-    Result,
-    StrategyContext,
-    StrategyRunner,
-    StrategySubscription,
-)
-from garuda.engine.tranches import TrancheId, TrancheLedger, TrancheState
-from garuda.marketdata.history import CandleCache, HistorySource
-from garuda.marketdata.hub import TickHub
+from garuda.engine.base_strategy import BaseStrategy, Evaluation, Outcome
+from garuda.engine.strategy_state import StrategyState
 from garuda.marketdata.registry import InstrumentRegistry
-from garuda.marketdata.synthetics import RollingStraddle, SyntheticPublisher
+from garuda.persistence.models import (
+    StrategyConfigRow,
+    StrategyDefinitionsRow,
+    SubscriptionsRow,
+)
 from garuda.protocols.feed import TicksReceived
 
 from .conftest import APPA, EngineBuilder, account, session
 
-#: What `StrategyRunner.evaluate` looks like, for the tests that replace it.
-type Evaluate = Callable[[StrategySubscription, int, StrategyContext], Awaitable[Result]]
-#: What an AlertManager writes through.
-type AlertSink = Callable[[Alert], Awaitable[None]]
-
 IST = ZoneInfo("Asia/Kolkata")
-NOW = datetime(2026, 8, 31, 13, 0, tzinfo=IST).astimezone(UTC)
 TODAY = date(2026, 8, 31)
 EXPIRY = date(2026, 9, 3)
 NIFTY = InstrumentId("NSE:NIFTY")
 
 
-def rupees(value: str) -> Money:
-    return Money.of(value, Currency.INR)
-
-
-def venue_for(nse_calendar: TradingCalendar) -> Exchange:
-    return Exchange(
-        code="NSE",
-        name="NSE",
-        currency=Currency.INR,
-        calendar=nse_calendar,
-        settlement=SettlementCycle.T1,
-        segments=frozenset({Segment.EQUITY, Segment.FNO}),
-    )
+def at(hour: int, minute: int, second: int = 0) -> datetime:
+    return datetime(2026, 8, 31, hour, minute, second, tzinfo=IST).astimezone(UTC)
 
 
 def option(strike: int, side: OptionType, nse: Exchange) -> Instrument:
@@ -106,56 +76,92 @@ def option(strike: int, side: OptionType, nse: Exchange) -> Instrument:
     )
 
 
-def a_straddle() -> StrategySpec:
-    return StrategySpec(
-        name="straddle",
-        underlying=NIFTY,
-        direction=FixedDirection(Direction.SHORT),
-        legs=(
-            LegSpec(
-                selector=OptionStrikeSelector(OptionType.CALL),
-                side=SideRule.ALWAYS_SHORT,
-                sequence=0,
-            ),
-            LegSpec(
-                selector=OptionStrikeSelector(OptionType.PUT),
-                side=SideRule.ALWAYS_SHORT,
-                sequence=1,
-            ),
-        ),
+def definition(name: str = "straddle", **overrides: object) -> StrategyDefinitionsRow:
+    values: dict[str, object] = {
+        "strategy_id": 1,
+        "strategy_name": name,
+        "underlying_symbol": "NIFTY",
+        "exchange": "NSE",
+        "product": "INTRADAY",
+        "trade_mode": "OPTION_SELLING",
+        "status": "ACTIVE",
+        "start_time": "09:20",
+        "stop_time": "15:15",
+        "capital_per_lot": 100000,
+        "scheduled_trigger_enabled": True,
+        "exclude_monthly_expiry": False,
+        "use_premium_balancing": True,
+        "catch_up_missed_tranches": True,
+        "adaptive_tranches_enabled": False,
+        "use_indicator_entry": False,
+    }
+    values.update(overrides)
+    return StrategyDefinitionsRow(**values)
+
+
+def base_config(name: str = "straddle", timing: str = "13:00") -> StrategyConfigRow:
+    return StrategyConfigRow(
+        id=1,
+        strategy_name=name,
+        strike_type="MoneyNess",
+        strike_value="ATM",
+        tranch_timing=timing,
+        max_tranches=1,
     )
 
 
-@dataclass(frozen=True)
-class Says:
-    verdict: bool = True
-
-    def evaluate(self, context: object) -> RuleOutcome:
-        return passed("the condition holds") if self.verdict else failed("not yet")
-
-
-@dataclass(frozen=True)
-class Explodes:
-    def evaluate(self, context: object) -> RuleOutcome:
-        raise RuntimeError("this strategy is broken")
+def subscription(name: str = "straddle", capital: str = "200000") -> SubscriptionsRow:
+    return SubscriptionsRow(
+        subscription_id=1,
+        trading_client_id=APPA.value,
+        strategy_name=name,
+        is_active=True,
+        capital=Decimal(capital),
+        is_paper_trading=False,
+    )
 
 
 @dataclass
-class Doorman:
-    accept: bool = True
-    batches: list[SignalBatch] = field(default_factory=list)
+class MemoryStates:
+    saved: list[StrategyState] = field(default_factory=list)
+    stored: list[StrategyState] = field(default_factory=list)
 
-    async def __call__(self, batch: SignalBatch) -> bool:
-        self.batches.append(batch)
-        return self.accept
+    async def load_day(self, trading_day: date) -> list[StrategyState]:
+        return [s for s in self.stored if s.trading_day == trading_day]
+
+    async def save(self, state: StrategyState, *, now: datetime) -> None:
+        self.saved.append(state)
+
+
+@dataclass
+class RecordingAlerts:
+    raised: list[tuple[str, str]] = field(default_factory=list)
+
+    async def warning(self, *args: object, key: str | None = None) -> None:
+        self.raised.append(("WARNING", str(args[3])))
+
+    async def critical(self, *args: object, key: str | None = None) -> None:
+        self.raised.append(("CRITICAL", str(args[3])))
 
 
 @pytest.fixture
-def registry(nse: Exchange) -> InstrumentRegistry:
+def venue(nse_calendar: TradingCalendar) -> Exchange:
+    return Exchange(
+        code="NSE",
+        name="NSE",
+        currency=Currency.INR,
+        calendar=nse_calendar,
+        settlement=SettlementCycle.T1,
+        segments=frozenset({Segment.EQUITY, Segment.FNO}),
+    )
+
+
+@pytest.fixture
+def registry(venue: Exchange) -> InstrumentRegistry:
     return InstrumentRegistry.build(
         [
-            option(strike, side, nse)
-            for strike in (24900, 25000, 25100)
+            option(strike, side, venue)
+            for strike in (23900, 24000, 24900, 25000, 25100, 26000)
             for side in (OptionType.CALL, OptionType.PUT)
         ]
     )
@@ -168,611 +174,204 @@ def engine(build_with: EngineBuilder, registry: InstrumentRegistry) -> Engine:
     return built
 
 
-async def prices(hub: TickHub) -> None:
-    ticks = (
-        Tick(instrument=NIFTY, last_price=rupees("25010"), timestamp=NOW),
-        Tick(instrument=InstrumentId("NFO:N25000CE"), last_price=rupees("150"), timestamp=NOW),
-        Tick(instrument=InstrumentId("NFO:N25000PE"), last_price=rupees("120"), timestamp=NOW),
-    )
-    await hub.consume([TicksReceived(ticks)])
-    await hub.dispatch_once()
+def rupees(value: str) -> Money:
+    return Money.of(value, Currency.INR)
 
 
-def loop_over(
+async def prices(engine: Engine, now: datetime) -> None:
+    ticks = [Tick(instrument=NIFTY, last_price=rupees("25010"), timestamp=now)]
+    for strike in (25000, 26000, 24000):
+        for letters in ("CE", "PE"):
+            ticks.append(
+                Tick(
+                    instrument=InstrumentId(f"NFO:N{strike}{letters}"),
+                    last_price=rupees("120"),
+                    timestamp=now,
+                )
+            )
+    await engine.parts.hub.consume([TicksReceived(tuple(ticks))])
+    await engine.parts.hub.dispatch_once()
+
+
+def loop_for(
     engine: Engine,
     registry: InstrumentRegistry,
-    doorman: Doorman,
-    nse_calendar: TradingCalendar,
+    venue: Exchange,
+    clock: ReplayClock,
+    loaded: Loaded,
     *,
-    entry: object = None,
-    exit_rules: object = None,
-    tranches: tuple[int, ...] = (0,),
-    winding_down: bool = False,
+    states: MemoryStates | None = None,
+    pipeline: BaseStrategy | None = None,
+    alerts: RecordingAlerts | None = None,
 ) -> StrategyLoop:
-    strategy = Strategy(
-        spec=a_straddle(),
-        entry_rules=entry or AllOf((Says(True),)),  # type: ignore[arg-type]
-        exit_rules=exit_rules,  # type: ignore[arg-type]
-        direction_rules=(),
-        layers=(),
-        tranches=tranches,
-        winding_down=winding_down,
-    )
-    subscription = StrategySubscription(
-        trading_client=APPA,
-        spec=strategy.spec,
-        capital=rupees("500000"),
-        entry_rules=strategy.entry_rules,
-        exit_rules=strategy.exit_rules,
-        tranches=tranches,
-        winding_down=winding_down,
-    )
     market = MarketView(
         hub=engine.parts.hub,
         registry=lambda: registry,
         symbols={"NIFTY": SymbolInfo(symbol="NIFTY", exchange_code="NSE", strike_gap=Decimal(50))},
         timezone=IST,
     )
-    ledger = TrancheLedger(TODAY)
-    factory = SignalFactory(
-        Sizer(FixedLotAllocator(2)),
-        lambda i: registry.get(i),
-        engine.parts.hub.latest,
-    )
     return StrategyLoop(
         engine=engine,
-        loaded=Loaded(strategies={"straddle": strategy}, subscriptions=(subscription,), refused={}),
+        loaded=loaded,
         market=market,
-        venue=venue_for(nse_calendar),
-        clock=ReplayClock(NOW),
-        alerts=engine.parts.alerts,
-        runner=StrategyRunner(factory=factory, deliver=doorman, ledger=ledger),
-        ledger=ledger,
+        venue=venue,
+        clock=clock,
+        alerts=alerts or RecordingAlerts(),  # type: ignore[arg-type]
+        states=states,
+        pipeline=pipeline or BaseStrategy(),
     )
 
 
-# -- a sweep ----------------------------------------------------------------
-
-
-async def test_a_sweep_enters_a_subscribed_strategy(
-    engine: Engine, registry: InstrumentRegistry, nse_calendar: TradingCalendar
-) -> None:
-    doorman = Doorman()
-    await prices(engine.parts.hub)
-
-    results = await loop_over(engine, registry, doorman, nse_calendar).run_once()
-
-    assert [result.fired for result in results] == [True]
-    assert len(doorman.batches[0].signals) == 2
-
-
-async def test_a_strategy_whose_rules_do_not_hold_enters_nothing(
-    engine: Engine, registry: InstrumentRegistry, nse_calendar: TradingCalendar
-) -> None:
-    doorman = Doorman()
-    await prices(engine.parts.hub)
-
-    loop = loop_over(engine, registry, doorman, nse_calendar, entry=AllOf((Says(False),)))
-    results = await loop.run_once()
-
-    assert not results[0].fired
-    assert doorman.batches == []
-
-
-async def test_no_prices_means_no_entry(
-    engine: Engine, registry: InstrumentRegistry, nse_calendar: TradingCalendar
-) -> None:
-    """No spot, so no strike, so no leg — and the entry stands down whole."""
-    doorman = Doorman()
-
-    results = await loop_over(engine, registry, doorman, nse_calendar).run_once()
-
-    assert not results[0].fired
-
-
-# -- once a day -------------------------------------------------------------
-
-
-async def test_a_second_sweep_does_not_enter_again(
-    engine: Engine, registry: InstrumentRegistry, nse_calendar: TradingCalendar
-) -> None:
-    """The rules still hold on the next sweep a second later."""
-    doorman = Doorman()
-    await prices(engine.parts.hub)
-    loop = loop_over(engine, registry, doorman, nse_calendar)
-
-    await loop.run_once()
-    later = await loop.run_once()
-
-    assert len(doorman.batches) == 1
-    # Not merely refused by the runner: a tranche that is done is not
-    # evaluated at all, so no context is built for it on every sweep of a
-    # six-hour day.
-    assert later == []
-
-
-async def test_the_loop_and_the_runner_share_one_ledger(
-    engine: Engine, registry: InstrumentRegistry, nse_calendar: TradingCalendar
-) -> None:
-    """Two ledgers would let the loop think a tranche was open while the runner
-    had already fired it, and it would enter on every sweep."""
-    doorman = Doorman()
-    await prices(engine.parts.hub)
-    loop = loop_over(engine, registry, doorman, nse_calendar)
-
-    await loop.run_once()
-
-    assert loop.ledger is loop.runner.ledger
-    assert loop.ledger.open == []
-
-
-async def test_every_tranche_gets_its_own_entry(
-    engine: Engine, registry: InstrumentRegistry, nse_calendar: TradingCalendar
-) -> None:
-    doorman = Doorman()
-    await prices(engine.parts.hub)
-
-    loop = loop_over(engine, registry, doorman, nse_calendar, tranches=(1, 2))
-    await loop.run_once()
-
-    assert len(doorman.batches) == 2
-    assert {s.tranche for batch in doorman.batches for s in batch.signals} == {1, 2}
-
-
-# -- containment ------------------------------------------------------------
-
-
-async def test_a_strategy_that_raises_does_not_stop_the_sweep(
-    engine: Engine, registry: InstrumentRegistry, nse_calendar: TradingCalendar
-) -> None:
-    """Positions already on are still being managed; stopping helps nobody."""
-    doorman = Doorman()
-    await prices(engine.parts.hub)
-    loop = loop_over(engine, registry, doorman, nse_calendar, tranches=(1, 2))
-    loop.runner.evaluate = _raises_once(loop.runner.evaluate)  # type: ignore[method-assign, assignment]
-
-    results = await loop.run_once()
-
-    assert len(results) == 1  # the second tranche still evaluated
-
-
-def _raises_once(original: Evaluate) -> Evaluate:
-    calls = {"n": 0}
-
-    async def wrapper(
-        subscription: StrategySubscription, tranche: int, context: StrategyContext
-    ) -> Result:
-        calls["n"] += 1
-        if calls["n"] == 1:
-            raise RuntimeError("boom")
-        return await original(subscription, tranche, context)
-
-    return wrapper
-
-
-async def test_a_broken_rule_blocks_the_tranche_rather_than_failing_the_sweep(
-    engine: Engine, registry: InstrumentRegistry, nse_calendar: TradingCalendar
-) -> None:
-    """The rule runner turns the exception into UNAVAILABLE, so the tranche is
-    blocked and retried — which is right, because the rule may recover."""
-    doorman = Doorman()
-    await prices(engine.parts.hub)
-    loop = loop_over(engine, registry, doorman, nse_calendar, entry=AllOf((Explodes(),)))
-
-    await loop.run_once()
-
-    assert loop.ledger.open != []
-    assert doorman.batches == []
-
-
-async def test_a_strategy_that_cannot_be_evaluated_is_alerted_once(
-    engine: Engine, registry: InstrumentRegistry, nse_calendar: TradingCalendar
-) -> None:
-    """Once, not once a second for six hours."""
-    raised: list[Alert] = []
-    doorman = Doorman()
-    loop = loop_over(engine, registry, doorman, nse_calendar)
-    loop.alerts = AlertManager(
-        clock=ReplayClock(NOW),
-        bus=InProcessEventBus(),
-        trading_day_for=lambda moment: TODAY,
-        sink=_collect(raised),
-    )
-    loop.runner.evaluate = _always_raises()  # type: ignore[method-assign, assignment]
-
-    await loop.run_once()
-    await loop.run_once()
-    await loop.run_once()
-
-    assert len(raised) == 1
-    assert raised[0].level is AlertLevel.CRITICAL
-
-
-def _collect(into: list[Alert]) -> AlertSink:
-    async def sink(alert: Alert) -> None:
-        into.append(alert)
-
-    return sink
-
-
-def _always_raises() -> Evaluate:
-    async def wrapper(
-        subscription: StrategySubscription, tranche: int, context: StrategyContext
-    ) -> Result:
-        raise RuntimeError("boom")
-
-    return wrapper
-
-
-async def test_a_subscription_whose_account_is_not_trading_is_skipped(
-    build_with: EngineBuilder, registry: InstrumentRegistry, nse_calendar: TradingCalendar
-) -> None:
-    """The account has no session, so there is no book to signal into.
-
-    Skipped quietly, and that is the point: an account nobody has logged into
-    yet is the normal state at dawn, and raising a CRITICAL alert about it
-    every second until someone does is not help.
-    """
-    raised: list[Alert] = []
-    built = build_with([account(APPA, "AB1234")], {})
-    built.parts.instruments.publish("zerodha", registry)
-    doorman = Doorman()
-    loop = loop_over(built, registry, doorman, nse_calendar)
-    loop.alerts = AlertManager(
-        clock=ReplayClock(NOW),
-        bus=InProcessEventBus(),
-        trading_day_for=lambda moment: TODAY,
-        sink=_collect(raised),
-    )
-
-    results = await loop.run_once()
-
-    assert results == []
-    assert doorman.batches == []
-    assert raised == []
-
-
-async def test_a_tranche_whose_subscription_vanished_is_still_closed_out(
-    engine: Engine, registry: InstrumentRegistry, nse_calendar: TradingCalendar
-) -> None:
-    """A strategy deactivated mid-day leaves its tranches behind. They expire
-    on the sweep rather than staying open in the record for ever."""
-    doorman = Doorman()
-    loop = loop_over(engine, registry, doorman, nse_calendar)
-    orphan = TrancheId(trading_client=APPA, strategy="withdrawn", tranche=0, trading_day=TODAY)
-    loop.ledger.open_for(orphan, cutoff=NOW - timedelta(minutes=1))
-
-    await loop.run_once()
-
-    closed = loop.ledger.get(orphan)
-    assert closed is not None
-    assert closed.state is TrancheState.EXPIRED
-
-
-# -- the day ----------------------------------------------------------------
-
-
-async def test_a_tranche_past_its_cutoff_is_closed_out(
-    engine: Engine, registry: InstrumentRegistry, nse_calendar: TradingCalendar
-) -> None:
-    doorman = Doorman()
-    loop = loop_over(engine, registry, doorman, nse_calendar)
-    identity = loop.loaded.subscriptions[0].identity(0, NOW)
-    loop.ledger.open_for(identity, cutoff=NOW - timedelta(minutes=1))
-
-    await loop.run_once()
-
-    tranche = loop.ledger.get(identity)
-    assert tranche is not None
-    assert tranche.state is TrancheState.EXPIRED
-
-
-async def test_stopping_ends_the_sweep(
-    engine: Engine, registry: InstrumentRegistry, nse_calendar: TradingCalendar
-) -> None:
-    import asyncio
-
-    doorman = Doorman()
-    loop = loop_over(engine, registry, doorman, nse_calendar)
-
-    running = asyncio.create_task(loop.run_forever())
-    await asyncio.sleep(0)
-    loop.stop()
-    await asyncio.wait_for(running, timeout=1)
-
-    assert running.done()
-
-
-# -- history ----------------------------------------------------------------
-
-
-async def test_history_is_refreshed_before_the_rules_read_it(
-    engine: Engine, registry: InstrumentRegistry, nse_calendar: TradingCalendar
-) -> None:
-    """A rule cannot wait on a broker, so the waiting happens here — and it
-    happens first, or every sweep reads what the previous one asked for."""
-    fetched: list[str] = []
-
-    class Source:
-        async def fetch(
-            self,
-            instrument: InstrumentId,
-            interval: BarInterval,
-            start: datetime,
-            end: datetime,
-        ) -> list[Bar]:
-            fetched.append(instrument.value)
-            return []
-
-    doorman = Doorman()
-    loop = loop_over(engine, registry, doorman, nse_calendar)
-    cache = CandleCache(source=Source(), clock=ReplayClock(NOW))
-    cache.wants(NIFTY, BarInterval.ONE_MINUTE)
-    loop.market = replace(loop.market, candles=cache)
-
-    await loop.run_once()
-
-    # Both tiers: the settled days and today's.
-    assert fetched == [NIFTY.value, NIFTY.value]
-
-
-async def test_a_broken_history_source_does_not_stop_the_sweep(
-    engine: Engine, registry: InstrumentRegistry, nse_calendar: TradingCalendar
-) -> None:
-    class Broken:
-        async def fetch(
-            self,
-            instrument: InstrumentId,
-            interval: BarInterval,
-            start: datetime,
-            end: datetime,
-        ) -> list[Bar]:
-            raise RuntimeError("history is down")
-
-    doorman = Doorman()
-    await prices(engine.parts.hub)
-    loop = loop_over(engine, registry, doorman, nse_calendar)
-    cache = CandleCache(source=Broken(), clock=ReplayClock(NOW))
-    cache.wants(NIFTY, BarInterval.ONE_MINUTE)
-    loop.market = replace(loop.market, candles=cache)
-
-    results = await loop.run_once()
-
-    assert [result.fired for result in results] == [True]
-
-
-async def test_no_candle_cache_is_quiet(
-    engine: Engine,
-    registry: InstrumentRegistry,
-    nse_calendar: TradingCalendar,
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    """An engine with no market-data account has no history, which is a state
-    and not a fault. Logging an error about it once a second is noise that
-    buries the real ones."""
-    doorman = Doorman()
-    loop = loop_over(engine, registry, doorman, nse_calendar)
-
-    with caplog.at_level("ERROR"):
+def straddle() -> Loaded:
+    return assemble([definition()], [base_config()], [], [subscription()])
+
+
+class TestATrancheFires:
+    async def test_at_its_time_its_signals_land_in_the_book(
+        self, engine: Engine, registry: InstrumentRegistry, venue: Exchange
+    ) -> None:
+        clock = ReplayClock(at(12, 59, 58))
+        loop = loop_for(engine, registry, venue, clock, straddle())
+        await prices(engine, clock.now())
+
+        assert await loop.run_once() == []
+        clock._now = at(13, 0)
+        (result,) = await loop.run_once()
+
+        assert result.outcome.entered, result.outcome.stood_down
+        assert result.delivered
+        book = engine.parts.clients[APPA].book
+        assert {s.instrument.value for s in book.signals("straddle")} == {
+            "NFO:N25000CE",
+            "NFO:N25000PE",
+        }
+        assert {s.quantity for s in book.signals("straddle")} == {150}  # 2 lots of 75
+
+    async def test_the_firing_is_written_at_once(
+        self, engine: Engine, registry: InstrumentRegistry, venue: Exchange
+    ) -> None:
+        clock = ReplayClock(at(12, 59))
+        states = MemoryStates()
+        loop = loop_for(engine, registry, venue, clock, straddle(), states=states)
+        await prices(engine, clock.now())
+        await loop.run_once()
+        clock._now = at(13, 0)
         await loop.run_once()
 
-    assert "candle history" not in caplog.text
+        assert states.saved
+        assert states.saved[-1].has_signalled(1)
+        state = loop.state_of(APPA, "straddle")
+        assert state is not None
+        assert state.has_signalled(1)
+
+    async def test_a_restart_does_not_fire_it_again(
+        self, engine: Engine, registry: InstrumentRegistry, venue: Exchange
+    ) -> None:
+        fired = StrategyState(APPA, "straddle", TODAY).tranche_signalled(
+            1, at(13, 0), signals=2, lots=2
+        )
+        clock = ReplayClock(at(13, 0))
+        loop = loop_for(
+            engine, registry, venue, clock, straddle(), states=MemoryStates(stored=[fired])
+        )
+        await prices(engine, clock.now())
+        (result,) = await loop.run_once()
+        assert not result.outcome.entered
+        assert "already signalled" in (result.outcome.stood_down or "")
+        assert engine.parts.clients[APPA].book.signals("straddle") == []
+
+    async def test_a_time_already_past_at_startup_is_missed(
+        self, engine: Engine, registry: InstrumentRegistry, venue: Exchange
+    ) -> None:
+        clock = ReplayClock(at(13, 5))
+        loop = loop_for(engine, registry, venue, clock, straddle())
+        await prices(engine, clock.now())
+        assert await loop.run_once() == []
+        assert loop.schedule is not None
+        assert len(loop.schedule.missed) == 1
 
 
-async def test_a_day_the_venue_does_not_trade_is_quiet(
-    engine: Engine,
-    registry: InstrumentRegistry,
-    nse_calendar: TradingCalendar,
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    """There is no session to fetch today's candles from."""
-    doorman = Doorman()
-    loop = loop_over(engine, registry, doorman, nse_calendar)
-    loop.market = replace(
-        loop.market, candles=CandleCache(source=_unused(), clock=ReplayClock(NOW))
-    )
-    loop.ledger = TrancheLedger(date(2026, 9, 5))  # a Saturday
+class TestContainment:
+    async def test_one_failing_strategy_does_not_stop_another(
+        self, engine: Engine, registry: InstrumentRegistry, venue: Exchange
+    ) -> None:
+        class Explodes(BaseStrategy):
+            def on_scheduled(self, ev: Evaluation) -> Outcome:
+                if ev.runtime.definition.name == "broken":
+                    raise RuntimeError("this strategy is broken")
+                return super().on_scheduled(ev)
 
-    with caplog.at_level("ERROR"):
+        loaded = assemble(
+            [definition(), definition("broken", strategy_id=2)],
+            [base_config(), base_config("broken")],
+            [],
+            [subscription(), subscription("broken")],
+        )
+        clock = ReplayClock(at(12, 59))
+        alerts = RecordingAlerts()
+        loop = loop_for(engine, registry, venue, clock, loaded, pipeline=Explodes(), alerts=alerts)
+        await prices(engine, clock.now())
         await loop.run_once()
+        clock._now = at(13, 0)
+        results = await loop.run_once()
 
-    assert "candle history" not in caplog.text
-
-
-def _unused() -> HistorySource:
-    class Nothing:
-        async def fetch(
-            self,
-            instrument: InstrumentId,
-            interval: BarInterval,
-            start: datetime,
-            end: datetime,
-        ) -> list[Bar]:
-            raise AssertionError("there is no session to fetch for")
-
-    return Nothing()
+        assert [r.strategy for r in results] == ["straddle"]
+        assert results[0].outcome.entered
+        assert [level for level, _ in alerts.raised] == ["CRITICAL"]
 
 
-# -- exits ------------------------------------------------------------------
-
-
-async def test_a_sweep_takes_a_position_off_when_its_exit_rules_hold(
-    engine: Engine, registry: InstrumentRegistry, nse_calendar: TradingCalendar
-) -> None:
-    doorman = Doorman()
-    await prices(engine.parts.hub)
-    loop = loop_over(engine, registry, doorman, nse_calendar, exit_rules=AllOf((Says(True),)))
-    client = engine.parts.clients[APPA]
-    client.book.add_trade(_a_position())
-    asked: list[str] = []
-
-    async def square_off(trade: Trade, reason: TradeExitReason) -> bool:
-        asked.append(reason.value)
-        return True
-
-    client.square_off.request = square_off  # type: ignore[method-assign, assignment]
-
-    await loop.run_once()
-
-    assert asked == [TradeExitReason.EXIT_SIGNAL.value]
-
-
-async def test_exits_are_considered_before_entries(
-    engine: Engine, registry: InstrumentRegistry, nse_calendar: TradingCalendar
-) -> None:
-    """A strategy wanting out and back in on one sweep should get out first,
-    and a position leaving frees the capital the entry sizes against."""
-    order: list[str] = []
-    doorman = Doorman()
-    await prices(engine.parts.hub)
-    loop = loop_over(engine, registry, doorman, nse_calendar, exit_rules=AllOf((Says(True),)))
-    client = engine.parts.clients[APPA]
-    client.book.add_trade(_a_position())
-
-    async def square_off(trade: Trade, reason: TradeExitReason) -> bool:
-        order.append("exit")
-        return True
-
-    async def deliver(batch: SignalBatch) -> bool:
-        order.append("enter")
-        return True
-
-    client.square_off.request = square_off  # type: ignore[method-assign, assignment]
-    loop.runner = replace(loop.runner, deliver=deliver)
-
-    await loop.run_once()
-
-    assert order == ["exit", "enter"]
-
-
-async def test_a_broken_exit_evaluation_does_not_stop_the_sweep(
-    engine: Engine, registry: InstrumentRegistry, nse_calendar: TradingCalendar
-) -> None:
-    doorman = Doorman()
-    await prices(engine.parts.hub)
-    loop = loop_over(engine, registry, doorman, nse_calendar, exit_rules=AllOf((Says(True),)))
-    client = engine.parts.clients[APPA]
-    client.book.add_trade(_a_position())
-
-    async def explode(trade: Trade, reason: TradeExitReason) -> bool:
-        raise RuntimeError("square-off is broken")
-
-    client.square_off.request = explode  # type: ignore[method-assign, assignment]
-
-    results = await loop.run_once()
-
-    assert [result.fired for result in results] == [True]
-
-
-def _a_position() -> Trade:
-    return Trade(
-        id=TradeId("t1"),
-        trading_client=APPA,
-        instrument=InstrumentId("NFO:N25000CE"),
-        strategy="straddle",
-        direction=Direction.SHORT,
-        product=ProductType.NRML,
-        quantity=75,
-        state=TradeState.ACTIVE,
-        filled_quantity=75,
-        entry=rupees("150"),
-        started_at=NOW,
-    )
-
-
-# -- synthetics -------------------------------------------------------------
-
-
-async def test_a_sweep_publishes_the_synthetic_series(
-    engine: Engine, registry: InstrumentRegistry, nse_calendar: TradingCalendar
-) -> None:
-    """Computed from the chain the watchlist subscribed to, and on the hub a
-    moment before the rules read it."""
-    doorman = Doorman()
-    await prices(engine.parts.hub)
-    loop = loop_over(engine, registry, doorman, nse_calendar)
-    loop.synthetics = SyntheticPublisher(
-        sources=(RollingStraddle(underlying=NIFTY, levels=1, min_strikes_per_side=0),)
-    )
-    loop.market = replace(
-        loop.market,
-        symbols={"NIFTY": SymbolInfo(symbol="NIFTY", exchange_code="NSE", strike_gap=Decimal(50))},
-    )
-
-    await loop.run_once()
-
-    straddle = engine.parts.hub.latest(InstrumentId("SYNTH:STRADDLE-NIFTY"))
-    assert straddle is not None
-    assert straddle.last_price == rupees("270")  # the only quoted pair: 150 + 120
-
-
-async def test_a_broken_synthetic_does_not_stop_the_sweep(
-    engine: Engine, registry: InstrumentRegistry, nse_calendar: TradingCalendar
-) -> None:
-    class Broken:
-        underlying = NIFTY
-
-        def instrument(self) -> InstrumentId:
-            return InstrumentId("SYNTH:BROKEN")
-
-        def price(self, view: object) -> Money | None:
-            raise RuntimeError("broken")
-
-    doorman = Doorman()
-    await prices(engine.parts.hub)
-    loop = loop_over(engine, registry, doorman, nse_calendar)
-    loop.synthetics = SyntheticPublisher(sources=(Broken(),))
-
-    results = await loop.run_once()
-
-    assert [result.fired for result in results] == [True]
-
-
-async def test_no_synthetics_declared_is_quiet(
-    engine: Engine,
-    registry: InstrumentRegistry,
-    nse_calendar: TradingCalendar,
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    """An engine trading nothing that needs a synthetic declares none, which
-    is a state and not a fault. An error about it once a second buries the
-    real ones."""
-    doorman = Doorman()
-    loop = loop_over(engine, registry, doorman, nse_calendar)
-
-    with caplog.at_level("ERROR"):
+class TestReload:
+    async def test_a_reactivated_strategy_catches_up_what_it_missed(
+        self, engine: Engine, registry: InstrumentRegistry, venue: Exchange
+    ) -> None:
+        clock = ReplayClock(at(13, 30))
+        paused = assemble([definition(status="WIND_DOWN")], [base_config()], [], [subscription()])
+        loop = loop_for(engine, registry, venue, clock, paused)
+        await prices(engine, clock.now())
         await loop.run_once()
+        assert loop.schedule is not None
+        assert len(loop.schedule.missed) == 1
 
-    assert "synthetic" not in caplog.text
+        loop.replace(straddle())
+        assert loop.tranches_pending == 1
+        (result,) = await loop.run_once()
+        assert result.outcome.entered, result.outcome.stood_down
+
+    async def test_a_reload_keeps_what_already_fired(
+        self, engine: Engine, registry: InstrumentRegistry, venue: Exchange
+    ) -> None:
+        clock = ReplayClock(at(12, 59))
+        loop = loop_for(engine, registry, venue, clock, straddle())
+        await prices(engine, clock.now())
+        await loop.run_once()
+        clock._now = at(13, 0)
+        await loop.run_once()
+        loop.replace(straddle())
+        clock._now = at(13, 0, 5)
+        assert await loop.run_once() == []
 
 
-async def test_a_strategy_winding_down_exits_but_enters_nothing(
-    engine: Engine, registry: InstrumentRegistry, nse_calendar: TradingCalendar
+class TestReporting:
+    async def test_zero_lots_raises_a_warning(
+        self, engine: Engine, registry: InstrumentRegistry, venue: Exchange
+    ) -> None:
+        loaded = assemble([definition()], [base_config()], [], [subscription(capital="50000")])
+        clock = ReplayClock(at(12, 59))
+        alerts = RecordingAlerts()
+        loop = loop_for(engine, registry, venue, clock, loaded, alerts=alerts)
+        await prices(engine, clock.now())
+        await loop.run_once()
+        clock._now = at(13, 0)
+        (result,) = await loop.run_once()
+        assert (result.outcome.stood_down or "").startswith("zero lots")
+        assert [
+            level for level, message in alerts.raised if "tranche 1 did not enter" in message
+        ] == ["WARNING"]
+
+
+def test_the_day_and_counts_are_reported(
+    engine: Engine, registry: InstrumentRegistry, venue: Exchange
 ) -> None:
-    """The reference's WIND_DOWN: what is open is managed to its end, and
-    nothing new goes on -- however loudly the entry rules hold."""
-    doorman = Doorman()
-    await prices(engine.parts.hub)
-    loop = loop_over(
-        engine,
-        registry,
-        doorman,
-        nse_calendar,
-        exit_rules=AllOf((Says(True),)),
-        winding_down=True,
-    )
-    client = engine.parts.clients[APPA]
-    client.book.add_trade(_a_position())
-    asked: list[str] = []
-
-    async def square_off(trade: Trade, reason: TradeExitReason) -> bool:
-        asked.append(reason.value)
-        return True
-
-    client.square_off.request = square_off  # type: ignore[method-assign, assignment]
-
-    results = await loop.run_once()
-
-    assert asked == [TradeExitReason.EXIT_SIGNAL.value], "the exit still runs"
-    assert results == []
-    assert doorman.batches == [], "and nothing is entered"
+    loop = loop_for(engine, registry, venue, ReplayClock(at(9, 0)), straddle())
+    assert loop.trading_day == TODAY
+    assert loop.tranches_today == 0

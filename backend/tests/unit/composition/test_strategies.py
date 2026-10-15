@@ -1,45 +1,32 @@
 """Reading strategies out of their rows.
 
-Rows in, runnable subscriptions out — and, just as importantly, a strategy
+Rows in, strategies the loop can run out -- and, as importantly, a strategy
 that cannot be read left out **by name** rather than silently absent.
 """
 
 from __future__ import annotations
 
-import json
 from decimal import Decimal
 from typing import Any
 
 from garuda.composition.strategies import assemble, validate_strategy
-from garuda.domain import Currency, ProductType
-from garuda.domain.enums import OptionType
-from garuda.domain.intent import LegRole
+from garuda.domain.client import TradingClientId
+from garuda.domain.instrument import InstrumentId
 from garuda.engine.daycondition import DayCondition
-from garuda.engine.selectors import OptionStrikeSelector
-from garuda.engine.spec import SideRule
+from garuda.engine.vocabulary import TradeMode
 from garuda.persistence.models import (
     StrategyConfigRow,
+    StrategyDaysAllocationRow,
     StrategyDefinitionsRow,
     StrategyIndicatorRulesRow,
     SubscriptionsRow,
 )
 
-STRADDLE_LEGS = {
-    "legs": [
-        {
-            "role": "MAIN",
-            "side": "ALWAYS_SHORT",
-            "sequence": 0,
-            "instrument": {"type": "option_strike", "option_type": "CALL", "moneyness": "ATM"},
-        },
-        {
-            "role": "MAIN",
-            "side": "ALWAYS_SHORT",
-            "sequence": 1,
-            "instrument": {"type": "option_strike", "option_type": "PUT", "moneyness": "ATM"},
-        },
-    ]
-}
+ENTRY_TREE = (
+    '{"type": "operator", "operator": "AND", "children": [{"type": "condition", '
+    '"condition": {"indicator": "RSI", "comparator": "GREATER_THAN", "value": 50, '
+    '"params": {"period": 14}, "interval": "5minute"}}]}'
+)
 
 
 def definition(**overrides: Any) -> StrategyDefinitionsRow:
@@ -52,15 +39,13 @@ def definition(**overrides: Any) -> StrategyDefinitionsRow:
         "trade_mode": "OPTION_SELLING",
         "status": "ACTIVE",
         "is_directional": False,
-        "combo_spec_json": json.dumps(STRADDLE_LEGS),
-        "tick_trigger_enabled": False,
         "scheduled_trigger_enabled": True,
         "signal_trigger_enabled": False,
-        "periodic_trigger_enabled": False,
         "exclude_monthly_expiry": False,
         "use_premium_balancing": True,
         "catch_up_missed_tranches": True,
         "adaptive_tranches_enabled": False,
+        "use_indicator_entry": False,
     }
     return StrategyDefinitionsRow(**{**defaults, **overrides})
 
@@ -71,11 +56,7 @@ def config(**overrides: Any) -> StrategyConfigRow:
 
 
 def rules(**overrides: Any) -> StrategyIndicatorRulesRow:
-    defaults: dict[str, Any] = {
-        "id": 1,
-        "strategy_name": "straddle",
-        "use_indicator_exit": False,
-    }
+    defaults: dict[str, Any] = {"id": 1, "strategy_name": "straddle", "use_indicator_exit": False}
     return StrategyIndicatorRulesRow(**{**defaults, **overrides})
 
 
@@ -91,378 +72,165 @@ def subscription(**overrides: Any) -> SubscriptionsRow:
     return SubscriptionsRow(**{**defaults, **overrides})
 
 
-# -- the ordinary case ------------------------------------------------------
-
-
-def test_a_strategy_is_read_from_its_definition() -> None:
-    loaded = assemble([definition()], [], [], [])
-
-    spec = loaded.strategies["straddle"].spec
-    assert spec.underlying.value == "NSE:NIFTY"
-    assert len(spec.legs) == 2
-
-
-def test_the_legs_come_out_as_selectors() -> None:
-    loaded = assemble([definition()], [], [], [])
-
-    first = loaded.strategies["straddle"].spec.entry_order[0]
-    assert isinstance(first.selector, OptionStrikeSelector)
-    assert first.selector.option_type is OptionType.CALL
-    assert first.side is SideRule.ALWAYS_SHORT
-    assert first.role is LegRole.MAIN
-
-
-def test_a_moneyness_is_read_not_left_as_text() -> None:
-    """Left as text it would compare unequal to every member and take the
-    wrong branch, which is the failure that looks most like working."""
-    legs = {
-        "legs": [
-            {
-                "instrument": {
-                    "type": "option_strike",
-                    "option_type": "CALL",
-                    "moneyness": "OTM+2",
-                }
-            }
-        ]
-    }
-    loaded = assemble([definition(combo_spec_json=json.dumps(legs))], [], [], [])
-
-    selector = loaded.strategies["straddle"].spec.legs[0].selector
-    assert isinstance(selector, OptionStrikeSelector)
-    assert selector.moneyness.steps == 2
-
-
-def test_a_hedged_strategy_reads_both_sides_and_their_order() -> None:
-    """One spec, two side rules, hedge first — and none of it defaulted."""
-    legs = {
-        "legs": [
-            {
-                "role": "HEDGE",
-                "side": "ALWAYS_LONG",
-                "sequence": 0,
-                "instrument": {
-                    "type": "option_strike",
-                    "option_type": "CALL",
-                    "moneyness": "OTM+3",
-                },
-            },
-            {
-                "role": "MAIN",
-                "side": "ALWAYS_SHORT",
-                "sequence": 1,
-                "instrument": {"type": "option_strike", "option_type": "CALL"},
-            },
-        ]
-    }
-    loaded = assemble([definition(combo_spec_json=json.dumps(legs))], [], [], [])
-
-    ordered = loaded.strategies["straddle"].spec.entry_order
-    assert [leg.role for leg in ordered] == [LegRole.HEDGE, LegRole.MAIN]
-    assert [leg.side for leg in ordered] == [SideRule.ALWAYS_LONG, SideRule.ALWAYS_SHORT]
-    assert [leg.sequence for leg in ordered] == [0, 1]
-
-
-def test_a_leg_that_does_not_say_its_order_takes_its_position() -> None:
-    """Written order is the obvious intent, and repeating it on every leg is
-    the kind of thing an operator gets wrong once."""
-    legs = {
-        "legs": [
-            {"instrument": {"type": "option_strike", "option_type": "PUT"}},
-            {"instrument": {"type": "option_strike", "option_type": "CALL"}},
-        ]
-    }
-    loaded = assemble([definition(combo_spec_json=json.dumps(legs))], [], [], [])
-
-    assert [leg.sequence for leg in loaded.strategies["straddle"].spec.legs] == [0, 1]
-
-
-def test_an_intraday_strategy_trades_intraday() -> None:
-    loaded = assemble([definition(product="INTRADAY")], [], [], [])
-
-    assert loaded.strategies["straddle"].spec.legs[0].product is ProductType.MIS
-
-
-def test_a_positional_strategy_carries_forward() -> None:
-    loaded = assemble([definition(product="POSITIONAL")], [], [], [])
-
-    assert loaded.strategies["straddle"].spec.legs[0].product is ProductType.NRML
-
-
-def test_a_leg_may_override_the_strategy_s_product() -> None:
-    """A cash-and-futures pair is two products in one position."""
-    legs = {"legs": [{"instrument": {"type": "underlying"}, "product": "CNC"}]}
-    loaded = assemble([definition(combo_spec_json=json.dumps(legs))], [], [], [])
-
-    assert loaded.strategies["straddle"].spec.legs[0].product is ProductType.CNC
-
-
-def test_an_inactive_strategy_is_not_read() -> None:
-    loaded = assemble([definition(status="INACTIVE")], [], [], [])
-
-    assert loaded.strategies == {}
-
-
-# -- rules ------------------------------------------------------------------
-
-
-def test_entry_rules_are_built_from_their_json() -> None:
-    tree = {"type": "all", "rules": [{"type": "at_or_after", "at": "13:00"}]}
-    loaded = assemble([definition()], [], [rules(entry_rules_json=json.dumps(tree))], [])
-
-    assert loaded.strategies["straddle"].entry_rules is not None
-    assert loaded.refused == {}
-
-
-def test_a_strategy_with_no_rules_has_no_conditions() -> None:
-    """A real thing to configure, and not to be mistaken for broken."""
-    loaded = assemble([definition()], [], [], [])
-
-    assert loaded.strategies["straddle"].entry_rules is not None
-
-
-def test_exit_rules_are_optional() -> None:
-    loaded = assemble([definition()], [], [], [])
-
-    assert loaded.strategies["straddle"].exit_rules is None
-
-
-def test_an_unreadable_rule_tree_leaves_the_strategy_out_by_name() -> None:
-    loaded = assemble([definition()], [], [rules(entry_rules_json="{oh dear")], [])
-
-    assert "straddle" not in loaded.strategies
-    assert "not readable JSON" in loaded.refused["straddle"]
-
-
-def test_a_rule_nobody_registered_leaves_the_strategy_out() -> None:
-    tree = {"type": "enter_if_i_feel_like_it"}
-    loaded = assemble([definition()], [], [rules(entry_rules_json=json.dumps(tree))], [])
-
-    assert "straddle" not in loaded.strategies
-    assert "not usable" in loaded.refused["straddle"]
-
-
-def test_one_broken_strategy_does_not_stop_the_others() -> None:
-    good = definition(strategy_id=2, strategy_name="other")
-    loaded = assemble([definition(), good], [], [rules(entry_rules_json="{oh dear")], [])
-
-    assert "other" in loaded.strategies
-    assert "straddle" in loaded.refused
-
-
-# -- legs that cannot be read -----------------------------------------------
-
-
-def test_a_strategy_describing_no_legs_is_left_out() -> None:
-    loaded = assemble([definition(combo_spec_json=None)], [], [], [])
-
-    assert "describes no legs" in loaded.refused["straddle"]
-
-
-def test_a_selector_nobody_registered_leaves_the_strategy_out() -> None:
-    legs = {"legs": [{"instrument": {"type": "vibes"}}]}
-    loaded = assemble([definition(combo_spec_json=json.dumps(legs))], [], [], [])
-
-    assert "straddle" in loaded.refused
-
-
-def test_a_directional_strategy_with_no_direction_rules_is_left_out() -> None:
-    """Trading it one way nobody chose is worse than not trading it, and the
-    only other option is to guess."""
-    loaded = assemble([definition(is_directional=True)], [], [], [])
-
-    assert "no direction rules" in loaded.refused["straddle"]
-
-
-def test_a_directional_strategy_with_rules_is_traded() -> None:
-    rules_json = json.dumps([{"type": "fixed", "way": "LONG"}])
-    loaded = assemble(
-        [definition(is_directional=True)],
-        [],
-        [rules(direction_rules_json=rules_json)],
-        [],
-    )
-
-    assert loaded.refused == {}
-    assert len(loaded.strategies["straddle"].direction_rules) == 1
-
-
-def test_direction_rules_are_asked_in_the_order_configured() -> None:
-    """First with an opinion wins, so "use the skew, else the candle" is a
-    list rather than a new provider class."""
-    rules_json = json.dumps(
-        [{"type": "n_bars_breakout", "bars": 3}, {"type": "fixed", "way": "SHORT"}]
-    )
-    loaded = assemble(
-        [definition(is_directional=True)], [], [rules(direction_rules_json=rules_json)], []
-    )
-
-    ordered = loaded.strategies["straddle"].direction_rules
-    assert [type(rule).__name__ for rule in ordered] == ["NBarsBreakout", "Fixed"]
-
-
-def test_an_undirectional_strategy_needs_no_direction_rules() -> None:
-    """A short strangle sells both sides; which way it is told hardly matters."""
-    loaded = assemble([definition(is_directional=False)], [], [], [])
-
-    assert loaded.refused == {}
-    assert loaded.strategies["straddle"].direction_rules == ()
-
-
-def test_a_direction_rule_nobody_registered_leaves_the_strategy_out() -> None:
-    rules_json = json.dumps([{"type": "read_the_tea_leaves"}])
-    loaded = assemble([definition()], [], [rules(direction_rules_json=rules_json)], [])
-
-    assert "direction rules are not usable" in loaded.refused["straddle"]
-
-
-def test_unreadable_direction_json_leaves_the_strategy_out() -> None:
-    loaded = assemble([definition()], [], [rules(direction_rules_json="{nope")], [])
-
-    assert "not readable JSON" in loaded.refused["straddle"]
-
-
-# -- configuration ----------------------------------------------------------
-
-
-def test_configuration_merges_across_its_scopes() -> None:
-    layers = [
-        config(id=1, sl_percentage=Decimal(30)),
-        config(id=2, tranch_number=2, strike_type="MoneyNess"),
-    ]
-    loaded = assemble([definition()], layers, [], [])
-
-    resolved = loaded.strategies["straddle"].configuration(2, frozenset())
-    assert resolved.percent("sl_percentage") == Decimal(30)
-    assert resolved.text("strike_type") == "MoneyNess"
-
-
-def test_a_null_column_does_not_override_a_broader_scope() -> None:
-    """The mechanism the whole config tree rests on."""
-    layers = [
-        config(id=1, sl_percentage=Decimal(30)),
-        config(id=2, tranch_number=2, sl_percentage=None),
-    ]
-    loaded = assemble([definition()], layers, [], [])
-
-    assert loaded.strategies["straddle"].configuration(2, frozenset()).percent(
-        "sl_percentage"
-    ) == Decimal(30)
-
-
-def test_a_day_condition_is_read_from_its_code() -> None:
-    layers = [config(id=1, day_condition="E", sl_percentage=Decimal(20))]
-    loaded = assemble([definition()], layers, [], [])
-
-    on_expiry = loaded.strategies["straddle"].configuration(0, frozenset({DayCondition.EXPIRY}))
-    assert on_expiry.percent("sl_percentage") == Decimal(20)
-
-
-def test_a_day_condition_nobody_recognises_leaves_the_strategy_out() -> None:
-    loaded = assemble([definition()], [config(id=1, day_condition="QUARTERLY")], [], [])
-
-    assert "straddle" in loaded.refused
-
-
-def test_tranches_come_from_the_rows_that_configure_them() -> None:
-    layers = [config(id=1, tranch_number=n) for n in (3, 1, 2)]
-    loaded = assemble([definition()], layers, [], [])
-
-    assert loaded.strategies["straddle"].tranches == (1, 2, 3)
-
-
-def test_a_strategy_with_no_tranche_configuration_has_one() -> None:
-    """The single-entry case in the same clothes as the multi-entry one."""
-    loaded = assemble([definition()], [], [], [])
-
-    assert loaded.strategies["straddle"].tranches == (0,)
-
-
-# -- subscriptions ----------------------------------------------------------
-
-
-def test_a_subscription_becomes_something_runnable() -> None:
-    loaded = assemble([definition()], [], [], [subscription()])
-
-    assert len(loaded.subscriptions) == 1
-    assert loaded.subscriptions[0].capital.amount == Decimal(500000)
-    assert loaded.subscriptions[0].capital.currency is Currency.INR
-
-
-def test_an_inactive_subscription_is_skipped() -> None:
-    loaded = assemble([definition()], [], [], [subscription(is_active=False)])
-
-    assert loaded.subscriptions == ()
-
-
-def test_a_subscription_with_no_capital_cannot_trade() -> None:
-    loaded = assemble([definition()], [], [], [subscription(capital=None)])
-
-    assert loaded.subscriptions == ()
-
-
-def test_a_subscription_to_a_refused_strategy_is_dropped() -> None:
-    loaded = assemble([definition()], [], [rules(entry_rules_json="{oh dear")], [subscription()])
-
-    assert loaded.subscriptions == ()
-
-
-def test_paper_carries_through_to_the_subscription() -> None:
-    loaded = assemble([definition()], [], [], [subscription(is_paper_trading=True)])
-
-    assert loaded.subscriptions[0].is_paper
-
-
-def test_a_subscription_takes_the_strategy_s_tranches() -> None:
-    layers = [config(id=1, tranch_number=n) for n in (1, 2)]
-    loaded = assemble([definition()], layers, [], [subscription()])
-
-    assert loaded.subscriptions[0].tranches == (1, 2)
-
-
-def test_two_accounts_run_the_same_strategy_separately() -> None:
-    rows = [subscription(), subscription(subscription_id=2, trading_client_id="amma")]
-    loaded = assemble([definition()], [], [], rows)
-
-    assert {s.trading_client.value for s in loaded.subscriptions} == {"appa", "amma"}
-    assert loaded.subscriptions[0].spec is loaded.subscriptions[1].spec
-
-
-class TestValidatingForTheConsole:
-    """The same build the morning does, answered at the form."""
-
+class TestTheOrdinaryCase:
+    def test_a_strategy_is_read_into_the_vocabulary(self) -> None:
+        loaded = assemble([definition()], [], [], [])
+        strategy = loaded.strategies["straddle"]
+        assert strategy.definition.trade_mode is TradeMode.OPTION_SELLING
+        assert strategy.underlying == InstrumentId("NSE:NIFTY")
+        assert not strategy.winding_down
+
+    def test_no_legs_are_needed_for_an_option_pair(self) -> None:
+        """The shape comes from the trade mode; combo legs are optional."""
+        assert "straddle" in assemble([definition(combo_spec_json=None)], [], [], []).strategies
+
+    def test_an_inactive_strategy_is_not_read(self) -> None:
+        loaded = assemble([definition(status="INACTIVE")], [], [], [subscription()])
+        assert loaded.strategies == {}
+        assert loaded.subscriptions == ()
+
+    def test_a_winding_down_strategy_is_read_and_says_so(self) -> None:
+        loaded = assemble([definition(status="WIND_DOWN")], [], [], [])
+        assert loaded.strategies["straddle"].winding_down
+
+    def test_configuration_merges_per_column_per_day(self) -> None:
+        loaded = assemble(
+            [definition()],
+            [
+                config(id=1, sl_percentage=Decimal(30), max_tranches=2),
+                config(id=2, day_condition="E", sl_percentage=Decimal(15)),
+                config(id=3, tranch_number=2, strike_value="OTM+1"),
+            ],
+            [],
+            [],
+        )
+        strategy = loaded.strategies["straddle"]
+        terms = loaded.subscriptions  # none subscribed; the runtime is built directly
+        assert terms == ()
+        from garuda.engine.runtime_config import SubscriptionTerms
+
+        runtime = strategy.runtime(
+            SubscriptionTerms(trading_client_id=TradingClientId("appa"), capital=Decimal(1)),
+            frozenset({DayCondition.EXPIRY}),
+        )
+        assert runtime.tranche(1).percent("sl_percentage") == Decimal(15)
+        assert runtime.tranche(2).text("strike_value") == "OTM+1"
+        assert runtime.tranche(2).percent("sl_percentage") == Decimal(15)
+        assert runtime.tranche_numbers == (1, 2)
+
+    def test_day_allocation_is_read(self) -> None:
+        row = StrategyDaysAllocationRow(
+            strategy_name="straddle",
+            monday=100,
+            tuesday=100,
+            wednesday=100,
+            thursday=50,
+            friday=100,
+            expiry_day=25,
+            dt1_day=100,
+            dt2_day=100,
+        )
+        loaded = assemble([definition()], [], [], [], [row])
+        allocation = loaded.strategies["straddle"].day_allocation
+        assert allocation.percentage_for(frozenset({DayCondition.THURSDAY})) == 50
+        assert (
+            allocation.percentage_for(frozenset({DayCondition.EXPIRY, DayCondition.THURSDAY})) == 25
+        )
+
+
+class TestRefusals:
+    def test_a_code_outside_the_vocabulary_leaves_it_out_by_name(self) -> None:
+        loaded = assemble([definition(trade_mode="SPEC")], [], [], [subscription()])
+        assert "tradeMode" in loaded.refused["straddle"]
+        assert loaded.subscriptions == ()
+
+    def test_a_config_choice_outside_the_vocabulary_leaves_it_out(self) -> None:
+        loaded = assemble([definition()], [config(strike_type="Nearest")], [], [])
+        assert "strike_type" in loaded.refused["straddle"]
+
+    def test_a_directional_strategy_needs_a_known_provider(self) -> None:
+        none = assemble([definition(is_directional=True)], [], [], [])
+        assert "no direction provider" in none.refused["straddle"]
+        unknown = assemble(
+            [definition(is_directional=True, direction_provider_type="TEA_LEAVES")], [], [], []
+        )
+        assert "TEA_LEAVES" in unknown.refused["straddle"]
+        fixed = assemble(
+            [
+                definition(
+                    is_directional=True,
+                    direction_provider_type="FIXED",
+                    direction_provider_params='{"direction": "LONG"}',
+                )
+            ],
+            [],
+            [],
+            [],
+        )
+        assert "straddle" in fixed.strategies
+
+    def test_the_signal_trigger_leaves_it_out_until_signals_exist(self) -> None:
+        loaded = assemble([definition(signal_trigger_enabled=True)], [], [], [])
+        assert "external signals" in loaded.refused["straddle"]
+
+    def test_indicator_entry_without_entry_rules_is_refused(self) -> None:
+        loaded = assemble([definition(use_indicator_entry=True)], [], [], [])
+        assert "no entry rules" in loaded.refused["straddle"]
+        with_rules = assemble(
+            [definition(use_indicator_entry=True)], [], [rules(entry_rules_json=ENTRY_TREE)], []
+        )
+        assert with_rules.strategies["straddle"].entry_rules is not None
+
+    def test_an_unreadable_rule_tree_leaves_it_out(self) -> None:
+        loaded = assemble([definition()], [], [rules(entry_rules_json="{not json")], [])
+        assert "not readable JSON" in loaded.refused["straddle"]
+
+    def test_one_broken_strategy_does_not_stop_the_others(self) -> None:
+        loaded = assemble(
+            [definition(), definition(strategy_id=2, strategy_name="broken", trade_mode="X")],
+            [],
+            [],
+            [],
+        )
+        assert set(loaded.strategies) == {"straddle"}
+        assert set(loaded.refused) == {"broken"}
+
+
+class TestSubscriptions:
+    def test_a_subscription_carries_its_terms(self) -> None:
+        loaded = assemble([definition()], [], [], [subscription(is_paper_trading=True)])
+        (sub,) = loaded.subscriptions
+        assert sub.trading_client == TradingClientId("appa")
+        assert sub.terms.capital == Decimal(500000)
+        assert sub.is_paper
+        assert loaded.subscribers("straddle") == (sub,)
+        assert loaded.underlyings() == {InstrumentId("NSE:NIFTY")}
+
+    def test_inactive_or_capital_less_subscriptions_are_skipped(self) -> None:
+        loaded = assemble(
+            [definition()],
+            [],
+            [],
+            [
+                subscription(is_active=False),
+                subscription(subscription_id=2, trading_client_id="amma", capital=None),
+            ],
+        )
+        assert loaded.subscriptions == ()
+
+    def test_a_subscription_to_a_refused_strategy_is_dropped(self) -> None:
+        loaded = assemble([definition(trade_mode="X")], [], [], [subscription()])
+        assert loaded.subscriptions == ()
+
+
+class TestValidateStrategy:
     def test_a_sound_strategy_has_nothing_to_refuse(self) -> None:
         assert validate_strategy(definition(), [], None) is None
 
     def test_a_refusal_comes_back_as_the_reason(self) -> None:
-        legs = {"legs": [{"instrument": {"type": "no_such_selector"}}]}
-        why = validate_strategy(definition(combo_spec_json=json.dumps(legs)), [], None)
-        assert why is not None
-        assert "no_such_selector" in why
+        reason = validate_strategy(definition(), [config(exit_mode="WHENEVER")], None)
+        assert reason is not None
+        assert "exit_mode" in reason
 
     def test_an_inactive_strategy_is_not_built_and_so_not_refused(self) -> None:
-        legs = {"legs": [{"instrument": {"type": "no_such_selector"}}]}
-        row = definition(status="INACTIVE", combo_spec_json=json.dumps(legs))
-        assert validate_strategy(row, [], None) is None
-
-
-class TestWindingDown:
-    """The reference's WIND_DOWN: built, flagged, and entering nothing."""
-
-    def test_a_winding_down_strategy_is_still_built(self) -> None:
-        loaded = assemble([definition(status="WIND_DOWN")], [], [], [])
-        assert loaded.strategies["straddle"].winding_down is True
-
-    def test_its_subscriptions_carry_the_flag(self) -> None:
-        loaded = assemble([definition(status="WIND_DOWN")], [], [], [subscription(capital=100000)])
-        [subscribed] = loaded.subscriptions
-        assert subscribed.winding_down is True
-
-    def test_an_active_strategy_is_not(self) -> None:
-        loaded = assemble([definition()], [], [], [subscription(capital=100000)])
-        assert loaded.strategies["straddle"].winding_down is False
-        assert loaded.subscriptions[0].winding_down is False
-
-    def test_an_inactive_strategy_is_still_dropped(self) -> None:
-        loaded = assemble([definition(status="INACTIVE")], [], [], [])
-        assert "straddle" not in loaded.strategies
+        assert validate_strategy(definition(status="INACTIVE", trade_mode="X"), [], None) is None

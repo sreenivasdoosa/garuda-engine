@@ -23,15 +23,17 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import date, datetime
-from decimal import Decimal
+from datetime import date, datetime, time
+from decimal import ROUND_DOWN, Decimal
 from zoneinfo import ZoneInfo
 
+from garuda.capital.event_days import EventDays
 from garuda.domain.calendar import TradingCalendar
 from garuda.domain.client import TradingClientId
 from garuda.domain.enums import ExpiryKind, OptionType
 from garuda.domain.errors import DomainError
-from garuda.domain.instrument import InstrumentId
+from garuda.domain.exchange import Exchange
+from garuda.domain.instrument import Instrument, InstrumentId
 from garuda.domain.market import Bar, BarInterval, Tick
 from garuda.domain.money import Money
 from garuda.domain.symbol import SymbolInfo
@@ -39,6 +41,7 @@ from garuda.domain.trade import Trade
 from garuda.engine.config import ResolvedConfig
 from garuda.engine.daycondition import DayCondition, conditions_on
 from garuda.engine.indicators import build as build_indicator
+from garuda.engine.lots import DayAllocation
 from garuda.marketdata.history import CandleCache
 from garuda.marketdata.hub import TickHub
 from garuda.marketdata.reference import reference_for
@@ -296,3 +299,93 @@ def day_conditions_for(
     that is then the only expiry it has.
     """
     return conditions_on(trading_day, registry.nearest_expiry(underlying, trading_day), calendar)
+
+
+@dataclass(frozen=True)
+class LiveEnvironment:
+    """What the strategy pipeline reads, from one instant.
+
+    `garuda.engine.base_strategy.StrategyEnvironment`, over the engine's own
+    sources: the tick hub, the instrument master, the curated symbols, the
+    venue's calendar, the day allocation and the event days. Built fresh per
+    evaluation, like :class:`LiveContext`, because it holds a moment.
+    """
+
+    market: MarketView
+    venue: Exchange
+    now: datetime
+    trading_day: date
+    conditions: frozenset[DayCondition]
+    day_allocation: DayAllocation
+    event_days: EventDays
+    memory: Mapping[str, object] = field(default_factory=dict)
+
+    @property
+    def timezone(self) -> ZoneInfo:
+        return self.market.timezone
+
+    @property
+    def calendar(self) -> TradingCalendar:
+        return self.venue.calendar
+
+    @property
+    def market_close(self) -> time:
+        windows = self.venue.calendar.windows_on(self.trading_day)
+        if not windows:
+            raise DomainError(f"{self.venue.code} has no session on {self.trading_day}")
+        return windows[-1].end.astimezone(self.timezone).time()
+
+    def spot(self, underlying: InstrumentId) -> Money | None:
+        return self.market.spot_price(underlying, self.trading_day)
+
+    def future_price(self, underlying: InstrumentId) -> Money | None:
+        future = self.market.registry().near_month_future(underlying, self.trading_day)
+        if future is None:
+            return None
+        quote = self.market.hub.latest(future.id)
+        return quote.last_price if quote is not None else None
+
+    def strike_gap(self, underlying: InstrumentId) -> Decimal | None:
+        info = self._symbol(underlying)
+        return info.strike_gap if info is not None else None
+
+    def hedge_rounding(self, underlying: InstrumentId) -> Decimal | None:
+        info = self._symbol(underlying)
+        if info is None or info.hedge_strike_rounding <= 0:
+            return None
+        return info.hedge_strike_rounding
+
+    def option_expiry(self, underlying: InstrumentId, kind: ExpiryKind) -> date | None:
+        return self.market.registry().option_expiry_for(underlying, kind, self.trading_day)
+
+    def is_monthly_expiry_week(self, underlying: InstrumentId) -> bool:
+        monthly = self.option_expiry(underlying, ExpiryKind.MONTHLY)
+        if monthly is None:
+            return False
+        return monthly.isocalendar()[:2] == self.trading_day.isocalendar()[:2]
+
+    def option(
+        self, underlying: InstrumentId, expiry: date, strike: Decimal, option_type: OptionType
+    ) -> InstrumentId | None:
+        listed = self.market.registry().option_at(underlying, expiry, strike, option_type)
+        return listed.id if listed is not None else None
+
+    def strikes(self, underlying: InstrumentId, expiry: date) -> list[Decimal]:
+        return list(self.market.registry().strikes_for(underlying, expiry))
+
+    def instrument(self, instrument: InstrumentId) -> Instrument | None:
+        return self.market.registry().get(instrument)
+
+    def quote(self, instrument: InstrumentId) -> Tick | None:
+        return self.market.hub.latest(instrument)
+
+    def day_allocation_percent(self, strategy: str) -> int:
+        del strategy
+        return self.day_allocation.percentage_for(self.conditions)
+
+    def event_day_percent(self, strategy: str, exchange: str) -> int:
+        share = self.event_days.percentage_for(self.trading_day, exchange, strategy)
+        return int(share.to_integral_value(rounding=ROUND_DOWN))
+
+    def _symbol(self, underlying: InstrumentId) -> SymbolInfo | None:
+        return self.market.symbols.get(underlying.value.split(":", 1)[-1])

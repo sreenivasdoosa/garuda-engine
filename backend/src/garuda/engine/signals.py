@@ -76,6 +76,9 @@ class SignalBatch:
     #: even when the batch was refused -- "no lot affordable" is the answer an
     #: operator asking why nothing traded actually needs.
     sizings: tuple[Sizing, ...] = ()
+    #: How many legs the entry has, when it was sized as a whole rather than
+    #: leg by leg. A sliced leg is still one leg.
+    legs: int | None = None
 
     @property
     def accepted(self) -> bool:
@@ -84,7 +87,7 @@ class SignalBatch:
     @property
     def leg_count(self) -> int:
         """Legs, not signals. A sliced leg is still one leg."""
-        return len(self.sizings)
+        return self.legs if self.legs is not None else len(self.sizings)
 
 
 class SignalFactory:

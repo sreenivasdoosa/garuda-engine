@@ -27,7 +27,6 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from garuda.brokers.routing import trading_client_factory
 from garuda.brokers.sessions import Credentials, SessionResolver, SessionUnavailableError
 from garuda.brokers.websocket import websocket_connector
-from garuda.capital import CapitalLotAllocator, Sizer
 from garuda.capital.event_days import EventDays
 from garuda.composition.accounts import build_resolver, load_accounts, load_sessions
 from garuda.composition.brokers import load_brokers
@@ -47,7 +46,7 @@ from garuda.composition.runtime import Runtime, start
 from garuda.composition.status import SystemStatusView
 from garuda.composition.strategies import Loaded, load_strategies, validate_strategy
 from garuda.composition.strategy_context import MarketView
-from garuda.composition.strategy_loop import StrategyLoop, deliver_for
+from garuda.composition.strategy_loop import StrategyLoop
 from garuda.composition.terminal import TerminalView
 from garuda.composition.venues import Venues, load_venues
 from garuda.composition.watchlist import Watchlist
@@ -55,11 +54,8 @@ from garuda.config.settings import Settings, load_settings
 from garuda.core.clock import LiveClock
 from garuda.core.timeline import InitTimeline
 from garuda.domain.errors import DomainError
-from garuda.domain.instrument import Instrument, InstrumentId, canonical_symbol
+from garuda.domain.instrument import InstrumentId, canonical_symbol
 from garuda.domain.symbol import SymbolInfo
-from garuda.engine.signals import SignalFactory
-from garuda.engine.strategy import StrategyRunner
-from garuda.engine.tranches import TrancheLedger
 from garuda.marketdata.loader import InstrumentLoader
 from garuda.marketdata.providers.catalogues import CatalogueHolder
 from garuda.marketdata.registry import InstrumentRegistry
@@ -76,6 +72,7 @@ from garuda.persistence.engine import create_engine, create_session_factory
 from garuda.persistence.secrets import SecretBox
 from garuda.persistence.seed import load_seed
 from garuda.persistence.single_engine import SingleEngineLock
+from garuda.persistence.strategy_state_store import StrategyStateStore
 from garuda.persistence.uow import UnitOfWork
 from garuda.protocols.clock import Clock
 from garuda.rms.killswitch import KillSwitch
@@ -602,9 +599,6 @@ def _strategy_loop(assembled: _Assembled, clock: Clock) -> StrategyLoop | None:
     def registry() -> InstrumentRegistry:
         return engine.parts.instruments.for_broker(broker)
 
-    def instrument(instrument_id: InstrumentId) -> Instrument | None:
-        return registry().get(instrument_id)
-
     market = MarketView(
         hub=engine.parts.hub,
         registry=registry,
@@ -614,19 +608,6 @@ def _strategy_loop(assembled: _Assembled, clock: Clock) -> StrategyLoop | None:
         # and a rule testing SuperTrend must see the same bars.
         candles=engine.parts.candles,
     )
-
-    async def deliver(batch: object) -> bool:
-        return await deliver_for(engine, batch)  # type: ignore[arg-type]
-
-    factory = SignalFactory(
-        Sizer(CapitalLotAllocator()),
-        instrument,
-        engine.parts.hub.latest,
-        event_days=assembled.event_days,
-    )
-    # One ledger, shared. Two would let the loop think a tranche was open
-    # while the runner had already fired it, and it would enter every sweep.
-    ledger = TrancheLedger(venue.trading_day_for(clock.now()))
     return StrategyLoop(
         engine=engine,
         loaded=assembled.strategies,
@@ -634,8 +615,8 @@ def _strategy_loop(assembled: _Assembled, clock: Clock) -> StrategyLoop | None:
         venue=venue,
         clock=clock,
         alerts=engine.parts.alerts,
-        runner=StrategyRunner(factory=factory, deliver=deliver, ledger=ledger),
-        ledger=ledger,
+        states=StrategyStateStore(assembled.sessions),
+        event_days=assembled.event_days,
         watchlist=watchlist,
         synthetics=SyntheticPublisher(sources=_synthetics(assembled)),
         derived=derived,

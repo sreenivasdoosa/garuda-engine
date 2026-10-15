@@ -245,8 +245,8 @@ class SystemStatusView:
                 strategies_loaded=len(loop.loaded.strategies),
                 subscriptions=len(loop.loaded.subscriptions),
                 refused=dict(loop.loaded.refused),
-                tranches_open=len(loop.ledger.open),
-                tranches_today=len(loop.ledger.all),
+                tranches_open=loop.tranches_pending,
+                tranches_today=loop.tranches_today,
             )
         return LoopStatus(
             runner_running=runtime is not None and not runtime.runner.is_stopping,

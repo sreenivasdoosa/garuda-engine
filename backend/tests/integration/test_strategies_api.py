@@ -189,7 +189,7 @@ class TestDefinitions:
         self, client: httpx.AsyncClient
     ) -> None:
         """The reason the morning's log would give, at the form instead."""
-        created = await define(client, legs=[{"instrument": {"type": "no_such_selector"}}])
+        created = await define(client, isDirectional=True)  # no provider named
         response = await client.put(
             f"/api/engine/definitions/{created['strategyId']}/status/ACTIVE"
         )
@@ -459,7 +459,7 @@ class TestTheReferencesRules:
     ) -> None:
         """Open positions still need their exit rules, so a WIND_DOWN strategy
         is built -- and therefore validated -- like an active one."""
-        created = await define(client, legs=[{"instrument": {"type": "no_such_selector"}}])
+        created = await define(client, isDirectional=True)  # no provider named
         response = await client.put(
             f"/api/engine/definitions/{created['strategyId']}/status/WIND_DOWN"
         )

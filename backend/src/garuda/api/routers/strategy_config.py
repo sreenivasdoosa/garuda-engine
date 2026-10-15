@@ -84,6 +84,25 @@ READ_BY_ENGINE = frozenset(
         "combined_trail_sl",
         "sl_trigger_to_limit_gap_percentage",
         "no_stop_loss",
+        # The scheduled pipeline (`STRATEGY_ENGINE.md` §4).
+        "strike_type",
+        "strike_value",
+        "lots_per_tranch",
+        "max_tranches",
+        "hedging_enabled",
+        "hedge_strike_rounding_min_distance",
+        "volume_filter",
+        "oi_filter",
+        "apply_volume_filter_to_hedge",
+        "apply_oi_filter_to_hedge",
+        "tranch_timing",
+        "tranch_cutoff_time",
+        "exit_mode",
+        "exit_time",
+        "exit_days",
+        "order_fill_escalation_mode",
+        "order_fill_escalation_seconds",
+        "order_fill_escalation_steps",
     }
 )
 
