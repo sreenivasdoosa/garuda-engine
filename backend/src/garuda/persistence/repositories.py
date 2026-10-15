@@ -458,8 +458,8 @@ class StrategySymbolSubscriptionsRepository(Repository[models.StrategySymbolSubs
     model = models.StrategySymbolSubscriptionsRow
 
 
-class StrategyTemplatesRepository(Repository[models.StrategyTemplatesRow]):
-    model = models.StrategyTemplatesRow
+class StrategyDaysAllocationRepository(Repository[models.StrategyDaysAllocationRow]):
+    model = models.StrategyDaysAllocationRow
 
 
 class StrikeSelectionPolicyRepository(Repository[models.StrikeSelectionPolicyRow]):
@@ -819,8 +819,8 @@ class Repositories:
         return self.of(StrategySymbolSubscriptionsRepository)
 
     @property
-    def strategy_templates(self) -> StrategyTemplatesRepository:
-        return self.of(StrategyTemplatesRepository)
+    def strategy_days_allocation(self) -> StrategyDaysAllocationRepository:
+        return self.of(StrategyDaysAllocationRepository)
 
     @property
     def strike_selection_policy(self) -> StrikeSelectionPolicyRepository:

@@ -12,6 +12,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 from collections.abc import AsyncIterator
+from decimal import Decimal
 from typing import Any
 
 import httpx
@@ -24,6 +25,7 @@ from garuda.api.routers import strategies
 from garuda.composition.strategies import validate_strategy
 from garuda.core.clock import ReplayClock
 from garuda.persistence import models
+from garuda.persistence.repositories import StrategyConfigRepository
 
 pytestmark = pytest.mark.integration
 
@@ -117,6 +119,61 @@ class TestDefinitions:
         assert len(created["legs"]) == 2
         assert json.loads(created["comboSpecJson"])["legs"] == STRADDLE_LEGS
         assert created["subscriptions"] == 0
+
+    async def test_a_new_strategy_starts_with_the_references_defaults(
+        self, client: httpx.AsyncClient, session_factory: async_sessionmaker[AsyncSession]
+    ) -> None:
+        """The template's default configuration, now the definition's columns
+        and one base configuration row written beside it."""
+        created = await define(client)
+        assert created["tradeMode"] == "OPTION_SELLING"
+        assert (created["startTime"], created["stopTime"]) == ("09:20", "15:15")
+        assert created["capitalPerLot"] == 100000
+        assert created["hedgeDistancePercentageIntraday"] == 4.0
+        assert created["useIndicatorEntry"] is False
+        assert created["strategyClass"] is None
+        async with session_factory() as session:
+            rows = list(await StrategyConfigRepository(session).all())
+        assert len(rows) == 1
+        base = rows[0]
+        assert (base.tranch_number, base.day_condition) == (None, None)
+        assert (base.strike_type, base.strike_value) == ("MoneyNess", "ATM")
+        assert (base.lots_per_tranch, base.hedging_enabled, base.tranch_timing) == (
+            1,
+            True,
+            "09:20",
+        )
+        assert base.sl_percentage == Decimal(30)
+
+    async def test_a_trade_mode_outside_the_vocabulary_is_refused(
+        self, client: httpx.AsyncClient
+    ) -> None:
+        response = await client.post(
+            "/api/engine/definitions",
+            json={
+                "strategyName": "x",
+                "underlyingSymbol": "NIFTY",
+                "exchange": "NSE",
+                "tradeMode": "SPEC",
+            },
+        )
+        assert response.status_code == 400
+        assert "OPTION_SELLING" in response.json()["message"]
+
+    async def test_a_custom_strategy_class_is_refused_while_none_is_registered(
+        self, client: httpx.AsyncClient
+    ) -> None:
+        response = await client.post(
+            "/api/engine/definitions",
+            json={
+                "strategyName": "x",
+                "underlyingSymbol": "NIFTY",
+                "exchange": "NSE",
+                "strategyClass": "MINE",
+            },
+        )
+        assert response.status_code == 400
+        assert "none are registered" in response.json()["message"]
 
     async def test_the_catalog_names_what_a_leg_can_be(self, client: httpx.AsyncClient) -> None:
         body = (await client.get("/api/engine/catalog")).json()["data"]

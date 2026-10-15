@@ -29,6 +29,7 @@ from decimal import Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from garuda.composition.runtime_config import layer_of
 from garuda.domain.client import TradingClientId
 from garuda.domain.enums import Direction, OrderType, ProductType
 from garuda.domain.errors import DomainError
@@ -70,21 +71,6 @@ logger = logging.getLogger(__name__)
 #: What a strategy enters when its rules say nothing. An empty conjunction
 #: passes, which is a strategy with no conditions -- a real thing to configure.
 NO_CONDITIONS = AllOf(())
-
-#: Columns of the configuration table that are not settings. Everything else
-#: becomes a field a strategy can read.
-NOT_A_SETTING = frozenset(
-    {
-        "id",
-        "priority",
-        "strategy_name",
-        "tranch_number",
-        "day_condition",
-        "description",
-        "created_at",
-        "updated_at",
-    }
-)
 
 
 @dataclass(frozen=True)
@@ -223,7 +209,7 @@ def _strategy(
     winding_down: bool = False,
 ) -> Strategy:
     underlying = InstrumentId(f"{definition.exchange}:{definition.underlying_symbol}")
-    layers = tuple(_layer(row) for row in configs)
+    layers = tuple(layer_of(row) for row in configs)
 
     spec = StrategySpec(
         name=definition.strategy_name,
@@ -239,24 +225,6 @@ def _strategy(
         layers=layers,
         tranches=_tranches(configs),
         winding_down=winding_down,
-    )
-
-
-def _layer(row: StrategyConfigRow) -> ConfigLayer:
-    """One configuration row, reduced to the fields it actually sets.
-
-    A null means "not set at this scope" and must not be carried, or it would
-    override a broader scope with nothing.
-    """
-    values = {
-        column.name: getattr(row, column.name)
-        for column in row.__table__.columns
-        if column.name not in NOT_A_SETTING and getattr(row, column.name) is not None
-    }
-    return ConfigLayer(
-        values=values,
-        tranche=row.tranch_number,
-        day_condition=(DayCondition.parse(row.day_condition) if row.day_condition else None),
     )
 
 

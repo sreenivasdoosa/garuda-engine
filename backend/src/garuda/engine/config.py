@@ -47,6 +47,10 @@ class ConfigLayer:
     def __post_init__(self) -> None:
         if self.tranche is not None and self.tranche < 0:
             raise DomainError(f"tranche {self.tranche} is not a tranche")
+        if self.tranche == 0:
+            # The reference reads a row at tranche 0 as a base row, and so does
+            # its Console. Tranches are numbered from one; zero is "none".
+            object.__setattr__(self, "tranche", None)
         if any(value is None for value in self.values.values()):
             raise DomainError(
                 "a configuration layer holds only fields that are set; a null is "
@@ -63,11 +67,12 @@ class ConfigLayer:
         """
         return (2 if self.tranche is not None else 0) + (1 if self.day_condition is not None else 0)
 
-    def applies_to(self, tranche: int, conditions: frozenset[DayCondition]) -> bool:
+    def applies_to(self, tranche: int | None, conditions: frozenset[DayCondition]) -> bool:
         """Whether this layer is in scope for one evaluation.
 
         An unset scope is a wildcard: a layer with no tranche applies to every
-        tranche, and one with no day condition to every day.
+        tranche, and one with no day condition to every day. Asking for
+        tranche ``None`` asks for the base: only tranche-less layers apply.
         """
         if self.tranche is not None and self.tranche != tranche:
             return False
@@ -156,10 +161,16 @@ def resolve(
     strategy: str,
     layers: Iterable[ConfigLayer],
     *,
-    tranche: int = 0,
+    tranche: int | None = None,
     conditions: frozenset[DayCondition] = frozenset(),
 ) -> ResolvedConfig:
-    """Merge every layer in scope, most specific value winning per field."""
+    """Merge every layer in scope, most specific value winning per field.
+
+    ``tranche=None`` resolves the base: the strategy-wide and day rows only,
+    which is what a tranche without a row of its own uses.
+    """
+    if tranche == 0:
+        tranche = None
     in_scope = [layer for layer in layers if layer.applies_to(tranche, conditions)]
     ordered = _most_specific_first(in_scope)
 

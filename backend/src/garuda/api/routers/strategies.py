@@ -23,10 +23,18 @@ line in tomorrow's log saying the strategy was left out.
 tables into the strategy loop after each one, so a subscription made at ten
 is swept at ten.
 
-Not ported: templates (garuda composes from a spec; `SCOPE_DECISIONS.md`
-§5a), `USERNAME`, `IS_PUBLIC`, `SCOPE` and `IS_MOCK` on the definition, and
+Not ported: templates (what one switched on is a column here; custom logic
+is a registered `strategyClass` -- `STRATEGY_ENGINE.md` §5 and §7),
+`USERNAME`, `IS_PUBLIC`, `SCOPE` and `IS_MOCK` on the definition, and
 `BROKER_NAME` on the subscription -- the trading client already names its
 broker.
+
+**A new strategy starts with the reference's defaults.** The template's
+default configuration used to supply them; now the definition row carries
+the window, the capital per lot and the hedge distances, and a base
+configuration row is written beside it with the strike, stop, lots, gap and
+timing a plain option-selling strategy needs. The operator edits from
+there rather than from nothing.
 """
 
 from __future__ import annotations
@@ -51,6 +59,13 @@ from garuda.engine.direction import registered as direction_rules_registered
 from garuda.engine.rules.registry import registered as rules_registered
 from garuda.engine.selectors import registered as selectors_registered
 from garuda.engine.spec import SideRule
+from garuda.engine.vocabulary import (
+    DEFINITION_CHOICES,
+    ExpiryType,
+    StrategyProduct,
+    StrategyStatus,
+    TradeMode,
+)
 from garuda.persistence import models
 from garuda.persistence.repositories import (
     StrategyConfigRepository,
@@ -63,9 +78,44 @@ from garuda.protocols.clock import Clock
 
 logger = logging.getLogger(__name__)
 
-STATUSES = ("ACTIVE", "INACTIVE", "WIND_DOWN")
-PRODUCTS = ("INTRADAY", "POSITIONAL", "CASHBUY", "MTF")
-EXPIRY_TYPES = ("WEEKLY", "MONTHLY")
+STATUSES = StrategyStatus.choices()
+PRODUCTS = StrategyProduct.choices()
+EXPIRY_TYPES = ExpiryType.choices()
+TRADE_MODES = TradeMode.choices()
+
+#: What a new strategy starts with: the reference template's default
+#: configuration, as definition columns and one base configuration row.
+NEW_DEFINITION_DEFAULTS: dict[str, Any] = {
+    "product": "INTRADAY",
+    "trade_mode": TradeMode.OPTION_SELLING.value,
+    "status": "INACTIVE",
+    "start_time": "09:20",
+    "stop_time": "15:15",
+    "capital_per_lot": 100000,
+    "capital_per_lot_hedged": 100000,
+    "capital_per_lot_naked": 300000,
+    "expiry_type": "WEEKLY",
+    "underlying_type": "INDEX",
+    "hedge_distance_percentage_intraday": Decimal("4.0"),
+    "hedge_distance_percentage_positional": Decimal("1.0"),
+    "exclude_monthly_expiry": False,
+    "use_premium_balancing": True,
+    "catch_up_missed_tranches": True,
+    "adaptive_tranches_enabled": False,
+    "use_indicator_entry": False,
+    "scheduled_trigger_enabled": True,
+}
+NEW_BASE_CONFIG: dict[str, Any] = {
+    "strike_type": "MoneyNess",
+    "strike_value": "ATM",
+    "lots_per_tranch": 1,
+    "hedging_enabled": True,
+    "sl_percentage": Decimal("30"),
+    "sl_trigger_to_limit_gap_percentage": Decimal("6"),
+    "min_tranch_gap": 5,
+    "tranch_timing": "09:20",
+    "description": "Written with the strategy; edit rather than add a second base row",
+}
 
 #: Builds a strategy the way the engine does and answers why it would be
 #: refused, or None. Supplied by the composition root, which owns the loader;
@@ -97,6 +147,9 @@ def _parsed(raw: str | None) -> Any:
 _DEFINITION_COLUMNS: dict[str, str] = {
     "display_name": "displayName",
     "display_order": "displayOrder",
+    "trade_mode": "tradeMode",
+    "strategy_class": "strategyClass",
+    "use_indicator_entry": "useIndicatorEntry",
     "underlying_symbol": "underlyingSymbol",
     "exchange": "exchange",
     "product": "product",
@@ -173,6 +226,7 @@ _REQUIRED_BOOLEANS = frozenset(
         "use_premium_balancing",
         "catch_up_missed_tranches",
         "adaptive_tranches_enabled",
+        "use_indicator_entry",
     }
 )
 
@@ -185,7 +239,6 @@ def definition_wire(
         value = getattr(row, column)
         out[wire] = float(value) if isinstance(value, Decimal) else value
     out["legs"] = _legs_of(row.combo_spec_json)
-    out["tradeMode"] = row.trade_mode
     out["createdAt"] = _iso(row.created_at)
     out["updatedAt"] = _iso(row.updated_at)
     if subscriptions is not None:
@@ -327,6 +380,7 @@ def catalog() -> dict[str, Any]:
         "legRoles": [member.value for member in LegRole],
         "products": [member.value for member in ProductType],
         "definitionProducts": list(PRODUCTS),
+        "tradeModes": list(TRADE_MODES),
         "orderTypes": [member.value for member in OrderType],
         "optionTypes": [member.value for member in OptionType],
         "expiryTypes": list(EXPIRY_TYPES),
@@ -389,7 +443,9 @@ def build(
         for wire, value in given.items():
             column = _WIRE_TO_COLUMN.get(wire)
             if column is None:
-                if wire in {"tradeMode", "templateName", "createdAt", "updatedAt", "subscriptions"}:
+                if wire in {"templateName", "createdAt", "updatedAt", "subscriptions"}:
+                    # The reference's form still sends a template name; there
+                    # is no template to name, and the field is not an error.
                     continue
                 raise HTTPException(
                     status_code=400, detail=f"{wire!r} is not a field of a strategy definition"
@@ -418,6 +474,28 @@ def build(
                         detail=f"expiryType {value!r} is not one of {', '.join(EXPIRY_TYPES)}",
                     )
                 row.expiry_type = kind
+            elif column in DEFINITION_CHOICES:
+                text = (value or "").strip().upper() or None
+                choices = DEFINITION_CHOICES[column]
+                if text is None and column == "trade_mode":
+                    raise HTTPException(status_code=400, detail="tradeMode is required")
+                if text is not None and text not in choices:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"{wire} {value!r} is not one of {', '.join(choices)}",
+                    )
+                setattr(row, column, text)
+            elif column == "strategy_class":
+                text = (value or "").strip() or None
+                if text is not None:
+                    # No custom strategy is registered yet (`STRATEGY_ENGINE.md`
+                    # §7); naming one would be a strategy nothing can run.
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"strategyClass {text!r} is not a registered custom strategy; "
+                        "none are registered",
+                    )
+                row.strategy_class = None
             elif column in ("underlying_symbol", "exchange"):
                 text = (value or "").strip().upper()
                 if not text:
@@ -498,21 +576,24 @@ def build(
             strategy_name=name,
             underlying_symbol=body.underlyingSymbol.strip().upper(),
             exchange=body.exchange.strip().upper(),
-            product="INTRADAY",
-            trade_mode="SPEC",
-            status="INACTIVE",
-            exclude_monthly_expiry=False,
-            use_premium_balancing=True,
-            catch_up_missed_tranches=True,
-            adaptive_tranches_enabled=False,
-            scheduled_trigger_enabled=True,
             created_at=now,
             updated_at=now,
+            **NEW_DEFINITION_DEFAULTS,
         )
         _apply_definition(row, body)
         _refuse_bad_window(row)
         await _refuse_if_unloadable(request, db, row)
         repository.add(row)
+        base = models.StrategyConfigRow(
+            strategy_name=name,
+            tranch_number=None,
+            day_condition=None,
+            created_at=now,
+            updated_at=now,
+            **NEW_BASE_CONFIG,
+        )
+        base.tranch_timing = row.start_time or NEW_BASE_CONFIG["tranch_timing"]
+        StrategyConfigRepository(db).add(base)
         try:
             await db.commit()
         except IntegrityError as error:

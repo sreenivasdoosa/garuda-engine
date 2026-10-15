@@ -44,6 +44,7 @@ from garuda.api.envelope import ok
 from garuda.domain.errors import DomainError
 from garuda.engine.config import ConfigLayer, resolve
 from garuda.engine.daycondition import DayCondition
+from garuda.engine.vocabulary import CONFIG_CHOICES
 from garuda.persistence import models
 from garuda.persistence.repositories import (
     StrategyConfigRepository,
@@ -124,13 +125,14 @@ GROUPS: dict[str, tuple[str, ...]] = {
         "apply_volume_filter_to_hedge",
         "apply_oi_filter_to_hedge",
         "hedge_strike_rounding_min_distance",
+        "target_delta",
+        "max_delta_deviation",
     ),
     "Sizing and tranches": (
         "lots_per_tranch",
         "max_tranches",
-        "lot_allocation_mode",
-        "global_allocation_tranches",
-        "allocation_start_tranch",
+        "stop_after_loss_tranches",
+        "stop_after_profit_tranches",
         "tranch_timing",
         "tranch_cutoff_time",
         "min_tranch_gap",
@@ -156,27 +158,19 @@ GROUPS: dict[str, tuple[str, ...]] = {
         "breakout_trigger_mode",
         "breakout_trigger_value",
         "breakout_select_fresh_strikes",
+        "breakout_range_type",
+        "breakout_range_start",
+        "breakout_range_end",
+        "breakout_range_lookback",
+        "breakout_on_high_break",
+        "breakout_on_low_break",
+        "breakout_reversal_mode",
     ),
 }
 
-#: The vocabulary the reference actually uses, per `STRATEGY_ENGINE.md` §1.
-#: Offered as choices; anything else is refused by name.
-CHOICES: dict[str, tuple[str, ...]] = {
-    "strike_type": (
-        "MoneyNess",
-        "PremiumRange",
-        "PremiumRange_OIRanked",
-        "FixedPremium",
-        "CandleLow_NearPremium",
-    ),
-    "trail_sl_type": ("RISK_MULTIPLE", "ATR", "EMA", "SUPERTREND", "HEIKIN_ASHI"),
-    "exit_mode": ("MINUTES_FROM_ENTRY", "DAYS_FROM_ENTRY", "EXPIRY", "SAME_DAY"),
-    "lot_allocation_mode": ("GLOBAL_SHARED", "DAY_LOCAL"),
-    "risk_calculation_mode": ("STOP_LOSS", "WING_WIDTH_MAX_LOSS"),
-    "breakout_watch_type": ("OPTION_SYMBOL",),
-    "breakout_trigger_mode": ("PERCENTAGE", "CANDLE_LOW"),
-    "order_fill_escalation_mode": ("NONE", "STEPPED", "MARKET"),
-}
+#: The vocabulary, per `STRATEGY_ENGINE.md` §1. Offered as choices; anything
+#: else is refused by name.
+CHOICES: dict[str, tuple[str, ...]] = dict(CONFIG_CHOICES)
 
 
 def _camel(column: str) -> str:
@@ -316,7 +310,17 @@ def _coerce(name: str, value: Any) -> Any:
             return bool(value)
         if kind == "integer":
             number = int(value)
-            if name in ("lots_per_tranch", "max_tranches") and number < 0:
+            if (
+                name
+                in (
+                    "lots_per_tranch",
+                    "max_tranches",
+                    "stop_after_loss_tranches",
+                    "stop_after_profit_tranches",
+                    "breakout_range_lookback",
+                )
+                and number < 0
+            ):
                 raise HTTPException(status_code=400, detail=f"{wire} cannot be negative")
             return number
         if kind == "decimal":

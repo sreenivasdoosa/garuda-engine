@@ -57,7 +57,7 @@ async def client(
                 underlying_symbol="NIFTY",
                 exchange="NSE",
                 product="INTRADAY",
-                trade_mode="SPEC",
+                trade_mode="OPTION_SELLING",
                 status="ACTIVE",
                 start_time="09:20:00",
                 combo_spec_json=LEGS,
@@ -65,6 +65,7 @@ async def client(
                 use_premium_balancing=True,
                 catch_up_missed_tranches=True,
                 adaptive_tranches_enabled=False,
+                use_indicator_entry=False,
                 created_at=NOW,
                 updated_at=NOW,
             )

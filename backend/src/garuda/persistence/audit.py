@@ -85,6 +85,7 @@ ENTITY_TYPES: Mapping[str, str] = {
     "strategy_definitions": "STRATEGY_DEFINITION",
     "strategy_indicator_rules": "STRATEGY_RULES",
     "strategy_config": "STRATEGY_CONFIG_TREE",
+    "strategy_days_allocation": "STRATEGY_DAYS_ALLOCATION",
     "subscriptions": "SUBSCRIPTION",
     "rms_config": "RMS_CONFIG",
     "kill_switches": "KILL_SWITCH",

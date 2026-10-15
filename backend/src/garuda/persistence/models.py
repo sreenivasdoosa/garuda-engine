@@ -656,46 +656,18 @@ class ClientMarginsRow(Base):
     total_margin: Mapped[Decimal | None] = mapped_column(Numeric(20, 6), nullable=True)
 
 
-class StrategyTemplatesRow(Base):
-    """STRATEGY_TEMPLATES in the reference engine."""
-
-    __tablename__ = "strategy_templates"
-
-    template_name: Mapped[str] = mapped_column(String(100), primary_key=True)
-    display_name: Mapped[str] = mapped_column(String(200))
-    description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    evaluator_class: Mapped[str] = mapped_column(String(500))
-    supports_tick_trigger: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
-    supports_scheduled_trigger: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
-    supports_signal_trigger: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
-    supports_periodic_trigger: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
-    supports_hedge_management: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
-    is_fno: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
-    support_tranches: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
-    default_config: Mapped[dict[str, object] | None] = mapped_column(JSONB, nullable=True)
-    version: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    is_active: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
-    created_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    updated_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    asset_class: Mapped[str] = mapped_column(String(10))
-    is_user_selectable: Mapped[bool] = mapped_column(Boolean)
-    supported_trade_modes: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    supported_direction_providers: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    supports_indicator_entry: Mapped[bool] = mapped_column(Boolean)
-    supports_indicator_exit: Mapped[bool] = mapped_column(Boolean)
-    supports_reentry: Mapped[bool] = mapped_column(Boolean)
-    resolution_priority: Mapped[int] = mapped_column(Integer)
-    supports_combos: Mapped[bool] = mapped_column(Boolean)
-
-
 class StrategyDefinitionsRow(Base):
     """STRATEGY_DEFINITIONS in the reference engine.
 
-    Four of its columns are gone with the features they served. `username`,
+    Five of its columns are gone with the features they served. `username`,
     `scope` and `is_public` describe who owns a strategy and who may see it,
     which one operator does not need — and a visibility flag nothing enforces
     is worse than none, because it reads like a guarantee. `is_mock` marked a
-    strategy as belonging to a mock session, and mock trading is not ported."""
+    strategy as belonging to a mock session, and mock trading is not ported.
+    `template_name` went with the template table (`STRATEGY_ENGINE.md` §2):
+    what a template switched on is a column here now, and custom logic is a
+    registered `strategy_class` rather than a template's evaluator.
+    `template_params` served only the two templates that are not ported."""
 
     __tablename__ = "strategy_definitions"
 
@@ -703,7 +675,12 @@ class StrategyDefinitionsRow(Base):
     strategy_name: Mapped[str] = mapped_column(String(100))
     display_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     display_order: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    template_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    #: A registered custom strategy (`STRATEGY_ENGINE.md` §7); null is the
+    #: configured pipeline.
+    strategy_class: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    #: Entry rules from `strategy_indicator_rules` gate every tranche. The
+    #: reference's indicator template, as a switch any strategy can set.
+    use_indicator_entry: Mapped[bool] = mapped_column(Boolean)
     underlying_symbol: Mapped[str] = mapped_column(String(50))
     exchange: Mapped[str] = mapped_column(String(20))
     product: Mapped[str | None] = mapped_column(String(16), nullable=True)
@@ -849,9 +826,11 @@ class StrategyConfigRow(Base):
     order_fill_escalation_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
     order_fill_escalation_steps: Mapped[str | None] = mapped_column(Text, nullable=True)
     max_tranches: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    lot_allocation_mode: Mapped[str | None] = mapped_column(String(20), nullable=True)
-    global_allocation_tranches: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    allocation_start_tranch: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    #: The 0DTE template's stop rules, usable by any adaptive strategy: no
+    #: further tranche once this many of today's tranches closed at a loss,
+    #: or at a profit.
+    stop_after_loss_tranches: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    stop_after_profit_tranches: Mapped[int | None] = mapped_column(Integer, nullable=True)
     re_entry: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     max_reentries: Mapped[int | None] = mapped_column(Integer, nullable=True)
     min_reentry_loss_percentage: Mapped[Decimal | None] = mapped_column(
@@ -864,6 +843,13 @@ class StrategyConfigRow(Base):
     breakout_trigger_mode: Mapped[str | None] = mapped_column(String(15), nullable=True)
     breakout_trigger_value: Mapped[Decimal | None] = mapped_column(Numeric(10, 4), nullable=True)
     breakout_select_fresh_strikes: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    breakout_range_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    breakout_range_start: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    breakout_range_end: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    breakout_range_lookback: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    breakout_on_high_break: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    breakout_on_low_break: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    breakout_reversal_mode: Mapped[str | None] = mapped_column(String(16), nullable=True)
     description: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     updated_at: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -875,6 +861,32 @@ class StrategyConfigRow(Base):
     lookback_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
     otm_levels: Mapped[int | None] = mapped_column(Integer, nullable=True)
     no_stop_loss: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    #: FixedDelta strike selection: the delta wanted and how far off it may be.
+    target_delta: Mapped[Decimal | None] = mapped_column(Numeric(6, 4), nullable=True)
+    max_delta_deviation: Mapped[Decimal | None] = mapped_column(Numeric(6, 4), nullable=True)
+
+
+class StrategyDaysAllocationRow(Base):
+    """STRATEGY_DAYS_ALLOCATION_CONFIG in the reference engine.
+
+    What share of a strategy's lots to trade on each weekday and on the days
+    near expiry, as a percentage; 100 is full size. Expiry beats DT1 beats DT2
+    beats the weekday when a day is more than one of them. The reference keyed
+    this by allocation model as well; models are gone, so one row per
+    strategy.
+    """
+
+    __tablename__ = "strategy_days_allocation"
+
+    strategy_name: Mapped[str] = mapped_column(String(100), primary_key=True)
+    monday: Mapped[int] = mapped_column(Integer)
+    tuesday: Mapped[int] = mapped_column(Integer)
+    wednesday: Mapped[int] = mapped_column(Integer)
+    thursday: Mapped[int] = mapped_column(Integer)
+    friday: Mapped[int] = mapped_column(Integer)
+    expiry_day: Mapped[int] = mapped_column(Integer)
+    dt1_day: Mapped[int] = mapped_column(Integer)
+    dt2_day: Mapped[int] = mapped_column(Integer)
 
 
 class StrategySymbolSubscriptionsRow(Base):

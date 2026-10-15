@@ -228,7 +228,7 @@ async def seed(sessions: async_sessionmaker[AsyncSession]) -> None:
                     strategy_name=name,
                     underlying_symbol="NIFTY",
                     exchange="NSE",
-                    trade_mode="SPEC",
+                    trade_mode="OPTION_SELLING",
                     status=status,
                     tick_trigger_enabled=status == "ACTIVE",
                     scheduled_trigger_enabled=True,
@@ -236,6 +236,7 @@ async def seed(sessions: async_sessionmaker[AsyncSession]) -> None:
                     use_premium_balancing=True,
                     catch_up_missed_tranches=True,
                     adaptive_tranches_enabled=False,
+                    use_indicator_entry=False,
                     created_at=NOW,
                     updated_at=NOW,
                 )
