@@ -18,8 +18,8 @@ from garuda.domain.enums import ExpiryKind, OptionType
 from garuda.domain.errors import DomainError
 from garuda.domain.instrument import InstrumentId
 from garuda.domain.market import Tick
+from garuda.domain.pricing import black_scholes, years_to_expiry
 from garuda.domain.symbol import SymbolInfo
-from garuda.marketdata.pricing import black_scholes, years_to_expiry
 from garuda.marketdata.synthetics import (
     ImpliedVolatility,
     ImpliedVolatilitySkew,

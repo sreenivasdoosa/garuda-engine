@@ -31,7 +31,7 @@ from garuda.domain.enums import (
 from garuda.domain.exchange import Exchange
 from garuda.domain.instrument import Instrument, InstrumentId
 from garuda.domain.intent import LegRole
-from garuda.domain.market import Tick
+from garuda.domain.market import Bar, BarInterval, Tick
 from garuda.domain.money import Currency, Money
 from garuda.domain.trade_signal import SignalType
 from garuda.engine.base_strategy import BaseStrategy, Evaluation, Outcome
@@ -46,6 +46,8 @@ DAY = dt.date(2026, 10, 15)
 EXPIRY = dt.date(2026, 10, 20)
 NOW = dt.datetime(2026, 10, 15, 9, 20, tzinfo=IST)
 NIFTY = InstrumentId("NSE:NIFTY")
+FUTURE = InstrumentId("NFO:NIFTY26OCTFUT")
+CASH = InstrumentId("NSE:NIFTY")
 APPA = TradingClientId("appa")
 
 
@@ -112,6 +114,29 @@ class FakeEnvironment:
 
     def instrument(self, instrument: InstrumentId) -> Instrument | None:
         symbol = instrument.value.split(":")[1]
+        if instrument == FUTURE:
+            return Instrument(
+                id=FUTURE,
+                exchange=self.venue,
+                segment=Segment.FNO,
+                kind=InstrumentKind.FUTURE,
+                trading_symbol=symbol,
+                lot_size=75,
+                tick_size=Decimal("0.05"),
+                underlying=NIFTY,
+                expiry=dt.date(2026, 10, 27),
+                settlement_type=SettlementType.CASH,
+            )
+        if instrument == CASH:
+            return Instrument(
+                id=CASH,
+                exchange=self.venue,
+                segment=Segment.EQUITY,
+                kind=InstrumentKind.EQUITY,
+                trading_symbol=symbol,
+                lot_size=1,
+                tick_size=Decimal("0.05"),
+            )
         strike = Decimal(symbol[len("NIFTY26OCT") : -2])
         return Instrument(
             id=instrument,
@@ -139,6 +164,31 @@ class FakeEnvironment:
             timestamp=self.now,
             volume=self.volumes.get(instrument),
         )
+
+    @property
+    def underlying(self) -> InstrumentId:
+        return NIFTY
+
+    def candles(self, instrument: InstrumentId, interval: BarInterval, count: int) -> list[Bar]:
+        return []
+
+    def straddle_max_diff(self, underlying: InstrumentId) -> Decimal | None:
+        return None
+
+    def option_chain_levels(self, underlying: InstrumentId) -> int:
+        return 10
+
+    def near_future(self, underlying: InstrumentId) -> InstrumentId | None:
+        return FUTURE
+
+    def synthetic(self, kind: str) -> Decimal | None:
+        return None
+
+    def synthetic_ago(self, kind: str, minutes: int) -> Decimal | None:
+        return None
+
+    def indicator_direction(self) -> Direction | None:
+        return None
 
     def day_allocation_percent(self, strategy: str) -> int:
         return self.day_percent
@@ -348,19 +398,29 @@ class TestStandingDown:
 
     def test_a_leg_with_no_price_cannot_be_protected(self, env: FakeEnvironment) -> None:
         env.unquoted.add(option_id(Decimal(22500), OptionType.PUT))
-        outcome = evaluate(env, layers=(base(),))
+        outcome = evaluate(env, layers=(base(),), use_premium_balancing=False)
         assert "no price" in (outcome.stood_down or "")
+
+    def test_premium_balancing_routes_around_an_unquoted_leg(self, env: FakeEnvironment) -> None:
+        env.unquoted.add(option_id(Decimal(22500), OptionType.PUT))
+        outcome = evaluate(env, layers=(base(),))
+        assert outcome.entered
+        assert {s.instrument.value for s in outcome.signals} == {
+            "NFO:NIFTY26OCT22400CE",
+            "NFO:NIFTY26OCT22400PE",
+        }
 
     def test_the_volume_filter(self, env: FakeEnvironment) -> None:
         env.volumes[option_id(Decimal(22500), OptionType.CALL)] = 10
         outcome = evaluate(env, layers=(base(volume_filter=1000),))
         assert "volume 10 is below 1000" in (outcome.stood_down or "")
 
-    def test_an_unimplemented_strike_type_is_refused_not_guessed(
+    def test_a_strike_type_without_its_settings_is_refused_not_guessed(
         self, env: FakeEnvironment
     ) -> None:
         outcome = evaluate(env, layers=(ConfigLayer(values={"strike_type": "FixedDelta"}),))
-        assert "not implemented" in (outcome.stood_down or "")
+        assert "needs an absolute targetDelta" in (outcome.stood_down or "")
+        assert outcome.alert
 
     def test_the_entry_rules_block(self, env: FakeEnvironment) -> None:
         outcome = evaluate(
@@ -419,3 +479,66 @@ class TestTheExit:
         outcome = evaluate(env, layers=(base(sl_percentage=Decimal(30)),))
         stops = {s.protection.stop_loss for s in outcome.signals}
         assert stops == {Money(Decimal("130.00"), Currency.INR)}
+
+
+class TestOtherShapes:
+    def test_a_futures_strategy_buys_the_near_future(self, env: FakeEnvironment) -> None:
+        outcome = evaluate(env, layers=(base(),), trade_mode=TradeMode.FUTURES)
+        assert [s.instrument for s in outcome.signals] == [FUTURE]
+        assert outcome.signals[0].direction is Direction.LONG
+
+    def test_a_bearish_futures_strategy_sells_it(self, env: FakeEnvironment) -> None:
+        outcome = evaluate(
+            env,
+            layers=(base(),),
+            trade_mode=TradeMode.FUTURES,
+            is_directional=True,
+            direction_provider_type="FIXED",
+            direction_provider_params={"direction": "SHORT"},
+        )
+        assert outcome.signals[0].direction is Direction.SHORT
+
+    def test_a_covered_call_combo_prices_the_call_against_the_future(
+        self, env: FakeEnvironment
+    ) -> None:
+        env.premium = Decimal(150)
+        outcome = evaluate(
+            env,
+            layers=(base(),),
+            trade_mode=TradeMode.FUTURES_OPTIONS,
+            combo_spec={
+                "type": "COVERED_CALL",
+                "legs": [
+                    {"role": "PRIMARY", "instrument": "FUTURE", "direction": "LONG"},
+                    {"role": "PRIMARY", "instrument": "OPTION", "direction": "SHORT"},
+                ],
+            },
+        )
+        assert outcome.entered, outcome.stood_down
+        by_instrument = {s.instrument.value: s for s in outcome.signals}
+        assert set(by_instrument) == {FUTURE.value, "NFO:NIFTY26OCT22500CE"}
+        assert by_instrument["NFO:NIFTY26OCT22500CE"].direction is Direction.SHORT
+        assert len({s.relationships.combo_id for s in outcome.signals}) == 1
+
+    def test_futures_options_without_combo_legs_stands_down(self, env: FakeEnvironment) -> None:
+        outcome = evaluate(env, layers=(base(),), trade_mode=TradeMode.FUTURES_OPTIONS)
+        assert "combo" in (outcome.stood_down or "")
+
+
+class TestRiskAwareSizing:
+    def test_a_risk_budget_caps_the_lots(self, env: FakeEnvironment) -> None:
+        # 3,000,000 capital -> 30 lots by margin. 1% risk = 30,000 budget over 1 tranche.
+        # Risk per lot = 100 premium x 30% stop x 75 units x 2 legs = 4,500 -> 6 lots.
+        runtime = build_runtime_config(
+            definition(risk_percentage=Decimal(1)),
+            SubscriptionTerms(trading_client_id=APPA, capital=Decimal(3000000)),
+            (base(max_tranches=1, sl_percentage=Decimal(30)),),
+            conditions=env.conditions,
+        )
+        outcome = BaseStrategy().on_scheduled(
+            Evaluation(
+                runtime=runtime, state=StrategyState(APPA, "straddle", DAY), env=env, tranche=1
+            )
+        )
+        assert outcome.lots == 6
+        assert outcome.state.used_risk == Decimal(27000)

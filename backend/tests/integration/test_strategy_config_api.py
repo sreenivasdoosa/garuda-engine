@@ -28,8 +28,8 @@ pytestmark = pytest.mark.integration
 
 NOW = dt.datetime(2026, 10, 10, 4, 0, tzinfo=dt.UTC)
 LEGS = (
-    '{"legs": [{"instrument": {"type": "option_strike", "option_type": "CALL"}, '
-    '"side": "ALWAYS_SHORT"}]}'
+    '{"legs": [{"role": "PRIMARY", "instrument": "FUTURE", "direction": "LONG"}, '
+    '{"role": "PRIMARY", "instrument": "OPTION", "direction": "SHORT"}]}'
 )
 
 

@@ -31,9 +31,10 @@ pytestmark = pytest.mark.integration
 
 NOW = dt.datetime(2026, 10, 10, 4, 0, tzinfo=dt.UTC)
 
+#: The reference's combo shape: a covered call, a long future and a short call.
 STRADDLE_LEGS = [
-    {"instrument": {"type": "option_strike", "option_type": "CALL"}, "side": "ALWAYS_SHORT"},
-    {"instrument": {"type": "option_strike", "option_type": "PUT"}, "side": "ALWAYS_SHORT"},
+    {"role": "PRIMARY", "instrument": "FUTURE", "direction": "LONG"},
+    {"role": "PRIMARY", "instrument": "OPTION", "direction": "SHORT"},
 ]
 
 #: What the Console's rule builder writes.

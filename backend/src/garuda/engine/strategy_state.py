@@ -48,7 +48,13 @@ class StrategyState:
         return replace(self, evaluation_count=self.evaluation_count + 1, last_evaluation_at=at)
 
     def tranche_signalled(
-        self, tranche: int, at: dt.datetime, *, signals: int, lots: int
+        self,
+        tranche: int,
+        at: dt.datetime,
+        *,
+        signals: int,
+        lots: int,
+        risk: Decimal = Decimal(0),
     ) -> StrategyState:
         if tranche in self.signalled:
             raise DomainError(
@@ -61,6 +67,7 @@ class StrategyState:
             last_tranche_signalled=max(self.last_tranche_signalled, tranche),
             signals_generated_today=self.signals_generated_today + signals,
             allocated_lots_today=self.allocated_lots_today + lots,
+            used_risk=self.used_risk + risk,
             signal_count=self.signal_count + 1,
             last_signal_at=at,
         )
@@ -120,3 +127,8 @@ class StrategyState:
             last_signal_at=last_signal_at,
             data=dict(data) if isinstance(data, Mapping) else {},
         )
+
+    def firing_index(self, tranche: int) -> int:
+        """The reference's `firingOrderTranchIndex`: how many other tranches
+        have fired today, plus one."""
+        return sum(1 for fired in self.signalled if fired != tranche) + 1

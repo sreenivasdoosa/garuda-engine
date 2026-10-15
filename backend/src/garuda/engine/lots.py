@@ -21,6 +21,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from decimal import Decimal
 
 from garuda.domain.errors import DomainError
 from garuda.engine.daycondition import DayCondition
@@ -63,6 +64,8 @@ class LotDecision:
 
     lots: int
     because: str
+    #: Risk this allocation spends from today's budget, when sized by risk.
+    risk_used: Decimal = Decimal(0)
 
     @property
     def tradable(self) -> bool:
@@ -184,3 +187,46 @@ class DayAllocation:
 
 
 FULL_SIZE_EVERY_DAY = DayAllocation()
+
+
+@dataclass(frozen=True, slots=True)
+class RiskDecision:
+    """A risk-aware allocation, and the risk it spends from today's budget."""
+
+    lots: int
+    risk_used: Decimal
+    because: str
+
+
+def risk_aware_lots(
+    *,
+    cap_lots: int,
+    budget: Decimal,
+    used: Decimal,
+    firing_index: int,
+    total_tranches: int,
+    risk_per_lot: Decimal,
+) -> RiskDecision:
+    """The reference's `RiskAwareSequentialLotAllocator`: today's remaining
+    risk budget split evenly over the tranches still to fire, this tranche
+    taking at most its share -- and at least one lot when one lot fits the
+    whole remaining budget -- never above ``cap_lots``."""
+    remaining = budget - used
+    left = total_tranches - firing_index + 1
+    if remaining <= 0 or left <= 0:
+        return RiskDecision(0, Decimal(0), f"risk budget {budget} spent ({used} used)")
+    if risk_per_lot <= 0:
+        return RiskDecision(cap_lots, Decimal(0), "no risk per lot to size by")
+    share = remaining / left
+    risk_lots = int(share // risk_per_lot)
+    if risk_lots == 0 and risk_per_lot <= remaining:
+        risk_lots = 1
+    lots = max(0, min(cap_lots, risk_lots))
+    used_now = risk_per_lot * lots
+    limit = "risk" if risk_lots < cap_lots else "margin"
+    return RiskDecision(
+        lots,
+        used_now,
+        f"{limit}-constrained: {lots} lot(s) at {risk_per_lot} risk a lot, "
+        f"{remaining} of {budget} left over {left} tranche(s)",
+    )

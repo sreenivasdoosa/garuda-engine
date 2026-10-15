@@ -29,6 +29,7 @@ from garuda.composition.runtime_config import definition_of, layer_of, terms_of
 from garuda.domain.client import TradingClientId
 from garuda.domain.errors import DomainError
 from garuda.domain.instrument import InstrumentId
+from garuda.engine.base_strategy import parse_combo
 from garuda.engine.config import ConfigLayer
 from garuda.engine.daycondition import DayCondition
 from garuda.engine.direction import DirectionRule
@@ -239,6 +240,8 @@ def _strategy(
         build_provider(
             definition.direction_provider_type or "", definition.direction_provider_params
         )
+    if definition.combo_spec:
+        parse_combo(definition.name, definition.combo_spec)
     entry = _optional_rules(definition.name, "entry", rules)
     if definition.use_indicator_entry and entry is None:
         raise DomainError(

@@ -13,7 +13,7 @@ import pytest
 
 from garuda.domain.enums import OptionType
 from garuda.domain.errors import DomainError
-from garuda.marketdata.pricing import (
+from garuda.domain.pricing import (
     MAX_VOLATILITY,
     black_scholes,
     implied_volatility,

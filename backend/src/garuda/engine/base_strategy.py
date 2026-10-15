@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import date, datetime, time, timedelta, tzinfo
 from decimal import Decimal
@@ -38,21 +38,32 @@ from garuda.domain.enums import Direction, ExpiryKind, OptionType, ProductType
 from garuda.domain.errors import DomainError
 from garuda.domain.instrument import Instrument, InstrumentId
 from garuda.domain.intent import LegRole
-from garuda.domain.market import Tick
+from garuda.domain.market import Bar, BarInterval, Tick
 from garuda.domain.money import Money
+from garuda.domain.strikes import Moneyness, atm_strike
 from garuda.domain.trade import Relationships
 from garuda.domain.trade_signal import EntryRules, EscalationMode, SignalType, TradeSignal
 from garuda.engine.config import ResolvedConfig
 from garuda.engine.daycondition import DayCondition
-from garuda.engine.direction_providers import Answer, Side, applicable
+from garuda.engine.direction_providers import Answer, DirectionContext, Side, applicable
 from garuda.engine.direction_providers import build as build_provider
 from garuda.engine.exit_timing import ExitTiming, exit_at
 from garuda.engine.hedging import hedge_strike
-from garuda.engine.lots import LotDecision, LotInputs, allocated_lots
+from garuda.engine.lots import (
+    LotDecision,
+    LotInputs,
+    RiskDecision,
+    allocated_lots,
+    risk_aware_lots,
+)
 from garuda.engine.protection import protection_from
 from garuda.engine.runtime_config import Definition, RuntimeConfig
 from garuda.engine.strategy_state import StrategyState
-from garuda.engine.strike_selection import StrikeRequest, select_strikes
+from garuda.engine.strike_selection import (
+    DEFAULT_STRADDLE_MAX_DIFF,
+    StrikeRequest,
+    select_strikes,
+)
 from garuda.engine.vocabulary import (
     ExpiryType,
     OrderFillEscalationMode,
@@ -74,7 +85,7 @@ DEFAULT_ESCALATION_SECONDS = 5
 SIGNAL_ID_LENGTH = 50
 
 
-class StrategyEnvironment(Protocol):
+class StrategyEnvironment(DirectionContext, Protocol):
     """What one evaluation reads about the world, all from one instant."""
 
     @property
@@ -102,6 +113,12 @@ class StrategyEnvironment(Protocol):
     def strikes(self, underlying: InstrumentId, expiry: date) -> list[Decimal]: ...
     def instrument(self, instrument: InstrumentId) -> Instrument | None: ...
     def quote(self, instrument: InstrumentId) -> Tick | None: ...
+    def candles(
+        self, instrument: InstrumentId, interval: BarInterval, count: int
+    ) -> Sequence[Bar]: ...
+    def straddle_max_diff(self, underlying: InstrumentId) -> Decimal | None: ...
+    def near_future(self, underlying: InstrumentId) -> InstrumentId | None: ...
+    def option_chain_levels(self, underlying: InstrumentId) -> int: ...
     def day_allocation_percent(self, strategy: str) -> int: ...
     def event_day_percent(self, strategy: str, exchange: str) -> int: ...
 
@@ -150,7 +167,65 @@ class PlannedLeg:
     option_type: OptionType | None = None
     strike: Decimal | None = None
     ratio: Fraction = Fraction(1)
+    #: A leg's own product, where it differs from the strategy's: the cash
+    #: leg of a cash-and-carry is delivery while the future is not.
+    product: ProductType | None = None
     remarks: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class _ComboLeg:
+    role: LegRole
+    instrument: str
+    direction: Direction
+    product: StrategyProduct | None
+    ratio: Fraction
+    sequence: int | None
+
+
+def parse_combo(strategy: str, spec: Mapping[str, Any]) -> tuple[_ComboLeg, ...]:
+    """The reference's ComboSpec: ``legs`` of role, instrument, direction,
+    product, quantityRatio, entrySequence. Refused whole if any leg is
+    unreadable, with more than one option leg, or with an option leg and
+    nothing to price it against -- the reference shape cannot price either."""
+    declared = spec.get("legs")
+    if not isinstance(declared, list) or not declared:
+        raise DomainError(f"{strategy}: the combo declares no legs")
+    legs = tuple(_combo_leg(strategy, index, entry) for index, entry in enumerate(declared))
+    options = sum(1 for leg in legs if leg.instrument == "OPTION")
+    if options > 1:
+        raise DomainError(f"{strategy}: a combo may have one option leg")
+    if options and options == len(legs):
+        raise DomainError(f"{strategy}: an option leg needs a partner leg to price against")
+    return legs
+
+
+def _combo_leg(strategy: str, index: int, entry: object) -> _ComboLeg:
+    if not isinstance(entry, Mapping):
+        raise DomainError(f"{strategy}: combo leg {index} is not an object")
+    try:
+        role_text = str(entry.get("role") or "PRIMARY").strip().upper()
+        role = LegRole.HEDGE if role_text == "HEDGE" else LegRole.MAIN
+        instrument = str(entry.get("instrument") or "").strip().upper()
+        if instrument not in ("OPTION", "FUTURE", "EQUITY"):
+            raise ValueError(f"instrument {instrument!r} is not OPTION, FUTURE or EQUITY")
+        direction = Direction(str(entry.get("direction") or "").strip().upper())
+        product_text = str(entry.get("product") or "").strip()
+        ratio_text = entry.get("quantityRatio")
+        sequence = entry.get("entrySequence")
+        ratio = Fraction(str(ratio_text)) if ratio_text not in (None, "") else Fraction(1)
+        if ratio <= 0:
+            raise ValueError(f"quantityRatio {ratio_text} is not positive")
+        return _ComboLeg(
+            role=role,
+            instrument=instrument,
+            direction=direction,
+            product=StrategyProduct.parse(product_text) if product_text else None,
+            ratio=ratio,
+            sequence=int(str(sequence)) if sequence not in (None, "") else None,
+        )
+    except (ValueError, DomainError) as error:
+        raise DomainError(f"{strategy}: combo leg {index}: {error}") from None
 
 
 @dataclass(frozen=True, slots=True)
@@ -159,6 +234,10 @@ class LegPlan:
     hedged: bool
     expiry: date | None
     because: str
+    #: For WING_WIDTH_MAX_LOSS: the widest wing in points and the net premium
+    #: collected, which bound the loss a lot can take.
+    wing_width: Decimal | None = None
+    net_premium: Decimal | None = None
 
     @property
     def mains(self) -> tuple[PlannedLeg, ...]:
@@ -222,7 +301,11 @@ class BaseStrategy:
                 state=state, stood_down=stand.because, alert=stand.alert, notes=tuple(notes)
             )
         after = state.tranche_signalled(
-            ev.tranche, ev.env.now, signals=len(signals), lots=decision.lots
+            ev.tranche,
+            ev.env.now,
+            signals=len(signals),
+            lots=decision.lots,
+            risk=decision.risk_used,
         )
         return Outcome(
             state=after,
@@ -277,10 +360,156 @@ class BaseStrategy:
     # -- 3. legs -----------------------------------------------------------
 
     def legs(self, ev: Evaluation, side: Side) -> LegPlan:
-        mode = ev.runtime.definition.trade_mode
+        definition = ev.runtime.definition
+        mode = definition.trade_mode
+        if definition.is_combo:
+            return self.combo_legs(ev, side)
         if mode in (TradeMode.OPTION_SELLING, TradeMode.OPTION_BUYING):
             return self.option_legs(ev, side)
+        if mode is TradeMode.FUTURES:
+            return self.future_legs(ev, side)
+        if mode is TradeMode.FUTURES_OPTIONS:
+            raise StandDown("FUTURES_OPTIONS needs its legs declared as a combo", alert=True)
         raise StandDown(f"trade mode {mode.value} is not built yet", alert=True)
+
+    def future_legs(self, ev: Evaluation, side: Side) -> LegPlan:
+        """The near future, long unless a direction says short. The reference
+        always goes long here and carries a TODO for short futures; a
+        directional strategy follows its direction instead of ignoring it."""
+        future = ev.env.near_future(ev.underlying)
+        if future is None:
+            raise StandDown(f"{ev.underlying.value} has no listed future", alert=True)
+        direction = Direction.SHORT if side is Side.SHORT else Direction.LONG
+        leg = PlannedLeg(
+            instrument=future,
+            direction=direction,
+            role=LegRole.MAIN,
+            group="LEG",
+            sequence=1,
+            remarks=f"{'Buy' if direction is Direction.LONG else 'Sell'} future",
+        )
+        instrument = ev.env.instrument(future)
+        return LegPlan(
+            legs=(leg,),
+            hedged=False,
+            expiry=instrument.expiry if instrument is not None else None,
+            because=f"future {future.value}",
+        )
+
+    def combo_legs(self, ev: Evaluation, side: Side) -> LegPlan:
+        """The reference's `decideComboEntry`: each declared leg resolved to
+        the underlying's future, its cash instrument, or an option priced
+        against its partner leg. One option leg at most, as the reference
+        shape allows; every leg resolved or the entry stands down."""
+        del side
+        env, definition, config = ev.env, ev.runtime.definition, ev.config
+        try:
+            legs_in = parse_combo(definition.name, definition.combo_spec or {})
+        except DomainError as error:
+            raise StandDown(str(error), alert=True) from None
+        options = [leg for leg in legs_in if leg.instrument == "OPTION"]
+
+        future = (
+            env.near_future(ev.underlying)
+            if any(leg.instrument == "FUTURE" for leg in legs_in)
+            else None
+        )
+        if any(leg.instrument == "FUTURE" for leg in legs_in) and future is None:
+            raise StandDown(f"{ev.underlying.value} has no listed future", alert=True)
+        cash = InstrumentId(f"{definition.exchange}:{definition.underlying_symbol}")
+        if any(leg.instrument == "EQUITY" for leg in legs_in) and env.instrument(cash) is None:
+            raise StandDown(f"{cash.value} is not in the instrument master", alert=True)
+
+        option_id: InstrumentId | None = None
+        option_type: OptionType | None = None
+        option_strike: Decimal | None = None
+        expiry: date | None = None
+        if options:
+            leg = options[0]
+            partner = next((other for other in legs_in if other.instrument != "OPTION"), None)
+            if partner is None:
+                raise StandDown("an option leg needs a partner leg to price against", alert=True)
+            price = self.reference_price(ev)
+            gap = env.strike_gap(ev.underlying)
+            if gap is None or gap <= 0:
+                raise StandDown(f"{ev.underlying.value} has no strike gap configured", alert=True)
+            atm = atm_strike(price, gap)
+            if leg.role is LegRole.HEDGE:
+                option_type = (
+                    OptionType.CALL if partner.direction is Direction.SHORT else OptionType.PUT
+                )
+                distance = definition.hedge_distance_for(leg.product or definition.product)
+                option_strike = hedge_strike(
+                    atm,
+                    distance,
+                    option_type,
+                    strike_gap=gap,
+                    rounding_multiple=env.hedge_rounding(ev.underlying),
+                    rounding_min_distance=config.number("hedge_strike_rounding_min_distance"),
+                )
+            else:
+                covered = leg.direction is Direction.SHORT and partner.direction is Direction.LONG
+                option_type = (
+                    OptionType.CALL
+                    if covered or leg.direction is Direction.LONG
+                    else OptionType.PUT
+                )
+                steps = Moneyness.parse(config.text("strike_value") or "ATM").steps
+                option_strike = (
+                    atm + steps * gap if option_type is OptionType.CALL else atm - steps * gap
+                )
+            expiry = self.expiry(ev)
+            option_id = env.option(ev.underlying, expiry, option_strike, option_type)
+            if option_id is None:
+                raise StandDown(
+                    f"{ev.underlying.value} {expiry} {option_strike} {option_type} is not listed",
+                    alert=True,
+                )
+
+        planned: list[PlannedLeg] = []
+        for leg in legs_in:
+            instrument = {"OPTION": option_id, "FUTURE": future, "EQUITY": cash}[leg.instrument]
+            if instrument is None:  # pragma: no cover - guarded above
+                raise StandDown(f"combo leg {leg.instrument} could not be resolved", alert=True)
+            planned.append(
+                PlannedLeg(
+                    instrument=instrument,
+                    direction=leg.direction,
+                    role=leg.role,
+                    group="COMBO",
+                    sequence=(
+                        leg.sequence
+                        if leg.sequence is not None
+                        else _sequence(leg.direction, definition.entry_leg_order)
+                    ),
+                    option_type=option_type if leg.instrument == "OPTION" else None,
+                    strike=option_strike if leg.instrument == "OPTION" else None,
+                    ratio=leg.ratio,
+                    product=(
+                        _product(
+                            leg.product,
+                            TradeMode.EQUITY if leg.instrument == "EQUITY" else TradeMode.FUTURES,
+                        )
+                        if leg.product is not None
+                        else (
+                            _product(definition.product, TradeMode.EQUITY)
+                            if leg.instrument == "EQUITY"
+                            else None
+                        )
+                    ),
+                    remarks=f"combo {leg.role.value} {leg.direction.value} {instrument.value}",
+                )
+            )
+        if expiry is None and future is not None:
+            listed = env.instrument(future)
+            expiry = listed.expiry if listed is not None else None
+        planned.sort(key=lambda leg: leg.sequence)
+        return LegPlan(
+            legs=tuple(planned),
+            hedged=any(leg.role is LegRole.HEDGE for leg in planned),
+            expiry=expiry,
+            because=f"combo of {len(planned)} legs",
+        )
 
     def option_legs(self, ev: Evaluation, side: Side) -> LegPlan:
         """An option pair, or the one leg a directional answer picks, each
@@ -294,6 +523,21 @@ class BaseStrategy:
             raise StandDown(f"{underlying.value} has no strike gap configured", alert=True)
         expiry = self.expiry(ev)
         kind = StrikeType.parse(config.text("strike_type") or "MoneyNess", field="strikeType")
+        selling = definition.trade_mode is TradeMode.OPTION_SELLING
+        main = Direction.SHORT if selling else Direction.LONG
+        hedge_direction = main.opposite
+        if side is Side.BOTH:
+            sides = [(OptionType.CALL, "CE"), (OptionType.PUT, "PE")]
+        else:
+            bullish = side is Side.LONG
+            # Selling: bullish sells the put. Buying: bullish buys the call.
+            chosen = (
+                (OptionType.PUT if bullish else OptionType.CALL)
+                if selling
+                else (OptionType.CALL if bullish else OptionType.PUT)
+            )
+            sides = [(chosen, "LEG")]
+        wanted_types = {option_type for option_type, _ in sides}
         try:
             pair = select_strikes(
                 kind,
@@ -304,29 +548,28 @@ class BaseStrategy:
                     gap=gap,
                     config=config,
                     chain=env,
+                    direction=main,
+                    need_call=OptionType.CALL in wanted_types,
+                    need_put=OptionType.PUT in wanted_types,
+                    levels=env.option_chain_levels(underlying),
+                    use_premium_balancing=definition.use_premium_balancing,
+                    straddle_max_diff=(
+                        env.straddle_max_diff(underlying) or DEFAULT_STRADDLE_MAX_DIFF
+                    ),
+                    now=env.now,
+                    expires_at=datetime.combine(expiry, env.market_close, env.timezone),
                 ),
             )
         except DomainError as error:
             raise StandDown(str(error), alert=True) from None
         if isinstance(pair, str):
             raise StandDown(f"no strikes: {pair}", alert=True)
-
-        selling = definition.trade_mode is TradeMode.OPTION_SELLING
-        main = Direction.SHORT if selling else Direction.LONG
-        hedge_direction = main.opposite
-        wanted: list[tuple[OptionType, Decimal, str]]
-        if side is Side.BOTH:
-            wanted = [(OptionType.CALL, pair.call, "CE"), (OptionType.PUT, pair.put, "PE")]
-        else:
-            bullish = side is Side.LONG
-            # Selling: bullish sells the put. Buying: bullish buys the call.
-            option_type = (
-                (OptionType.PUT if bullish else OptionType.CALL)
-                if selling
-                else (OptionType.CALL if bullish else OptionType.PUT)
-            )
+        wanted: list[tuple[OptionType, Decimal, str]] = []
+        for option_type, group in sides:
             strike = pair.call if option_type is OptionType.CALL else pair.put
-            wanted = [(option_type, strike, "LEG")]
+            if strike is None:
+                raise StandDown(f"no {option_type.value} strike: {pair.because}", alert=True)
+            wanted.append((option_type, strike, group))
 
         hedged = config.flag("hedging_enabled") and definition.hedge_distance_intraday > 0
         main_sequence = _sequence(main, definition.entry_leg_order)
@@ -388,8 +631,35 @@ class BaseStrategy:
             expiry=expiry,
             because=f"strikes {pair.because}" + (" (hedged)" if hedged else ""),
         )
+        if (
+            config.text("risk_calculation_mode") == "WING_WIDTH_MAX_LOSS"
+            and hedged
+            and len(legs) == 2
+        ):
+            plan = self.wing(ev, plan, legs, hedges)
         self.check_liquidity(ev, plan)
         return plan
+
+    def wing(
+        self,
+        ev: Evaluation,
+        plan: LegPlan,
+        mains: list[PlannedLeg],
+        hedges: list[PlannedLeg],
+    ) -> LegPlan:
+        """The reference's WING_WIDTH_MAX_LOSS capture: the wider wing, and
+        what the two sales collect net of the two hedges."""
+        widths = []
+        net = Decimal(0)
+        for main, hedge in zip(mains, hedges, strict=True):
+            if main.strike is None or hedge.strike is None:
+                return plan
+            widths.append(abs(hedge.strike - main.strike))
+            sold, bought = ev.env.quote(main.instrument), ev.env.quote(hedge.instrument)
+            if sold is None or bought is None:
+                return plan
+            net += sold.last_price.amount - bought.last_price.amount
+        return replace(plan, wing_width=max(widths), net_premium=net)
 
     def reference_price(self, ev: Evaluation) -> Money:
         """Spot for an index, the near future for a future-based strategy --
@@ -454,6 +724,69 @@ class BaseStrategy:
     # -- 4. lots -----------------------------------------------------------
 
     def lots(self, ev: Evaluation, plan: LegPlan) -> LotDecision:
+        margin = self.margin_lots(ev, plan)
+        risk = self.risk_lots(ev, plan, margin)
+        if risk is None:
+            return margin
+        return LotDecision(risk.lots, f"{margin.because}; {risk.because}", risk_used=risk.risk_used)
+
+    def risk_lots(self, ev: Evaluation, plan: LegPlan, margin: LotDecision) -> RiskDecision | None:
+        """The reference's risk-aware layer, when a risk budget is set: the
+        wing-width loss for a hedged pair asked to size that way, else the
+        stop-loss distance on the entry premium."""
+        runtime, definition, config = ev.runtime, ev.runtime.definition, ev.config
+        budget = runtime.max_risk
+        if budget is None or budget <= 0:
+            return None
+        mains = plan.mains
+        reference = ev.env.instrument(mains[0].instrument) if mains else None
+        if reference is None:
+            return None
+        per_unit_size = Decimal(reference.lot_size) * reference.multiplier
+        total = len(runtime.allocation_tranches) or (runtime.base.whole("max_tranches") or 1)
+        firing = ev.state.firing_index(ev.tranche)
+        if plan.wing_width is not None and plan.net_premium is not None:
+            per_lot = max(Decimal(0), plan.wing_width - plan.net_premium) * per_unit_size
+            return risk_aware_lots(
+                cap_lots=margin.lots,
+                budget=budget,
+                used=ev.state.used_risk,
+                firing_index=firing,
+                total_tranches=total,
+                risk_per_lot=per_lot,
+            )
+        stop = config.percent("sl_percentage") or Decimal(0)
+        if stop <= 0:
+            stop = config.percent("combined_sl_percentage") or Decimal(0)
+        quote = ev.env.quote(mains[0].instrument)
+        if stop <= 0 or quote is None or quote.last_price.amount <= 0:
+            return None
+        premium = quote.last_price.amount
+        legs = len(mains)
+        if definition.trade_mode is TradeMode.OPTION_BUYING:
+            per_lot_capital = definition.capital_per_lot_for(hedged=plan.hedged) or 0
+            spendable = Decimal(margin.lots * per_lot_capital)
+            cost = premium * per_unit_size * legs
+            if spendable <= 0 or cost <= 0:
+                return None
+            cap = int(spendable // cost)
+        else:
+            whole = int(runtime.capital) if runtime.capital is not None else 0
+            per_lot_capital = definition.capital_per_lot_for(hedged=plan.hedged) or 0
+            total_lots = (
+                whole // per_lot_capital if whole > 0 and per_lot_capital > 0 else margin.lots
+            )
+            cap = max(0, total_lots - ev.state.allocated_lots_today)
+        return risk_aware_lots(
+            cap_lots=cap,
+            budget=budget,
+            used=ev.state.used_risk,
+            firing_index=firing,
+            total_tranches=total,
+            risk_per_lot=premium * stop / 100 * per_unit_size * legs,
+        )
+
+    def margin_lots(self, ev: Evaluation, plan: LegPlan) -> LotDecision:
         runtime, definition = ev.runtime, ev.runtime.definition
         order = runtime.allocation_tranches
         return allocated_lots(
@@ -535,9 +868,10 @@ class BaseStrategy:
             )
             group = f"{prefix}Tranch-{ev.tranche}|Slice-{number}"
             emitted: list[TradeSignal] = []
+            slice_lots = slice_quantity // reference.lot_size
             for index, leg in enumerate(plan.legs):
                 instrument, price = resolved[leg.instrument]
-                leg_quantity = _leg_quantity(slice_quantity, leg.ratio, instrument.lot_size)
+                leg_quantity = int(Fraction(slice_lots) * leg.ratio) * instrument.lot_size
                 if leg_quantity <= 0:
                     continue
                 hedge_id = hedge_ids.get(leg.group)
@@ -554,7 +888,7 @@ class BaseStrategy:
                             if leg.direction is Direction.LONG
                             else SignalType.SHORT_ENTRY
                         ),
-                        product=product,
+                        product=leg.product or product,
                         quantity=leg_quantity,
                         generated_at=env.now,
                         quantity_per_lot=instrument.lot_size,
@@ -624,14 +958,6 @@ def _sequence(direction: Direction, policy: str | None) -> int:
     protection_first = (policy or "PROTECTION_FIRST").strip().upper() != "EXPOSURE_FIRST"
     protective = direction is Direction.LONG
     return 1 if protective == protection_first else 2
-
-
-def _leg_quantity(slice_quantity: int, ratio: Fraction, lot_size: int) -> int:
-    """A leg's share of a slice, floored to whole lots."""
-    if ratio == 1:
-        return slice_quantity
-    lots = int(Fraction(slice_quantity, lot_size) * ratio)
-    return lots * lot_size
 
 
 def _product(product: StrategyProduct, mode: TradeMode) -> ProductType:

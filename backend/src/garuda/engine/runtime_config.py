@@ -271,6 +271,16 @@ class RuntimeConfig:
         )
 
     @property
+    def max_risk(self) -> Decimal | None:
+        """The reference's `getEffectiveMaxRisk`: the absolute figure when set,
+        else the risk percentage of capital."""
+        if self.absolute_max_risk is not None and self.absolute_max_risk > 0:
+            return self.absolute_max_risk
+        if self.risk_percentage is not None and self.risk_percentage > 0 and self.capital:
+            return self.capital * self.risk_percentage / 100
+        return None
+
+    @property
     def min_tranche_gap(self) -> int:
         return self.base.whole("min_tranch_gap") or DEFAULT_MIN_TRANCHE_GAP
 

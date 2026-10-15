@@ -30,7 +30,7 @@ from zoneinfo import ZoneInfo
 from garuda.capital.event_days import EventDays
 from garuda.domain.calendar import TradingCalendar
 from garuda.domain.client import TradingClientId
-from garuda.domain.enums import ExpiryKind, OptionType
+from garuda.domain.enums import Direction, ExpiryKind, OptionType
 from garuda.domain.errors import DomainError
 from garuda.domain.exchange import Exchange
 from garuda.domain.instrument import Instrument, InstrumentId
@@ -46,6 +46,7 @@ from garuda.marketdata.history import CandleCache
 from garuda.marketdata.hub import TickHub
 from garuda.marketdata.reference import reference_for
 from garuda.marketdata.registry import InstrumentRegistry
+from garuda.marketdata.synthetics import SYNTHETIC
 from garuda.trademgmt.client import TradingClientManager
 
 logger = logging.getLogger(__name__)
@@ -318,7 +319,26 @@ class LiveEnvironment:
     conditions: frozenset[DayCondition]
     day_allocation: DayAllocation
     event_days: EventDays
+    underlying: InstrumentId
     memory: Mapping[str, object] = field(default_factory=dict)
+    #: Derived-series values as they stood a number of minutes ago, kept by
+    #: the loop as it publishes them. None means no history is kept.
+    history: Callable[[InstrumentId, int], Decimal | None] | None = None
+    #: The strategy's indicator direction rules, evaluated in a rule
+    #: context. None when it has none.
+    indicator: Callable[[], Direction | None] | None = None
+
+    def synthetic(self, kind: str) -> Decimal | None:
+        quote = self.market.hub.latest(synthetic_id(kind, self.underlying))
+        return quote.last_price.amount if quote is not None else None
+
+    def synthetic_ago(self, kind: str, minutes: int) -> Decimal | None:
+        if self.history is None:
+            return None
+        return self.history(synthetic_id(kind, self.underlying), minutes)
+
+    def indicator_direction(self) -> Direction | None:
+        return self.indicator() if self.indicator is not None else None
 
     @property
     def timezone(self) -> ZoneInfo:
@@ -379,6 +399,24 @@ class LiveEnvironment:
     def quote(self, instrument: InstrumentId) -> Tick | None:
         return self.market.hub.latest(instrument)
 
+    def candles(self, instrument: InstrumentId, interval: BarInterval, count: int) -> Sequence[Bar]:
+        if self.market.candles is None:
+            return ()
+        fetched: Sequence[Bar] = self.market.candles.get(instrument, interval, count)
+        return fetched
+
+    def near_future(self, underlying: InstrumentId) -> InstrumentId | None:
+        future = self.market.registry().near_month_future(underlying, self.trading_day)
+        return future.id if future is not None else None
+
+    def straddle_max_diff(self, underlying: InstrumentId) -> Decimal | None:
+        info = self._symbol(underlying)
+        return info.straddle_max_premium_diff if info is not None else None
+
+    def option_chain_levels(self, underlying: InstrumentId) -> int:
+        info = self._symbol(underlying)
+        return info.option_chain_levels if info is not None else 10
+
     def day_allocation_percent(self, strategy: str) -> int:
         del strategy
         return self.day_allocation.percentage_for(self.conditions)
@@ -389,3 +427,8 @@ class LiveEnvironment:
 
     def _symbol(self, underlying: InstrumentId) -> SymbolInfo | None:
         return self.market.symbols.get(underlying.value.split(":", 1)[-1])
+
+
+def synthetic_id(kind: str, underlying: InstrumentId) -> InstrumentId:
+    """Where a derived series for an underlying is published on the hub."""
+    return InstrumentId(f"{SYNTHETIC}:{kind.upper()}-{underlying.value.split(':', 1)[-1]}")

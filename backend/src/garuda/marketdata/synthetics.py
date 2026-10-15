@@ -35,9 +35,9 @@ from garuda.domain.errors import DomainError
 from garuda.domain.instrument import InstrumentId
 from garuda.domain.market import Tick
 from garuda.domain.money import Currency, Money
+from garuda.domain.pricing import implied_volatility, years_to_expiry
 from garuda.domain.strikes import atm_strike
 from garuda.domain.symbol import SymbolInfo
-from garuda.marketdata.pricing import implied_volatility, years_to_expiry
 
 logger = logging.getLogger(__name__)
 

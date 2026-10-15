@@ -172,3 +172,52 @@ def implied_volatility(
 def years_to_expiry(days: Decimal) -> Decimal:
     """Calendar days as the fraction of a year the model wants."""
     return days / DAYS_IN_YEAR
+
+
+def delta(
+    *,
+    option_type: OptionType,
+    spot: Decimal,
+    strike: Decimal,
+    years: Decimal,
+    volatility: Decimal,
+    rate: Decimal = Decimal("0.065"),
+) -> Decimal:
+    """Black-Scholes delta: N(d1) for a call, N(d1) - 1 for a put."""
+    getcontext().prec = _PRECISION
+    if spot <= 0 or strike <= 0 or years <= 0 or volatility <= 0:
+        raise DomainError(f"no delta for an option on {spot} at {strike} with {years} years left")
+    spread = volatility * years.sqrt()
+    d1 = ((spot / strike).ln() + (rate + volatility * volatility / TWO) * years) / spread
+    call = normal_cdf(d1)
+    return call if option_type is OptionType.CALL else call - ONE
+
+
+def absolute_delta_from_price(
+    *,
+    option_type: OptionType,
+    price: Decimal,
+    spot: Decimal,
+    strike: Decimal,
+    years: Decimal,
+    rate: Decimal = Decimal("0.065"),
+) -> Decimal | None:
+    """The reference's `absDeltaFromPrice`: solve the volatility the price
+    implies, then the delta at it. None when the price implies none -- a
+    stale quote, or a price at or below intrinsic -- so the strike is skipped,
+    never guessed at."""
+    volatility = implied_volatility(
+        option_type=option_type, price=price, spot=spot, strike=strike, years=years, rate=rate
+    )
+    if volatility is None:
+        return None
+    return abs(
+        delta(
+            option_type=option_type,
+            spot=spot,
+            strike=strike,
+            years=years,
+            volatility=volatility,
+            rate=rate,
+        )
+    )

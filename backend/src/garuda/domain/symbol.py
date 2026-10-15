@@ -56,6 +56,9 @@ class SymbolInfo:
     #: Rounding applied when placing a hedge strike, where it is coarser than
     #: the strike gap. Zero means use the strike gap.
     hedge_strike_rounding: Decimal = Decimal(0)
+    #: How far apart a call and a put premium may be and still count as a
+    #: balanced straddle. None means the reference's default of 25.
+    straddle_max_premium_diff: Decimal | None = None
     #: Which series the engine prices for this underlying, as the operator set
     #: them. They are per underlying rather than global because each costs a
     #: chain walk per tick, and because only a handful of indices are worth

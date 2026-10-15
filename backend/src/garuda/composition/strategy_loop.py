@@ -26,10 +26,12 @@ serialisation without its striped locks.
 from __future__ import annotations
 
 import logging
+from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from dataclasses import replace as dataclass_replace
 from datetime import date, datetime, timedelta
+from decimal import Decimal
 from typing import Protocol
 
 from garuda.alerts.manager import AlertManager
@@ -49,11 +51,14 @@ from garuda.composition.strategy_context import (
 from garuda.composition.watchlist import Watchlist
 from garuda.domain.alert import EntityType
 from garuda.domain.client import TradingClientId
+from garuda.domain.enums import Direction
 from garuda.domain.exchange import Exchange
 from garuda.domain.instrument import InstrumentId, canonical_symbol
+from garuda.domain.market import Tick
 from garuda.engine.base_strategy import BaseStrategy, Evaluation, Outcome
 from garuda.engine.config import ResolvedConfig
 from garuda.engine.daycondition import DayCondition
+from garuda.engine.direction import first_answer
 from garuda.engine.rules.evaluate import RuleRunner, blocking_reason
 from garuda.engine.runtime_config import SubscriptionTerms
 from garuda.engine.schedule import Slot, TrancheSchedule
@@ -75,6 +80,8 @@ logger = logging.getLogger(__name__)
 DEFAULT_INTERVAL = timedelta(seconds=1)
 #: How often counters that changed without a critical change are written.
 STATE_FLUSH_INTERVAL = timedelta(seconds=30)
+#: How many minutes of each derived series the loop keeps.
+SERIES_MINUTES = 120
 
 
 class StateStore(Protocol):
@@ -124,6 +131,9 @@ class StrategyLoop:
     _last_flush: datetime | None = None
     #: Keys of alerts already raised, so one is raised once and not each second.
     _reported: set[str] = field(default_factory=set)
+    #: Each derived series' value per minute, newest last, for providers that
+    #: compare it with a while ago (PCR TREND). An hour is plenty.
+    _series: dict[InstrumentId, deque[tuple[datetime, Decimal]]] = field(default_factory=dict)
 
     # -- status ------------------------------------------------------------
 
@@ -303,7 +313,10 @@ class StrategyLoop:
             conditions=conditions,
             day_allocation=strategy.day_allocation,
             event_days=self.event_days,
+            underlying=strategy.underlying,
             memory=state.data,
+            history=self._history_at,
+            indicator=self._indicator_direction(strategy, subscription, tranche, conditions, now),
         )
         evaluation = Evaluation(
             runtime=runtime,
@@ -374,6 +387,56 @@ class StrategyLoop:
             return blocking_reason(self.rules.evaluate(rules, context, label=strategy.name))
 
         return blocked
+
+    def _indicator_direction(
+        self,
+        strategy: Strategy,
+        subscription: Subscription,
+        tranche: int,
+        conditions: frozenset[DayCondition],
+        now: datetime,
+    ) -> Callable[[], Direction | None] | None:
+        rules = strategy.direction_rules
+        client = self.engine.parts.clients.get(subscription.trading_client)
+        if not rules or client is None:
+            return None
+
+        def decide() -> Direction | None:
+            runtime = strategy.runtime(subscription.terms, conditions)
+            context = LiveContext(
+                market=self.market,
+                book=client.book,
+                now=now,
+                trading_day=self.trading_day,
+                strategy=strategy.name,
+                trading_client=subscription.trading_client,
+                tranche=tranche,
+                config=runtime.tranche(tranche),
+                underlying=strategy.underlying,
+                day_conditions=conditions,
+            )
+            return first_answer(rules, context)
+
+        return decide
+
+    def _remember_series(self, ticks: tuple[Tick, ...], now: datetime) -> None:
+        minute = now.replace(second=0, microsecond=0)
+        for tick in ticks:
+            ring = self._series.setdefault(tick.instrument, deque(maxlen=SERIES_MINUTES))
+            if ring and ring[-1][0] == minute:
+                ring[-1] = (minute, tick.last_price.amount)
+            else:
+                ring.append((minute, tick.last_price.amount))
+
+    def _history_at(self, instrument: InstrumentId, minutes: int) -> Decimal | None:
+        ring = self._series.get(instrument)
+        if not ring:
+            return None
+        wanted = ring[-1][0] - timedelta(minutes=minutes)
+        for minute, value in reversed(ring):
+            if minute <= wanted:
+                return value
+        return None
 
     # -- state -------------------------------------------------------------
 
@@ -517,6 +580,7 @@ class StrategyLoop:
         try:
             view = ChainOnly(market=self.market, trading_day=self.trading_day)
             ticks = tuple(self.synthetics.ticks(view, now))
+            self._remember_series(ticks, now)
             if ticks:
                 await self.engine.parts.hub.consume([TicksReceived(ticks)])
                 await self.engine.parts.hub.dispatch_once()

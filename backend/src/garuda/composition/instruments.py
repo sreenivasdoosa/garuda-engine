@@ -120,6 +120,7 @@ def _symbol_from(row: SymbolsRow) -> SymbolInfo:
             else defaults.has_monthly_futures
         ),
         hedge_strike_rounding=Decimal(row.hedge_strike_rounding_multiple or 0),
+        straddle_max_premium_diff=row.straddle_max_premium_diff,
         derives_straddle=bool(row.derives_straddle),
         derives_pcr=bool(row.derives_pcr),
         derives_iv=bool(row.derives_iv),
